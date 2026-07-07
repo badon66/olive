@@ -62,7 +62,13 @@ Concrete tokens if not re-derived by the skill:
 
 ## Commands
 
-- After scaffolding the project, fill this section in with the actual dev/build/migration commands and keep it current as the project evolves.
+- `npm run dev` — local dev server (http://localhost:5173)
+- `npm run build` — typecheck + production build (`npm run preview` to serve it)
+- `npm run test` — Vitest unit tests (`src/**/*.test.ts`)
+- `npm run lint` — oxlint
+- Migrations: add a SQL file to `supabase/migrations/`, apply the identical SQL to project `dpkdsmvskryettdxcvpp` via Supabase MCP `apply_migration`
+- Edge functions: edit under `supabase/functions/`, deploy via Supabase MCP `deploy_edge_function` (include `_shared/*` files; `daily-brief` deploys with verify_jwt OFF, `assistant` with it ON)
+- Secrets: `ANTHROPIC_API_KEY` in Edge Function secrets; `cron_secret`/`project_url` in Vault; local copies in gitignored `.env.local`
 
 ## What this project is NOT
 
