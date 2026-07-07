@@ -1,3 +1,17 @@
+import { serviceClient } from "./supabase.ts";
+
+// Key resolution: Vault first (canonical — see migration 20260707000004), env
+// secret as fallback. Cached for the life of the function instance.
+let cachedKey: string | null = null;
+async function anthropicKey(): Promise<string> {
+  if (cachedKey) return cachedKey;
+  const { data } = await serviceClient().rpc("get_anthropic_key");
+  const key = (typeof data === "string" && data.length > 0 ? data : null) ?? Deno.env.get("ANTHROPIC_API_KEY");
+  if (!key) throw new Error("No Anthropic API key in Vault or env");
+  cachedKey = key;
+  return key;
+}
+
 export async function callClaude(opts: {
   system: string;
   user: string;
@@ -7,7 +21,7 @@ export async function callClaude(opts: {
   const res = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: {
-      "x-api-key": Deno.env.get("ANTHROPIC_API_KEY")!,
+      "x-api-key": await anthropicKey(),
       "anthropic-version": "2023-06-01",
       "content-type": "application/json",
     },
