@@ -6,6 +6,11 @@ export function edmontonToday(now: Date = new Date()): string {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "America/Edmonton" }).format(now); // en-CA → YYYY-MM-DD
 }
 
+export function addDays(iso: string, n: number): string {
+  const [y, m, d] = iso.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10);
+}
+
 export function daysBetween(fromISO: string, toISO: string): number {
   const [fy, fm, fd] = fromISO.split("-").map(Number);
   const [ty, tm, td] = toISO.split("-").map(Number);
