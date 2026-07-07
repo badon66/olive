@@ -9,8 +9,14 @@ const CORS = {
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
   try {
-    const cronSecret = Deno.env.get("CRON_SECRET");
-    const isCron = !!cronSecret && req.headers.get("x-cron-secret") === cronSecret;
+    // Cron path authenticates via x-cron-secret, checked against Vault (service-role-only RPC)
+    const headerSecret = req.headers.get("x-cron-secret");
+    let isCron = false;
+    if (headerSecret) {
+      const svc = serviceClient();
+      const { data: secret } = await svc.rpc("get_cron_secret");
+      isCron = typeof secret === "string" && secret.length > 0 && headerSecret === secret;
+    }
     let db;
     let userId: string;
 
