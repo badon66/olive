@@ -39,7 +39,133 @@ export type Database = {
           manual_order?: string[] | null
           user_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "daily_briefs_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "app_user"
+            referencedColumns: ["user_id"]
+          },
+        ]
+      }
+      habit_checkins: {
+        Row: {
+          completed: boolean
+          created_at: string
+          date: string
+          duration_minutes: number | null
+          habit_id: string
+          id: string
+          note: string | null
+          user_id: string
+        }
+        Insert: {
+          completed?: boolean
+          created_at?: string
+          date: string
+          duration_minutes?: number | null
+          habit_id: string
+          id?: string
+          note?: string | null
+          user_id: string
+        }
+        Update: {
+          completed?: boolean
+          created_at?: string
+          date?: string
+          duration_minutes?: number | null
+          habit_id?: string
+          id?: string
+          note?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "habit_checkins_habit_id_fkey"
+            columns: ["habit_id"]
+            isOneToOne: false
+            referencedRelation: "habits"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "habit_checkins_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "app_user"
+            referencedColumns: ["user_id"]
+          },
+        ]
+      }
+      habits: {
+        Row: {
+          created_at: string
+          frequency: Database["public"]["Enums"]["habit_frequency"]
+          id: string
+          name: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          frequency?: Database["public"]["Enums"]["habit_frequency"]
+          id?: string
+          name: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          frequency?: Database["public"]["Enums"]["habit_frequency"]
+          id?: string
+          name?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "habits_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "app_user"
+            referencedColumns: ["user_id"]
+          },
+        ]
+      }
+      journal_entries: {
+        Row: {
+          cleaned_text: string | null
+          created_at: string
+          date: string
+          id: string
+          raw_transcript: string
+          tags: string[]
+          user_id: string
+        }
+        Insert: {
+          cleaned_text?: string | null
+          created_at?: string
+          date: string
+          id?: string
+          raw_transcript: string
+          tags?: string[]
+          user_id: string
+        }
+        Update: {
+          cleaned_text?: string | null
+          created_at?: string
+          date?: string
+          id?: string
+          raw_transcript?: string
+          tags?: string[]
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "journal_entries_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "app_user"
+            referencedColumns: ["user_id"]
+          },
+        ]
       }
       memories: {
         Row: {
@@ -66,7 +192,15 @@ export type Database = {
           tags?: string[]
           user_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "memories_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "app_user"
+            referencedColumns: ["user_id"]
+          },
+        ]
       }
       tasks: {
         Row: {
@@ -102,16 +236,31 @@ export type Database = {
           title?: string
           user_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "tasks_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "app_user"
+            referencedColumns: ["user_id"]
+          },
+        ]
       }
     }
     Views: {
-      [_ in never]: never
+      app_user: {
+        Row: {
+          user_id: string | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
-      [_ in never]: never
+      get_anthropic_key: { Args: never; Returns: string }
+      get_cron_secret: { Args: never; Returns: string }
     }
     Enums: {
+      habit_frequency: "daily" | "weekly"
       task_category: "personal" | "powerplay" | "alberta_premium"
       task_status: "open" | "completed"
     }
@@ -241,6 +390,7 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
+      habit_frequency: ["daily", "weekly"],
       task_category: ["personal", "powerplay", "alberta_premium"],
       task_status: ["open", "completed"],
     },
