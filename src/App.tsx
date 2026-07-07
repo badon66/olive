@@ -1,5 +1,7 @@
 import { useState } from "react";
 import { AuthGate } from "./components/AuthGate";
+import { TaskList } from "./components/TaskList";
+import { useTasks } from "./hooks/useTasks";
 import { edmontonToday } from "./lib/dates";
 
 type View = "brief" | "tasks";
@@ -10,59 +12,66 @@ const NAV: { view: View; label: string; icon: string }[] = [
   { view: "tasks", label: "Tasks", icon: "M22 11.1V12a10 10 0 1 1-5.93-9.14M22 4 12 14.01l-3-3" },
 ];
 
-export default function App() {
+function Shell() {
   const [view, setView] = useState<View>("brief");
+  const taskStore = useTasks();
 
   return (
-    <AuthGate>
-      <div className="min-h-dvh flex flex-col">
-        <header className="sticky top-0 z-20 px-4 pt-[env(safe-area-inset-top)]">
-          <div className="flex items-baseline justify-between py-3 border-b border-signal-dim/25 backdrop-blur-md">
-            <h1 className="font-display text-signal text-lg tracking-[0.3em] text-glow">OLIVE</h1>
-            <span className="font-data text-xs text-dim">{edmontonToday()}</span>
-          </div>
-        </header>
+    <div className="min-h-dvh flex flex-col">
+      <header className="sticky top-0 z-20 px-4 pt-[env(safe-area-inset-top)]">
+        <div className="flex items-baseline justify-between py-3 border-b border-signal-dim/25 backdrop-blur-md">
+          <h1 className="font-display text-signal text-lg tracking-[0.3em] text-glow">OLIVE</h1>
+          <span className="font-data text-xs text-dim">{edmontonToday()}</span>
+        </div>
+      </header>
 
-        <main className="flex-1 px-4 py-4 pb-44 max-w-2xl w-full mx-auto">
-          {view === "brief" ? (
-            <p className="text-dim">Brief view — coming in Task 10.</p>
-          ) : (
-            <p className="text-dim">Tasks view — coming in Task 7.</p>
-          )}
-        </main>
+      <main className="flex-1 px-4 py-4 pb-44 max-w-2xl w-full mx-auto">
+        {view === "brief" ? (
+          <p className="text-dim">Brief view — coming in Task 10.</p>
+        ) : (
+          <TaskList {...taskStore} />
+        )}
+      </main>
 
-        <nav className="fixed bottom-0 inset-x-0 z-20 bg-void/80 backdrop-blur-md border-t border-signal-dim/25 pb-[env(safe-area-inset-bottom)]">
-          <div className="flex max-w-2xl mx-auto">
-            {NAV.map(({ view: v, label, icon }) => (
-              <button
-                key={v}
-                onClick={() => setView(v)}
-                aria-current={view === v ? "page" : undefined}
-                className={`relative flex-1 flex flex-col items-center gap-1 py-2.5 min-h-[52px] font-display text-[0.65rem] tracking-[0.2em] uppercase transition-colors duration-200 focus-visible:outline-2 focus-visible:outline-signal ${
-                  view === v ? "text-signal" : "text-dim"
-                }`}
+      <nav className="fixed bottom-0 inset-x-0 z-20 bg-void/80 backdrop-blur-md border-t border-signal-dim/25 pb-[env(safe-area-inset-bottom)]">
+        <div className="flex max-w-2xl mx-auto">
+          {NAV.map(({ view: v, label, icon }) => (
+            <button
+              key={v}
+              onClick={() => setView(v)}
+              aria-current={view === v ? "page" : undefined}
+              className={`relative flex-1 flex flex-col items-center gap-1 py-2.5 min-h-[52px] font-display text-[0.65rem] tracking-[0.2em] uppercase transition-colors duration-200 cursor-pointer focus-visible:outline-2 focus-visible:outline-signal ${
+                view === v ? "text-signal" : "text-dim"
+              }`}
+            >
+              {view === v && (
+                <span className="absolute top-0 inset-x-6 h-px bg-signal shadow-[0_0_8px_#2EFFB5]" />
+              )}
+              <svg
+                viewBox="0 0 24 24"
+                className="w-5 h-5"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
               >
-                {view === v && (
-                  <span className="absolute top-0 inset-x-6 h-px bg-signal shadow-[0_0_8px_#2EFFB5]" />
-                )}
-                <svg
-                  viewBox="0 0 24 24"
-                  className="w-5 h-5"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.5"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  aria-hidden="true"
-                >
-                  <path d={icon} />
-                </svg>
-                {label}
-              </button>
-            ))}
-          </div>
-        </nav>
-      </div>
+                <path d={icon} />
+              </svg>
+              {label}
+            </button>
+          ))}
+        </div>
+      </nav>
+    </div>
+  );
+}
+
+export default function App() {
+  return (
+    <AuthGate>
+      <Shell />
     </AuthGate>
   );
 }
