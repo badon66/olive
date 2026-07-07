@@ -1,9 +1,12 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useHabits } from "../hooks/useHabits";
 import { useTasks, type Task } from "../hooks/useTasks";
 import { useBrief, type BriefContent } from "../hooks/useBrief";
 import { edmontonToday, formatDue } from "../lib/dates";
 import { computeSections, doneTodayCount, effectiveOrder } from "../lib/sections";
 import { ChatBar } from "./ChatBar";
+import { HabitsView } from "./HabitsView";
+import { JournalView } from "./JournalView";
 import { Orb } from "./Orb";
 import { TaskCard } from "./TaskCard";
 import { TaskForm } from "./TaskForm";
@@ -42,6 +45,7 @@ function summarize(overdue: number, due: number, upcoming: number, done: number)
 
 export function DesktopDashboard() {
   const taskStore = useTasks();
+  const habitStore = useHabits();
   const { tasks, loading } = taskStore;
   const { brief, loading: briefLoading, error, regenerate, saveManualOrder } = useBrief();
   const [editing, setEditing] = useState<Task | null>(null);
@@ -196,6 +200,10 @@ export function DesktopDashboard() {
               </div>
             )}
           </Panel>
+
+          <Panel title="Habits" hint={<span className="hud-chip">{habitStore.habits.length}</span>}>
+            <HabitsView {...habitStore} bare />
+          </Panel>
         </div>
 
         {/* CENTER: ORB */}
@@ -239,6 +247,10 @@ export function DesktopDashboard() {
                 ))}
               </div>
             )}
+          </Panel>
+
+          <Panel title="Journal">
+            <JournalView compact />
           </Panel>
         </div>
       </div>

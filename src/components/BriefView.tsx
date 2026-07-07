@@ -13,6 +13,7 @@ type Props = {
   deleteTask: (id: string) => Promise<void>;
   updateTask: (id: string, patch: Partial<TaskInput>) => Promise<void>;
   onEdit: (task: Task) => void;
+  streaks?: { name: string; label: string }[];
 };
 
 function RingGauge({ done, total }: { done: number; total: number }) {
@@ -49,7 +50,7 @@ function RingGauge({ done, total }: { done: number; total: number }) {
   );
 }
 
-export function BriefView({ tasks, loading, completeTask, reopenTask, deleteTask, onEdit }: Props) {
+export function BriefView({ tasks, loading, completeTask, reopenTask, deleteTask, onEdit, streaks = [] }: Props) {
   const { brief, loading: briefLoading, error, regenerate, saveManualOrder } = useBrief();
   const today = edmontonToday();
 
@@ -116,6 +117,22 @@ export function BriefView({ tasks, loading, completeTask, reopenTask, deleteTask
       <section className="hud-panel p-5">
         <RingGauge done={doneToday} total={doneToday + sections.today.length + sections.overdue.length} />
       </section>
+
+      {streaks.length > 0 && (
+        <section className="hud-panel p-4">
+          <h3 className="font-display text-xs tracking-[0.25em] uppercase text-signal mb-2">Streaks</h3>
+          <div className="flex flex-wrap gap-1.5">
+            {streaks.map((s) => (
+              <span
+                key={s.name}
+                className={`hud-chip ${s.label.startsWith("0") ? "" : "hud-chip-signal"}`}
+              >
+                {s.name} ▮ {s.label}
+              </span>
+            ))}
+          </div>
+        </section>
+      )}
 
       {(
         [
