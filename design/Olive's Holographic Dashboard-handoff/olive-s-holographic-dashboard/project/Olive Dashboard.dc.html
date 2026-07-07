@@ -1,0 +1,487 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;600;700;800&family=Rajdhani:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+html, body { margin:0; padding:0; background:#050807; }
+a { color:#2EFFB5; text-decoration:none; }
+a:hover { color:#8bffd8; }
+::-webkit-scrollbar { width:6px; height:6px; }
+::-webkit-scrollbar-thumb { background:rgba(46,255,181,0.25); border-radius:3px; }
+@keyframes olivePulse { 0%,100% { opacity:0.55; } 50% { opacity:1; } }
+@keyframes oliveRing { 0%,100% { transform:scale(1); opacity:0.35; } 50% { transform:scale(1.06); opacity:0.6; } }
+@keyframes oliveBlink { 0%,100% { opacity:1; } 50% { opacity:0.35; } }
+</style>
+</helmet>
+
+<div style="min-height:100vh; background:radial-gradient(ellipse 60% 45% at 50% 18%, rgba(46,255,181,0.07), transparent 60%), #050807; color:#c8d6d0; font-family:'Rajdhani',sans-serif; position:relative; min-width:1680px;">
+
+  <!-- scan-line texture -->
+  <sc-if value="{{ showScanlines }}" hint-placeholder-val="{{ true }}">
+    <div style="position:absolute; inset:0; pointer-events:none; z-index:0; background:repeating-linear-gradient(0deg, rgba(46,255,181,0.025) 0px, rgba(46,255,181,0.025) 1px, transparent 1px, transparent 4px); mix-blend-mode:screen;"></div>
+  </sc-if>
+  <div style="position:absolute; inset:0; pointer-events:none; z-index:0; background:radial-gradient(ellipse 80% 70% at 50% 50%, transparent 55%, rgba(0,0,0,0.55) 100%);"></div>
+
+  <!-- top status bar -->
+  <div style="position:relative; z-index:2; display:flex; align-items:center; justify-content:space-between; padding:22px 44px 0 44px;">
+    <div style="display:flex; align-items:baseline; gap:16px;">
+      <div style="font-family:'Orbitron',sans-serif; font-weight:700; font-size:20px; letter-spacing:6px; color:#2EFFB5; text-shadow:0 0 18px rgba(46,255,181,0.6);">OLIVE</div>
+      <div style="font-family:'IBM Plex Mono',monospace; font-size:12px; color:rgba(200,214,208,0.45); letter-spacing:2px;">PERSONAL SYSTEM // ONLINE</div>
+    </div>
+    <div style="display:flex; align-items:center; gap:28px; font-family:'IBM Plex Mono',monospace; font-size:13px; color:rgba(200,214,208,0.6);">
+      <div style="display:flex; align-items:center; gap:8px;"><div style="width:7px; height:7px; border-radius:50%; background:#2EFFB5; box-shadow:0 0 8px #2EFFB5; animation:oliveBlink 2.6s ease-in-out infinite;"></div>ALL SYSTEMS NOMINAL</div>
+      <div>{{ dateStr }}</div>
+      <div style="color:#2EFFB5;">{{ timeStr }}</div>
+    </div>
+  </div>
+
+  <!-- greeting under orb-line, centered -->
+  <div style="position:relative; z-index:2; display:grid; grid-template-columns:1fr 640px 1fr; gap:28px; padding:8px 44px 28px 44px; align-items:start;">
+
+    <!-- LEFT COLUMN -->
+    <div style="display:flex; flex-direction:column; gap:24px; padding-top:34px;">
+
+      <!-- TASKS -->
+      <div onClick="{{ toggleTasks }}" style="position:relative; cursor:pointer; background:rgba(10,20,16,0.55); backdrop-filter:blur(14px); border:1px solid rgba(46,255,181,0.18); box-shadow:inset 0 0 30px rgba(46,255,181,0.03), 0 0 24px rgba(0,0,0,0.4); padding:20px 24px; transition:border-color 0.25s;" style-hover="border-color:rgba(46,255,181,0.45)">
+        <div style="position:absolute; top:-1px; left:-1px; width:16px; height:16px; border-top:2px solid #2EFFB5; border-left:2px solid #2EFFB5; opacity:0.8;"></div>
+        <div style="position:absolute; top:-1px; right:-1px; width:16px; height:16px; border-top:2px solid #2EFFB5; border-right:2px solid #2EFFB5; opacity:0.8;"></div>
+        <div style="position:absolute; bottom:-1px; left:-1px; width:16px; height:16px; border-bottom:2px solid #2EFFB5; border-left:2px solid #2EFFB5; opacity:0.8;"></div>
+        <div style="position:absolute; bottom:-1px; right:-1px; width:16px; height:16px; border-bottom:2px solid #2EFFB5; border-right:2px solid #2EFFB5; opacity:0.8;"></div>
+        <div style="display:flex; justify-content:space-between; align-items:baseline; margin-bottom:14px;">
+          <div style="font-family:'Orbitron',sans-serif; font-size:13px; font-weight:600; letter-spacing:3px; color:#2EFFB5;">TODAY'S TASKS</div>
+          <div style="font-family:'IBM Plex Mono',monospace; font-size:11px; color:rgba(200,214,208,0.4);">{{ tasksHint }}</div>
+        </div>
+        <sc-for list="{{ tasks }}" as="t" hint-placeholder-count="5">
+          <div style="display:flex; align-items:center; gap:14px; padding:9px 0; border-bottom:1px solid rgba(46,255,181,0.08);">
+            <div style="font-family:'IBM Plex Mono',monospace; font-size:12px; color:#2EFFB5; width:24px; opacity:0.8;">{{ t.rank }}</div>
+            <div style="flex:1; font-size:16px; font-weight:500; color:{{ t.color }};">{{ t.name }}</div>
+            <div style="font-family:'IBM Plex Mono',monospace; font-size:11px; letter-spacing:1px; color:{{ t.tagColor }}; border:1px solid {{ t.tagBorder }}; padding:2px 8px;">{{ t.tag }}</div>
+            <div style="font-family:'IBM Plex Mono',monospace; font-size:12px; color:rgba(200,214,208,0.45); width:52px; text-align:right;">{{ t.due }}</div>
+          </div>
+        </sc-for>
+        <sc-if value="{{ tasksExpanded }}" hint-placeholder-val="{{ false }}">
+          <div style="margin-top:14px; padding-top:12px; border-top:1px dashed rgba(46,255,181,0.2);">
+            <div style="font-family:'IBM Plex Mono',monospace; font-size:11px; letter-spacing:2px; color:rgba(46,255,181,0.6); margin-bottom:8px;">DEFERRED / BACKLOG</div>
+            <sc-for list="{{ backlogTasks }}" as="t" hint-placeholder-count="3">
+              <div style="display:flex; align-items:center; gap:14px; padding:7px 0; opacity:0.6;">
+                <div style="width:24px; font-family:'IBM Plex Mono',monospace; font-size:12px;">·</div>
+                <div style="flex:1; font-size:15px;">{{ t.name }}</div>
+                <div style="font-family:'IBM Plex Mono',monospace; font-size:12px; color:rgba(200,214,208,0.45);">{{ t.due }}</div>
+              </div>
+            </sc-for>
+          </div>
+        </sc-if>
+      </div>
+
+      <!-- HABITS -->
+      <div onClick="{{ toggleHabits }}" style="position:relative; cursor:pointer; background:rgba(10,20,16,0.55); backdrop-filter:blur(14px); border:1px solid rgba(46,255,181,0.18); box-shadow:inset 0 0 30px rgba(46,255,181,0.03), 0 0 24px rgba(0,0,0,0.4); padding:20px 24px; transition:border-color 0.25s;" style-hover="border-color:rgba(46,255,181,0.45)">
+        <div style="position:absolute; top:-1px; left:-1px; width:16px; height:16px; border-top:2px solid #2EFFB5; border-left:2px solid #2EFFB5; opacity:0.8;"></div>
+        <div style="position:absolute; top:-1px; right:-1px; width:16px; height:16px; border-top:2px solid #2EFFB5; border-right:2px solid #2EFFB5; opacity:0.8;"></div>
+        <div style="position:absolute; bottom:-1px; left:-1px; width:16px; height:16px; border-bottom:2px solid #2EFFB5; border-left:2px solid #2EFFB5; opacity:0.8;"></div>
+        <div style="position:absolute; bottom:-1px; right:-1px; width:16px; height:16px; border-bottom:2px solid #2EFFB5; border-right:2px solid #2EFFB5; opacity:0.8;"></div>
+        <div style="display:flex; justify-content:space-between; align-items:baseline; margin-bottom:14px;">
+          <div style="font-family:'Orbitron',sans-serif; font-size:13px; font-weight:600; letter-spacing:3px; color:#2EFFB5;">HABIT STREAKS</div>
+          <div style="font-family:'IBM Plex Mono',monospace; font-size:11px; color:rgba(200,214,208,0.4);">{{ habitsHint }}</div>
+        </div>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:14px 24px;">
+          <sc-for list="{{ habits }}" as="h" hint-placeholder-count="4">
+            <div style="display:flex; flex-direction:column; gap:5px;">
+              <div style="display:flex; justify-content:space-between; align-items:baseline;">
+                <div style="font-size:15px; font-weight:600;">{{ h.name }}</div>
+                <div style="font-family:'Orbitron',sans-serif; font-size:16px; font-weight:600; color:#2EFFB5; text-shadow:0 0 10px rgba(46,255,181,0.5);">{{ h.streak }}</div>
+              </div>
+              <div style="display:flex; gap:3px;">
+                <sc-for list="{{ h.week }}" as="d" hint-placeholder-count="7">
+                  <div style="flex:1; height:5px; background:{{ d.bg }}; box-shadow:{{ d.glow }};"></div>
+                </sc-for>
+              </div>
+            </div>
+          </sc-for>
+        </div>
+        <sc-if value="{{ habitsExpanded }}" hint-placeholder-val="{{ false }}">
+          <div style="margin-top:16px; padding-top:12px; border-top:1px dashed rgba(46,255,181,0.2); display:flex; flex-direction:column; gap:8px;">
+            <sc-for list="{{ habitDetails }}" as="h" hint-placeholder-count="4">
+              <div style="display:flex; justify-content:space-between; font-family:'IBM Plex Mono',monospace; font-size:12px; color:rgba(200,214,208,0.6);">
+                <div>{{ h.name }}</div><div>{{ h.stat }}</div>
+              </div>
+            </sc-for>
+          </div>
+        </sc-if>
+      </div>
+    </div>
+
+    <!-- CENTER: ORB -->
+    <div style="display:flex; flex-direction:column; align-items:center; gap:0;">
+      <div style="position:relative; width:560px; height:560px; display:flex; align-items:center; justify-content:center;">
+        <div style="position:absolute; width:420px; height:420px; border-radius:50%; border:1px solid rgba(46,255,181,0.15); animation:oliveRing 6s ease-in-out infinite;"></div>
+        <div style="position:absolute; width:500px; height:500px; border-radius:50%; border:1px dashed rgba(46,255,181,0.08); animation:oliveRing 9s ease-in-out infinite;"></div>
+        <canvas ref="{{ orbRef }}" width="560" height="560" style="width:560px; height:560px; display:block;"></canvas>
+      </div>
+      <div style="text-align:center; margin-top:-24px;">
+        <div style="font-family:'Orbitron',sans-serif; font-size:26px; font-weight:500; letter-spacing:2px; color:#e8f5ef; text-shadow:0 0 24px rgba(46,255,181,0.35);">Good morning, Alex.</div>
+        <div style="font-family:'Rajdhani',sans-serif; font-size:17px; color:rgba(200,214,208,0.6); margin-top:6px; letter-spacing:0.5px;">Three priorities today. Rain arriving at 16:00 — I moved your run to noon.</div>
+      </div>
+    </div>
+
+    <!-- RIGHT COLUMN -->
+    <div style="display:flex; flex-direction:column; gap:24px; padding-top:34px;">
+
+      <!-- FINANCE -->
+      <div onClick="{{ toggleFinance }}" style="position:relative; cursor:pointer; background:rgba(10,20,16,0.55); backdrop-filter:blur(14px); border:1px solid rgba(46,255,181,0.18); box-shadow:inset 0 0 30px rgba(46,255,181,0.03), 0 0 24px rgba(0,0,0,0.4); padding:20px 24px; transition:border-color 0.25s;" style-hover="border-color:rgba(46,255,181,0.45)">
+        <div style="position:absolute; top:-1px; left:-1px; width:16px; height:16px; border-top:2px solid #2EFFB5; border-left:2px solid #2EFFB5; opacity:0.8;"></div>
+        <div style="position:absolute; top:-1px; right:-1px; width:16px; height:16px; border-top:2px solid #2EFFB5; border-right:2px solid #2EFFB5; opacity:0.8;"></div>
+        <div style="position:absolute; bottom:-1px; left:-1px; width:16px; height:16px; border-bottom:2px solid #2EFFB5; border-left:2px solid #2EFFB5; opacity:0.8;"></div>
+        <div style="position:absolute; bottom:-1px; right:-1px; width:16px; height:16px; border-bottom:2px solid #2EFFB5; border-right:2px solid #2EFFB5; opacity:0.8;"></div>
+        <div style="display:flex; justify-content:space-between; align-items:baseline; margin-bottom:14px;">
+          <div style="font-family:'Orbitron',sans-serif; font-size:13px; font-weight:600; letter-spacing:3px; color:#2EFFB5;">FINANCE</div>
+          <div style="font-family:'IBM Plex Mono',monospace; font-size:11px; color:rgba(200,214,208,0.4);">SYNCED 08:52</div>
+        </div>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px;">
+          <div>
+            <div style="font-family:'IBM Plex Mono',monospace; font-size:11px; letter-spacing:2px; color:rgba(200,214,208,0.5); margin-bottom:4px;">TOTAL BALANCE</div>
+            <div style="font-family:'Orbitron',sans-serif; font-size:28px; font-weight:600; color:#e8f5ef; animation:olivePulse 4s ease-in-out infinite;">$14,382</div>
+          </div>
+          <div>
+            <div style="font-family:'IBM Plex Mono',monospace; font-size:11px; letter-spacing:2px; color:rgba(200,214,208,0.5); margin-bottom:4px;">SPENT TODAY</div>
+            <div style="font-family:'Orbitron',sans-serif; font-size:28px; font-weight:600; color:#2EFFB5; text-shadow:0 0 14px rgba(46,255,181,0.4);">$47.20</div>
+          </div>
+        </div>
+        <div style="margin-top:16px;">
+          <div style="display:flex; justify-content:space-between; font-family:'IBM Plex Mono',monospace; font-size:11px; color:rgba(200,214,208,0.5); margin-bottom:6px;">
+            <div>INCOME PACE · JULY</div><div>$6,240 / $9,000</div>
+          </div>
+          <div style="height:6px; background:rgba(46,255,181,0.1); position:relative;">
+            <div style="position:absolute; left:0; top:0; bottom:0; width:69%; background:linear-gradient(90deg, rgba(46,255,181,0.4), #2EFFB5); box-shadow:0 0 10px rgba(46,255,181,0.6);"></div>
+            <div style="position:absolute; left:23%; top:-3px; bottom:-3px; width:1px; background:rgba(232,245,239,0.4);"></div>
+          </div>
+          <div style="display:flex; justify-content:space-between; font-family:'IBM Plex Mono',monospace; font-size:11px; color:rgba(46,255,181,0.7); margin-top:6px;">
+            <div>69% OF GOAL</div><div>+11% AHEAD OF PACE</div>
+          </div>
+        </div>
+        <sc-if value="{{ financeExpanded }}" hint-placeholder-val="{{ false }}">
+          <div style="margin-top:16px; padding-top:12px; border-top:1px dashed rgba(46,255,181,0.2);">
+            <div style="font-family:'IBM Plex Mono',monospace; font-size:11px; letter-spacing:2px; color:rgba(46,255,181,0.6); margin-bottom:8px;">TODAY'S TRANSACTIONS</div>
+            <sc-for list="{{ transactions }}" as="tx" hint-placeholder-count="3">
+              <div style="display:flex; justify-content:space-between; padding:6px 0; font-family:'IBM Plex Mono',monospace; font-size:12px; color:rgba(200,214,208,0.65); border-bottom:1px solid rgba(46,255,181,0.06);">
+                <div>{{ tx.time }}  {{ tx.name }}</div><div style="color:#e8f5ef;">{{ tx.amt }}</div>
+              </div>
+            </sc-for>
+          </div>
+        </sc-if>
+      </div>
+
+      <!-- WEATHER -->
+      <div onClick="{{ toggleWeather }}" style="position:relative; cursor:pointer; background:rgba(10,20,16,0.55); backdrop-filter:blur(14px); border:1px solid rgba(46,255,181,0.18); box-shadow:inset 0 0 30px rgba(46,255,181,0.03), 0 0 24px rgba(0,0,0,0.4); padding:20px 24px; transition:border-color 0.25s;" style-hover="border-color:rgba(46,255,181,0.45)">
+        <div style="position:absolute; top:-1px; left:-1px; width:16px; height:16px; border-top:2px solid #2EFFB5; border-left:2px solid #2EFFB5; opacity:0.8;"></div>
+        <div style="position:absolute; top:-1px; right:-1px; width:16px; height:16px; border-top:2px solid #2EFFB5; border-right:2px solid #2EFFB5; opacity:0.8;"></div>
+        <div style="position:absolute; bottom:-1px; left:-1px; width:16px; height:16px; border-bottom:2px solid #2EFFB5; border-left:2px solid #2EFFB5; opacity:0.8;"></div>
+        <div style="position:absolute; bottom:-1px; right:-1px; width:16px; height:16px; border-bottom:2px solid #2EFFB5; border-right:2px solid #2EFFB5; opacity:0.8;"></div>
+        <div style="display:flex; justify-content:space-between; align-items:baseline; margin-bottom:14px;">
+          <div style="font-family:'Orbitron',sans-serif; font-size:13px; font-weight:600; letter-spacing:3px; color:#2EFFB5;">WEATHER · SEATTLE</div>
+          <div style="font-family:'IBM Plex Mono',monospace; font-size:11px; color:rgba(200,214,208,0.4);">LIVE</div>
+        </div>
+        <div style="display:flex; align-items:center; gap:20px;">
+          <div style="font-family:'Orbitron',sans-serif; font-size:44px; font-weight:500; color:#e8f5ef;">64°</div>
+          <div style="flex:1;">
+            <div style="font-size:17px; font-weight:600;">Overcast, rain at 16:00</div>
+            <div style="font-family:'IBM Plex Mono',monospace; font-size:12px; color:rgba(200,214,208,0.5); margin-top:2px;">H 68° · L 55° · WIND 8 MPH NW · HUM 71%</div>
+          </div>
+        </div>
+        <div style="display:flex; gap:10px; margin-top:14px;">
+          <sc-for list="{{ hourly }}" as="h" hint-placeholder-count="6">
+            <div style="flex:1; display:flex; flex-direction:column; align-items:center; gap:4px; padding:8px 0; background:rgba(46,255,181,0.04); border:1px solid rgba(46,255,181,0.08);">
+              <div style="font-family:'IBM Plex Mono',monospace; font-size:10px; color:rgba(200,214,208,0.45);">{{ h.t }}</div>
+              <div style="font-size:15px; font-weight:600; color:{{ h.color }};">{{ h.temp }}</div>
+              <div style="font-family:'IBM Plex Mono',monospace; font-size:10px; color:{{ h.pColor }};">{{ h.precip }}</div>
+            </div>
+          </sc-for>
+        </div>
+        <sc-if value="{{ weatherExpanded }}" hint-placeholder-val="{{ false }}">
+          <div style="margin-top:14px; padding-top:12px; border-top:1px dashed rgba(46,255,181,0.2); display:flex; flex-direction:column; gap:6px;">
+            <sc-for list="{{ forecast }}" as="d" hint-placeholder-count="4">
+              <div style="display:flex; justify-content:space-between; font-family:'IBM Plex Mono',monospace; font-size:12px; color:rgba(200,214,208,0.6);">
+                <div style="width:48px;">{{ d.day }}</div><div style="flex:1;">{{ d.desc }}</div><div>{{ d.range }}</div>
+              </div>
+            </sc-for>
+          </div>
+        </sc-if>
+      </div>
+    </div>
+  </div>
+
+  <!-- BOTTOM ROW -->
+  <div style="position:relative; z-index:2; display:grid; grid-template-columns:1.4fr 1fr; gap:28px; padding:0 44px 40px 44px; top:100px;">
+
+    <!-- ACTIVE JOBS -->
+    <div onClick="{{ toggleJobs }}" style="position:relative; cursor:pointer; background:rgba(10,20,16,0.55); backdrop-filter:blur(14px); border:1px solid rgba(46,255,181,0.18); box-shadow:inset 0 0 30px rgba(46,255,181,0.03), 0 0 24px rgba(0,0,0,0.4); padding:20px 24px; transition:border-color 0.25s;" style-hover="border-color:rgba(46,255,181,0.45)">
+      <div style="position:absolute; top:-1px; left:-1px; width:16px; height:16px; border-top:2px solid #2EFFB5; border-left:2px solid #2EFFB5; opacity:0.8;"></div>
+      <div style="position:absolute; top:-1px; right:-1px; width:16px; height:16px; border-top:2px solid #2EFFB5; border-right:2px solid #2EFFB5; opacity:0.8;"></div>
+      <div style="position:absolute; bottom:-1px; left:-1px; width:16px; height:16px; border-bottom:2px solid #2EFFB5; border-left:2px solid #2EFFB5; opacity:0.8;"></div>
+      <div style="position:absolute; bottom:-1px; right:-1px; width:16px; height:16px; border-bottom:2px solid #2EFFB5; border-right:2px solid #2EFFB5; opacity:0.8;"></div>
+      <div style="display:flex; justify-content:space-between; align-items:baseline; margin-bottom:14px;">
+        <div style="font-family:'Orbitron',sans-serif; font-size:13px; font-weight:600; letter-spacing:3px; color:#2EFFB5;">ACTIVE JOBS</div>
+        <div style="font-family:'IBM Plex Mono',monospace; font-size:11px; color:rgba(200,214,208,0.4);">{{ jobsHint }}</div>
+      </div>
+      <div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:16px;">
+        <sc-for list="{{ jobs }}" as="j" hint-placeholder-count="3">
+          <div style="border:1px solid rgba(46,255,181,0.12); background:rgba(46,255,181,0.03); padding:14px 16px; display:flex; flex-direction:column; gap:8px;">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+              <div style="font-size:16px; font-weight:600; color:#e8f5ef;">{{ j.name }}</div>
+              <div style="display:flex; align-items:center; gap:6px;">
+                <div style="width:6px; height:6px; border-radius:50%; background:{{ j.dot }}; box-shadow:0 0 6px {{ j.dot }}; animation:oliveBlink 2.2s ease-in-out infinite;"></div>
+                <div style="font-family:'IBM Plex Mono',monospace; font-size:10px; letter-spacing:1px; color:{{ j.statusColor }};">{{ j.status }}</div>
+              </div>
+            </div>
+            <div style="font-family:'IBM Plex Mono',monospace; font-size:11px; color:rgba(200,214,208,0.5);">{{ j.detail }}</div>
+            <div style="height:4px; background:rgba(46,255,181,0.08); position:relative;">
+              <div style="position:absolute; left:0; top:0; bottom:0; width:{{ j.pct }}; background:{{ j.barColor }}; box-shadow:0 0 8px {{ j.dot }};"></div>
+            </div>
+            <div style="display:flex; justify-content:space-between; font-family:'IBM Plex Mono',monospace; font-size:10px; color:rgba(200,214,208,0.4);">
+              <div>{{ j.stage }}</div><div>{{ j.eta }}</div>
+            </div>
+          </div>
+        </sc-for>
+      </div>
+      <sc-if value="{{ jobsExpanded }}" hint-placeholder-val="{{ false }}">
+        <div style="margin-top:16px; padding-top:12px; border-top:1px dashed rgba(46,255,181,0.2);">
+          <div style="font-family:'IBM Plex Mono',monospace; font-size:11px; letter-spacing:2px; color:rgba(46,255,181,0.6); margin-bottom:8px;">RECENT LOG</div>
+          <sc-for list="{{ jobLog }}" as="l" hint-placeholder-count="4">
+            <div style="display:flex; gap:16px; padding:5px 0; font-family:'IBM Plex Mono',monospace; font-size:12px; color:rgba(200,214,208,0.55);">
+              <div style="color:rgba(46,255,181,0.6);">{{ l.time }}</div><div>{{ l.msg }}</div>
+            </div>
+          </sc-for>
+        </div>
+      </sc-if>
+    </div>
+
+    <!-- GEAR -->
+    <div onClick="{{ toggleGear }}" style="position:relative; cursor:pointer; background:rgba(10,20,16,0.55); backdrop-filter:blur(14px); border:1px solid rgba(46,255,181,0.18); box-shadow:inset 0 0 30px rgba(46,255,181,0.03), 0 0 24px rgba(0,0,0,0.4); padding:20px 24px; transition:border-color 0.25s;" style-hover="border-color:rgba(46,255,181,0.45)">
+      <div style="position:absolute; top:-1px; left:-1px; width:16px; height:16px; border-top:2px solid #2EFFB5; border-left:2px solid #2EFFB5; opacity:0.8;"></div>
+      <div style="position:absolute; top:-1px; right:-1px; width:16px; height:16px; border-top:2px solid #2EFFB5; border-right:2px solid #2EFFB5; opacity:0.8;"></div>
+      <div style="position:absolute; bottom:-1px; left:-1px; width:16px; height:16px; border-bottom:2px solid #2EFFB5; border-left:2px solid #2EFFB5; opacity:0.8;"></div>
+      <div style="position:absolute; bottom:-1px; right:-1px; width:16px; height:16px; border-bottom:2px solid #2EFFB5; border-right:2px solid #2EFFB5; opacity:0.8;"></div>
+      <div style="display:flex; justify-content:space-between; align-items:baseline; margin-bottom:14px;">
+        <div style="font-family:'Orbitron',sans-serif; font-size:13px; font-weight:600; letter-spacing:3px; color:#2EFFB5;">GEAR MAINTENANCE</div>
+        <div style="font-family:'IBM Plex Mono',monospace; font-size:11px; color:rgba(200,214,208,0.4);">{{ gearHint }}</div>
+      </div>
+      <sc-for list="{{ gear }}" as="g" hint-placeholder-count="4">
+        <div style="display:flex; align-items:center; gap:14px; padding:9px 0; border-bottom:1px solid rgba(46,255,181,0.08);">
+          <div style="width:6px; height:6px; background:{{ g.dot }}; box-shadow:0 0 6px {{ g.dot }};"></div>
+          <div style="flex:1;">
+            <div style="font-size:15px; font-weight:600;">{{ g.name }}</div>
+            <div style="font-family:'IBM Plex Mono',monospace; font-size:11px; color:rgba(200,214,208,0.45);">{{ g.detail }}</div>
+          </div>
+          <div style="font-family:'IBM Plex Mono',monospace; font-size:12px; color:{{ g.dueColor }};">{{ g.due }}</div>
+        </div>
+      </sc-for>
+      <sc-if value="{{ gearExpanded }}" hint-placeholder-val="{{ false }}">
+        <div style="margin-top:14px; padding-top:12px; border-top:1px dashed rgba(46,255,181,0.2); display:flex; flex-direction:column; gap:6px;">
+          <sc-for list="{{ gearHistory }}" as="g" hint-placeholder-count="3">
+            <div style="display:flex; justify-content:space-between; font-family:'IBM Plex Mono',monospace; font-size:12px; color:rgba(200,214,208,0.5);">
+              <div>{{ g.name }}</div><div>{{ g.when }}</div>
+            </div>
+          </sc-for>
+        </div>
+      </sc-if>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;orbIntensity&quot;:{&quot;editor&quot;:&quot;range&quot;,&quot;default&quot;:1,&quot;min&quot;:0.3,&quot;max&quot;:2,&quot;step&quot;:0.1,&quot;tsType&quot;:&quot;number&quot;,&quot;section&quot;:&quot;Orb&quot;},&quot;scanlines&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Atmosphere&quot;}}">
+class Component extends DCLogic {
+  state = {
+    tasksExpanded: false, habitsExpanded: false, financeExpanded: false,
+    weatherExpanded: false, jobsExpanded: false, gearExpanded: false,
+    now: new Date()
+  };
+
+  orbCanvas = null;
+
+  componentDidMount() {
+    this.clock = setInterval(() => this.setState({ now: new Date() }), 30000);
+    this.startOrb();
+  }
+  componentWillUnmount() {
+    clearInterval(this.clock);
+    cancelAnimationFrame(this.raf);
+  }
+
+  startOrb() {
+    const canvas = this.orbCanvas;
+    if (!canvas) { requestAnimationFrame(() => this.startOrb()); return; }
+    const ctx = canvas.getContext('2d');
+    const W = 560, H = 560, cx = W/2, cy = H/2;
+    const intensity = this.props.orbIntensity ?? 1;
+    const N = Math.round(220 * intensity);
+    const parts = [];
+    for (let i = 0; i < N; i++) {
+      const r = 60 + Math.pow(Math.random(), 0.6) * 110;
+      parts.push({
+        theta: Math.random() * Math.PI * 2,
+        phi: Math.acos(2 * Math.random() - 1),
+        r,
+        speed: (0.0004 + Math.random() * 0.0012) * (Math.random() < 0.5 ? 1 : -1),
+        size: 0.6 + Math.random() * 1.8,
+        tw: Math.random() * Math.PI * 2,
+        twSpeed: 0.01 + Math.random() * 0.03
+      });
+    }
+    let t = 0;
+    const draw = () => {
+      t += 1;
+      ctx.clearRect(0, 0, W, H);
+      const pulse = 0.85 + 0.15 * Math.sin(t * 0.012);
+      // core glow
+      let g = ctx.createRadialGradient(cx, cy, 0, cx, cy, 190 * pulse);
+      g.addColorStop(0, 'rgba(46,255,181,' + (0.32 * pulse) + ')');
+      g.addColorStop(0.35, 'rgba(46,255,181,' + (0.10 * pulse) + ')');
+      g.addColorStop(1, 'rgba(46,255,181,0)');
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, W, H);
+      // inner core
+      let g2 = ctx.createRadialGradient(cx, cy, 0, cx, cy, 46 * pulse);
+      g2.addColorStop(0, 'rgba(220,255,242,' + (0.9 * pulse) + ')');
+      g2.addColorStop(0.5, 'rgba(46,255,181,' + (0.5 * pulse) + ')');
+      g2.addColorStop(1, 'rgba(46,255,181,0)');
+      ctx.fillStyle = g2;
+      ctx.beginPath(); ctx.arc(cx, cy, 46 * pulse, 0, Math.PI * 2); ctx.fill();
+      // particles
+      for (const p of parts) {
+        p.theta += p.speed;
+        p.tw += p.twSpeed;
+        const wob = 6 * Math.sin(t * 0.004 + p.phi * 3);
+        const R = (p.r + wob) * pulse;
+        const x = cx + R * Math.sin(p.phi) * Math.cos(p.theta);
+        const y = cy + R * Math.cos(p.phi) * 0.85 + R * 0.12 * Math.sin(p.theta * 0.5);
+        const depth = (Math.sin(p.phi) * Math.sin(p.theta) + 1) / 2;
+        const a = (0.15 + 0.55 * depth) * (0.6 + 0.4 * Math.sin(p.tw));
+        ctx.fillStyle = 'rgba(46,255,181,' + a.toFixed(3) + ')';
+        ctx.beginPath();
+        ctx.arc(x, y, p.size * (0.6 + 0.6 * depth), 0, Math.PI * 2);
+        ctx.fill();
+      }
+      this.raf = requestAnimationFrame(draw);
+    };
+    draw();
+  }
+
+  toggle(key) { this.setState(s => ({ [key]: !s[key] })); }
+
+  renderVals() {
+    const now = this.state.now;
+    const days = ['SUN','MON','TUE','WED','THU','FRI','SAT'];
+    const months = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
+    const pad = n => String(n).padStart(2, '0');
+    const green = '#2EFFB5', dim = 'rgba(46,255,181,0.25)';
+    const wk = filled => filled.map(f => ({
+      bg: f ? green : 'rgba(46,255,181,0.1)',
+      glow: f ? '0 0 6px rgba(46,255,181,0.5)' : 'none'
+    }));
+    return {
+      orbRef: el => { this.orbCanvas = el; },
+      showScanlines: this.props.scanlines ?? true,
+      dateStr: days[now.getDay()] + ' ' + pad(now.getDate()) + ' ' + months[now.getMonth()] + ' ' + now.getFullYear(),
+      timeStr: pad(now.getHours()) + ':' + pad(now.getMinutes()),
+
+      toggleTasks: () => this.toggle('tasksExpanded'),
+      toggleHabits: () => this.toggle('habitsExpanded'),
+      toggleFinance: () => this.toggle('financeExpanded'),
+      toggleWeather: () => this.toggle('weatherExpanded'),
+      toggleJobs: () => this.toggle('jobsExpanded'),
+      toggleGear: () => this.toggle('gearExpanded'),
+      tasksExpanded: this.state.tasksExpanded,
+      habitsExpanded: this.state.habitsExpanded,
+      financeExpanded: this.state.financeExpanded,
+      weatherExpanded: this.state.weatherExpanded,
+      jobsExpanded: this.state.jobsExpanded,
+      gearExpanded: this.state.gearExpanded,
+      tasksHint: this.state.tasksExpanded ? 'COLLAPSE ▴' : '5 RANKED · EXPAND ▾',
+      habitsExpanded: this.state.habitsExpanded,
+      habitsHint: this.state.habitsExpanded ? 'COLLAPSE ▴' : '30-DAY VIEW ▾',
+      jobsHint: this.state.jobsExpanded ? 'COLLAPSE ▴' : '3 RUNNING · LOG ▾',
+      gearHint: this.state.gearExpanded ? 'COLLAPSE ▴' : 'HISTORY ▾',
+
+      tasks: [
+        { rank: '01', name: 'Ship client proposal — Meridian', tag: 'DEEP', tagColor: green, tagBorder: 'rgba(46,255,181,0.4)', due: '11:00', color: '#e8f5ef' },
+        { rank: '02', name: 'Review Q3 contract redlines', tag: 'DEEP', tagColor: green, tagBorder: 'rgba(46,255,181,0.4)', due: '14:00', color: '#e8f5ef' },
+        { rank: '03', name: 'Run — moved earlier for rain', tag: 'HEALTH', tagColor: 'rgba(200,214,208,0.7)', tagBorder: 'rgba(200,214,208,0.25)', due: '12:00', color: '#c8d6d0' },
+        { rank: '04', name: 'Call insurance re: claim #8841', tag: 'ADMIN', tagColor: 'rgba(200,214,208,0.7)', tagBorder: 'rgba(200,214,208,0.25)', due: '15:30', color: '#c8d6d0' },
+        { rank: '05', name: 'Prep grocery order for pickup', tag: 'ERRAND', tagColor: 'rgba(200,214,208,0.7)', tagBorder: 'rgba(200,214,208,0.25)', due: '18:00', color: '#c8d6d0' }
+      ],
+      backlogTasks: [
+        { name: 'Renew passport (expires Oct)', due: 'JUL 20' },
+        { name: 'Book dentist cleaning', due: 'JUL 15' },
+        { name: 'Migrate photo backups to new drive', due: '—' }
+      ],
+
+      habits: [
+        { name: 'Morning run', streak: '12d', week: wk([1,1,1,0,1,1,1]) },
+        { name: 'Reading', streak: '34d', week: wk([1,1,1,1,1,1,1]) },
+        { name: 'No sugar', streak: '5d', week: wk([0,0,1,1,1,1,1]) },
+        { name: 'Journaling', streak: '21d', week: wk([1,1,1,1,0,1,1]) }
+      ],
+      habitDetails: [
+        { name: 'Morning run', stat: '87% completion · 30d · best streak 18' },
+        { name: 'Reading', stat: '100% completion · 30d · best streak 34' },
+        { name: 'No sugar', stat: '63% completion · 30d · best streak 9' },
+        { name: 'Journaling', stat: '90% completion · 30d · best streak 26' }
+      ],
+
+      transactions: [
+        { time: '08:41', name: 'Ridgeline Coffee', amt: '-$6.20' },
+        { time: '07:55', name: 'Metro transit', amt: '-$3.50' },
+        { time: '07:12', name: 'Cascade Grocers', amt: '-$37.50' }
+      ],
+
+      hourly: [
+        { t: '12P', temp: '66°', precip: '5%', color: '#e8f5ef', pColor: 'rgba(200,214,208,0.4)' },
+        { t: '1P', temp: '67°', precip: '5%', color: '#e8f5ef', pColor: 'rgba(200,214,208,0.4)' },
+        { t: '2P', temp: '68°', precip: '10%', color: '#e8f5ef', pColor: 'rgba(200,214,208,0.4)' },
+        { t: '3P', temp: '66°', precip: '40%', color: '#c8d6d0', pColor: green },
+        { t: '4P', temp: '63°', precip: '80%', color: '#c8d6d0', pColor: green },
+        { t: '5P', temp: '61°', precip: '85%', color: '#c8d6d0', pColor: green }
+      ],
+      forecast: [
+        { day: 'WED', desc: 'Showers clearing by noon', range: '58° / 66°' },
+        { day: 'THU', desc: 'Partly cloudy', range: '57° / 70°' },
+        { day: 'FRI', desc: 'Sunny', range: '59° / 74°' },
+        { day: 'SAT', desc: 'Sunny, light wind', range: '60° / 76°' }
+      ],
+
+      jobs: [
+        { name: 'Photo library dedupe', status: 'RUNNING', statusColor: green, dot: green, pct: '72%', barColor: 'linear-gradient(90deg, rgba(46,255,181,0.4), #2EFFB5)', detail: '14,208 of 19,733 files scanned', stage: 'PASS 2/3', eta: 'ETA 26 MIN' },
+        { name: 'Inbox triage agent', status: 'RUNNING', statusColor: green, dot: green, pct: '45%', barColor: 'linear-gradient(90deg, rgba(46,255,181,0.4), #2EFFB5)', detail: '23 drafted replies awaiting review', stage: 'DRAFTING', eta: 'CONTINUOUS' },
+        { name: 'Flight price watch → PDX–NRT', status: 'WAITING', statusColor: 'rgba(200,214,208,0.6)', dot: 'rgba(200,214,208,0.5)', pct: '100%', barColor: 'rgba(200,214,208,0.25)', detail: 'Target $780 · current low $912', stage: 'MONITORING', eta: 'NEXT CHECK 10:00' }
+      ],
+      jobLog: [
+        { time: '09:02', msg: 'Inbox triage: flagged 2 messages as urgent, drafted replies' },
+        { time: '08:47', msg: 'Photo dedupe: pass 1 complete — 1,182 duplicates staged' },
+        { time: '08:30', msg: 'Flight watch: PDX–NRT dropped $38 overnight' },
+        { time: '07:15', msg: 'Morning brief compiled and delivered' }
+      ],
+
+      gear: [
+        { name: 'Road bike — chain', detail: '1,842 mi since replacement', due: 'OVERDUE', dueColor: '#ffb02e', dot: '#ffb02e' },
+        { name: 'Car — oil change', detail: '4,620 / 5,000 mi', due: '380 MI', dueColor: green, dot: green },
+        { name: 'HVAC filter', detail: 'Installed 74 days ago', due: '16 DAYS', dueColor: 'rgba(200,214,208,0.6)', dot: 'rgba(200,214,208,0.4)' },
+        { name: 'Running shoes', detail: '310 / 400 mi', due: '90 MI', dueColor: 'rgba(200,214,208,0.6)', dot: 'rgba(200,214,208,0.4)' }
+      ],
+      gearHistory: [
+        { name: 'Car — tire rotation', when: 'JUN 14' },
+        { name: 'Bike — brake pads', when: 'MAY 30' },
+        { name: 'Water filter replaced', when: 'MAY 21' }
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>

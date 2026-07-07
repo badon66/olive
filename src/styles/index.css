@@ -1,0 +1,26 @@
+@import "tailwindcss";
+@import "@fontsource-variable/orbitron";
+@import "@fontsource/rajdhani/400.css";
+@import "@fontsource/rajdhani/500.css";
+@import "@fontsource/rajdhani/600.css";
+@import "@fontsource/rajdhani/700.css";
+@import "@fontsource/ibm-plex-mono/400.css";
+@import "@fontsource/ibm-plex-mono/500.css";
+
+@theme {
+  --color-void: #050b0a;
+  --color-panel: rgba(12, 32, 26, 0.55);
+  --color-signal: #2effb5;
+  --color-signal-dim: #1d8f6b;
+  --color-hud: #eafbf3;
+  --color-dim: #7fa89a;
+  --color-amber: #ffb454;
+  --color-critical: #ff5c5c;
+  --font-display: "Orbitron Variable", sans-serif;
+  --font-body: "Rajdhani", sans-serif;
+  --font-data: "IBM Plex Mono", monospace;
+}
+
+body {
+  @apply bg-void text-hud font-body;
+}
