@@ -1,8 +1,10 @@
 import { useState } from "react";
 import { AuthGate } from "./components/AuthGate";
+import { BriefView } from "./components/BriefView";
 import { ChatBar } from "./components/ChatBar";
+import { TaskForm } from "./components/TaskForm";
 import { TaskList } from "./components/TaskList";
-import { useTasks } from "./hooks/useTasks";
+import { useTasks, type Task } from "./hooks/useTasks";
 import { edmontonToday } from "./lib/dates";
 
 type View = "brief" | "tasks";
@@ -15,6 +17,7 @@ const NAV: { view: View; label: string; icon: string }[] = [
 
 function Shell() {
   const [view, setView] = useState<View>("brief");
+  const [briefEdit, setBriefEdit] = useState<Task | null>(null);
   const taskStore = useTasks();
 
   return (
@@ -28,11 +31,29 @@ function Shell() {
 
       <main className="flex-1 px-4 py-4 pb-44 max-w-2xl w-full mx-auto">
         {view === "brief" ? (
-          <p className="text-dim">Brief view — coming in Task 10.</p>
+          <BriefView
+            tasks={taskStore.tasks}
+            loading={taskStore.loading}
+            completeTask={taskStore.completeTask}
+            reopenTask={taskStore.reopenTask}
+            deleteTask={taskStore.deleteTask}
+            updateTask={taskStore.updateTask}
+            onEdit={setBriefEdit}
+          />
         ) : (
           <TaskList {...taskStore} />
         )}
       </main>
+
+      {briefEdit && (
+        <TaskForm
+          initial={briefEdit}
+          onClose={() => setBriefEdit(null)}
+          onSubmit={async (input) => {
+            await taskStore.updateTask(briefEdit.id, input);
+          }}
+        />
+      )}
 
       <ChatBar onActionDone={taskStore.refresh} />
 
