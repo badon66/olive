@@ -44,28 +44,30 @@ export function TaskList({ tasks, loading, addTask, updateTask, completeTask, re
 
   return (
     <div className="space-y-4">
-      {(Object.keys(CATEGORY_LABELS) as Category[]).map((cat) => {
-        const group = open.filter((t) => t.category === cat);
-        return (
-          <section key={cat} className="hud-panel p-4">
-            <header className="flex items-center justify-between mb-1">
-              <h2 className="font-display text-xs tracking-[0.25em] uppercase text-signal">
-                {CATEGORY_LABELS[cat]}
-              </h2>
-              <span className="hud-chip">{group.length}</span>
-            </header>
-            {group.length === 0 ? (
-              <p className="text-dim text-sm py-2">Nothing here. Add one below or tell Olive.</p>
-            ) : (
-              <div className="divide-y divide-signal-dim/15">
-                {group.map((t) => (
-                  <TaskCard key={t.id} task={t} {...cardProps} />
-                ))}
-              </div>
-            )}
-          </section>
-        );
-      })}
+      <div className="space-y-4 lg:grid lg:grid-cols-3 lg:gap-6 lg:space-y-0 lg:items-start">
+        {(Object.keys(CATEGORY_LABELS) as Category[]).map((cat) => {
+          const group = open.filter((t) => t.category === cat);
+          return (
+            <section key={cat} className="hud-panel p-4 lg:p-5">
+              <header className="flex items-center justify-between mb-1">
+                <h2 className="font-display text-xs tracking-[0.25em] uppercase text-signal">
+                  {CATEGORY_LABELS[cat]}
+                </h2>
+                <span className="hud-chip">{group.length}</span>
+              </header>
+              {group.length === 0 ? (
+                <p className="text-dim text-sm py-2">Nothing here. Add one below or tell Olive.</p>
+              ) : (
+                <div className="divide-y divide-signal-dim/15">
+                  {group.map((t) => (
+                    <TaskCard key={t.id} task={t} {...cardProps} />
+                  ))}
+                </div>
+              )}
+            </section>
+          );
+        })}
+      </div>
 
       <button className="hud-button w-full" onClick={() => setAdding(true)}>
         + Add task

@@ -2,8 +2,10 @@ import { useState } from "react";
 import { AuthGate } from "./components/AuthGate";
 import { BriefView } from "./components/BriefView";
 import { ChatBar } from "./components/ChatBar";
+import { DesktopDashboard } from "./components/DesktopDashboard";
 import { TaskForm } from "./components/TaskForm";
 import { TaskList } from "./components/TaskList";
+import { useMediaQuery } from "./hooks/useMediaQuery";
 import { useTasks, type Task } from "./hooks/useTasks";
 import { edmontonToday } from "./lib/dates";
 
@@ -15,7 +17,7 @@ const NAV: { view: View; label: string; icon: string }[] = [
   { view: "tasks", label: "Tasks", icon: "M22 11.1V12a10 10 0 1 1-5.93-9.14M22 4 12 14.01l-3-3" },
 ];
 
-function Shell() {
+function MobileShell() {
   const [view, setView] = useState<View>("brief");
   const [briefEdit, setBriefEdit] = useState<Task | null>(null);
   const taskStore = useTasks();
@@ -93,9 +95,6 @@ function Shell() {
 }
 
 export default function App() {
-  return (
-    <AuthGate>
-      <Shell />
-    </AuthGate>
-  );
+  const isDesktop = useMediaQuery("(min-width: 1024px)");
+  return <AuthGate>{isDesktop ? <DesktopDashboard /> : <MobileShell />}</AuthGate>;
 }

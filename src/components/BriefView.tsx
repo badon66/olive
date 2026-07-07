@@ -1,8 +1,8 @@
 import { useMemo } from "react";
 import type { Task, TaskInput } from "../hooks/useTasks";
 import { useBrief, type BriefContent } from "../hooks/useBrief";
-import { daysBetween, edmontonToday } from "../lib/dates";
-import { scoreTask } from "../lib/ranking";
+import { edmontonToday } from "../lib/dates";
+import { computeSections, doneTodayCount, effectiveOrder } from "../lib/sections";
 import { TaskCard } from "./TaskCard";
 
 type Props = {
@@ -54,49 +54,19 @@ export function BriefView({ tasks, loading, completeTask, reopenTask, deleteTask
   const today = edmontonToday();
 
   const open = useMemo(() => tasks.filter((t) => t.status === "open"), [tasks]);
-  const openById = useMemo(() => new Map(open.map((t) => [t.id, t])), [open]);
 
   // Sections computed live so mid-day additions/completions are always current
-  const sections = useMemo(() => {
-    const dated = (pred: (d: number) => boolean) =>
-      open.filter((t) => t.due_date && pred(daysBetween(today, t.due_date)));
-    return {
-      overdue: dated((d) => d < 0),
-      today: dated((d) => d === 0),
-      upcoming: dated((d) => d > 0 && d <= 7),
-    };
-  }, [open, today]);
+  const sections = useMemo(() => computeSections(open, today), [open, today]);
 
-  const doneToday = useMemo(
-    () =>
-      tasks.filter(
-        (t) =>
-          t.status === "completed" &&
-          t.completed_at !== null &&
-          edmontonToday(new Date(t.completed_at)) === today,
-      ).length,
-    [tasks, today],
-  );
+  const doneToday = useMemo(() => doneTodayCount(tasks, today), [tasks, today]);
 
   // Effective order: manual wins, else the stored morning snapshot;
   // filter to still-open tasks, append anything new (created after generation) by score
   const orderedTasks = useMemo(() => {
     const content = (brief?.content ?? null) as BriefContent | null;
     const base = brief?.manual_order ?? content?.suggested_order ?? [];
-    const seen = new Set<string>();
-    const result: Task[] = [];
-    for (const id of base) {
-      const t = openById.get(id);
-      if (t && !seen.has(id)) {
-        result.push(t);
-        seen.add(id);
-      }
-    }
-    const rest = open
-      .filter((t) => !seen.has(t.id))
-      .sort((a, b) => scoreTask(b, today) - scoreTask(a, today) || a.created_at.localeCompare(b.created_at));
-    return [...result, ...rest];
-  }, [brief, open, openById, today]);
+    return effectiveOrder(base, open, today);
+  }, [brief, open, today]);
 
   const move = (index: number, dir: -1 | 1) => {
     const ids = orderedTasks.map((t) => t.id);
