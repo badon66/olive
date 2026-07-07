@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { AuthGate } from "./components/AuthGate";
+import { ChatBar } from "./components/ChatBar";
 import { TaskList } from "./components/TaskList";
 import { useTasks } from "./hooks/useTasks";
 import { edmontonToday } from "./lib/dates";
@@ -32,6 +33,8 @@ function Shell() {
           <TaskList {...taskStore} />
         )}
       </main>
+
+      <ChatBar onActionDone={taskStore.refresh} />
 
       <nav className="fixed bottom-0 inset-x-0 z-20 bg-void/80 backdrop-blur-md border-t border-signal-dim/25 pb-[env(safe-area-inset-bottom)]">
         <div className="flex max-w-2xl mx-auto">
