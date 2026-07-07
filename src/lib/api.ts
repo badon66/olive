@@ -1,0 +1,12 @@
+import { supabase } from "./supabase";
+
+export async function sendToAssistant(message: string): Promise<string> {
+  const { data, error } = await supabase.functions.invoke("assistant", { body: { message } });
+  if (error) throw new Error(error.message);
+  return data.reply as string;
+}
+
+export async function generateBrief(): Promise<void> {
+  const { error } = await supabase.functions.invoke("daily-brief", { body: {} });
+  if (error) throw new Error(error.message);
+}
