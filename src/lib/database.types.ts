@@ -210,7 +210,9 @@ export type Database = {
           due_date: string | null
           id: string
           priority_weight: number
+          scheduled_time: string | null
           status: Database["public"]["Enums"]["task_status"]
+          time_section: Database["public"]["Enums"]["time_section"] | null
           title: string
           user_id: string
         }
@@ -221,7 +223,9 @@ export type Database = {
           due_date?: string | null
           id?: string
           priority_weight?: number
+          scheduled_time?: string | null
           status?: Database["public"]["Enums"]["task_status"]
+          time_section?: Database["public"]["Enums"]["time_section"] | null
           title: string
           user_id: string
         }
@@ -232,7 +236,9 @@ export type Database = {
           due_date?: string | null
           id?: string
           priority_weight?: number
+          scheduled_time?: string | null
           status?: Database["public"]["Enums"]["task_status"]
+          time_section?: Database["public"]["Enums"]["time_section"] | null
           title?: string
           user_id?: string
         }
@@ -263,6 +269,7 @@ export type Database = {
       habit_frequency: "daily" | "weekly"
       task_category: "personal" | "powerplay" | "alberta_premium"
       task_status: "open" | "completed"
+      time_section: "morning" | "midday" | "afternoon" | "evening" | "anytime"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -393,6 +400,7 @@ export const Constants = {
       habit_frequency: ["daily", "weekly"],
       task_category: ["personal", "powerplay", "alberta_premium"],
       task_status: ["open", "completed"],
+      time_section: ["morning", "midday", "afternoon", "evening", "anytime"],
     },
   },
 } as const
