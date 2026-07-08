@@ -50,6 +50,9 @@ export function TaskCard({ task, today, onComplete, onReopen, onEdit, onDelete }
               {formatDue(task.due_date, today)}
             </span>
           )}
+          {task.scheduled_time && (
+            <span className="hud-chip hud-chip-signal">⏱ {task.scheduled_time.slice(0, 5)}</span>
+          )}
           <span className="font-data text-[0.65rem] text-dim tracking-widest" aria-label={`Priority ${task.priority_weight} of 5`}>
             {"▮".repeat(task.priority_weight)}
             <span className="opacity-30">{"▮".repeat(5 - task.priority_weight)}</span>

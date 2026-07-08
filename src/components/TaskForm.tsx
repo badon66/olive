@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from "react";
 import type { Task, TaskInput } from "../hooks/useTasks";
 import { CATEGORY_LABELS, type Category } from "../lib/categories";
+import { SECTION_ORDER, type TimeSection } from "../lib/sections";
 
 type Props = {
   initial?: Task;
@@ -13,6 +14,8 @@ export function TaskForm({ initial, onSubmit, onClose }: Props) {
   const [category, setCategory] = useState<Category>(initial?.category ?? "personal");
   const [dueDate, setDueDate] = useState(initial?.due_date ?? "");
   const [priority, setPriority] = useState(initial?.priority_weight ?? 3);
+  const [scheduledTime, setScheduledTime] = useState(initial?.scheduled_time?.slice(0, 5) ?? "");
+  const [timeSection, setTimeSection] = useState<TimeSection | "">(initial?.time_section ?? "");
   const [busy, setBusy] = useState(false);
 
   const submit = async (e: FormEvent) => {
@@ -24,6 +27,8 @@ export function TaskForm({ initial, onSubmit, onClose }: Props) {
       category,
       due_date: dueDate || null,
       priority_weight: priority,
+      scheduled_time: scheduledTime || null,
+      time_section: timeSection || null,
     });
     setBusy(false);
     onClose();
@@ -73,6 +78,34 @@ export function TaskForm({ initial, onSubmit, onClose }: Props) {
           <span className="font-data text-xs text-dim uppercase tracking-wider">Due date</span>
           <input className="hud-input" type="date" value={dueDate ?? ""} onChange={(e) => setDueDate(e.target.value)} />
         </label>
+
+        <div className="flex gap-3">
+          <label className="flex-1 block space-y-1">
+            <span className="font-data text-xs text-dim uppercase tracking-wider">Booked time</span>
+            <input
+              className="hud-input"
+              type="time"
+              value={scheduledTime}
+              onChange={(e) => setScheduledTime(e.target.value)}
+              aria-label="Scheduled time — only for fixed appointments"
+            />
+          </label>
+          <label className="flex-1 block space-y-1">
+            <span className="font-data text-xs text-dim uppercase tracking-wider">Part of day</span>
+            <select
+              className="hud-input cursor-pointer"
+              value={timeSection}
+              onChange={(e) => setTimeSection(e.target.value as TimeSection | "")}
+            >
+              <option value="" className="bg-void">—</option>
+              {SECTION_ORDER.map((s) => (
+                <option key={s} value={s} className="bg-void">
+                  {s}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
 
         <fieldset className="space-y-1">
           <legend className="font-data text-xs text-dim uppercase tracking-wider">Priority</legend>

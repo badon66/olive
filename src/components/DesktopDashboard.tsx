@@ -2,23 +2,24 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useHabits } from "../hooks/useHabits";
 import { useTasks, type Task } from "../hooks/useTasks";
 import { useBrief, type BriefContent } from "../hooks/useBrief";
-import { edmontonToday, formatDue } from "../lib/dates";
+import { edmontonToday } from "../lib/dates";
 import { computeSections, doneTodayCount, effectiveOrder } from "../lib/sections";
 import { ChatBar } from "./ChatBar";
 import { HabitsView } from "./HabitsView";
 import { JournalView } from "./JournalView";
 import { Orb } from "./Orb";
-import { TaskCard } from "./TaskCard";
 import { TaskForm } from "./TaskForm";
 import { TaskList } from "./TaskList";
+import { DayBlocksPanel } from "./board/DayBlocksPanel";
+import { PrioritiesPanel } from "./board/PrioritiesPanel";
+import { DropZone, TaskDndProvider, useActiveDragTask } from "./board/TaskDnd";
+import { TodaySchedulePanel } from "./board/TodaySchedulePanel";
 
-function Panel({ title, hint, amber = false, children }: { title: string; hint?: ReactNode; amber?: boolean; children: ReactNode }) {
+function Panel({ title, hint, children }: { title: string; hint?: ReactNode; children: ReactNode }) {
   return (
-    <section className={`hud-panel p-5 ${amber ? "!border-amber/40" : ""}`}>
+    <section className="hud-panel p-5">
       <header className="flex items-center justify-between mb-3">
-        <h2 className={`font-display text-xs font-semibold tracking-[0.25em] uppercase ${amber ? "text-amber" : "text-signal"}`}>
-          {title}
-        </h2>
+        <h2 className="font-display text-xs font-semibold tracking-[0.25em] uppercase text-signal">{title}</h2>
         {hint}
       </header>
       {children}
@@ -41,6 +42,13 @@ function summarize(overdue: number, due: number, upcoming: number, done: number)
   const done_ = done > 0 ? ` ${done} already done today.` : "";
   const s = parts.join(", ") + "." + done_;
   return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+// Habits panel body that glows as a drop target; drop converts task → daily habit
+function HabitsDropHint() {
+  const active = useActiveDragTask();
+  if (!active) return null;
+  return <p className="font-data text-[11px] text-signal/70 mb-2">drop to turn "{active.title}" into a daily habit</p>;
 }
 
 export function DesktopDashboard() {
@@ -110,165 +118,117 @@ export function DesktopDashboard() {
     onDelete: taskStore.deleteTask,
   };
 
+  const dueToday = [...sections.overdue, ...sections.today];
+
   return (
-    <div className="min-h-dvh flex flex-col">
-      {/* top bar */}
-      <header className="flex items-center justify-between px-11 py-5">
-        <div className="flex items-baseline gap-4">
-          <h1 className="font-display font-semibold text-lg tracking-[0.25em] text-signal text-glow">OLIVE</h1>
-          <span className={`text-[15px] ${sections.overdue.length > 0 ? "text-amber" : "text-dim"}`}>{status}</span>
-        </div>
-        <div className="flex items-center gap-5 font-data text-[13px]">
-          <span className="text-dim">{dateStr}</span>
-          <span className="text-signal">{timeStr}</span>
-        </div>
-      </header>
-
-      {/* main: left | orb | right */}
-      <div className="grid grid-cols-[1fr_460px_1fr] gap-7 px-11 items-start">
-        {/* LEFT */}
-        <div className="flex flex-col gap-6">
-          <Panel
-            title="Priorities"
-            hint={
-              <button
-                onClick={() => void regenerate()}
-                className="hud-chip hud-chip-signal cursor-pointer focus-visible:outline-2 focus-visible:outline-signal"
-                aria-label="Regenerate brief"
-              >
-                {briefLoading ? "…" : generatedAt ? `⟳ ${generatedAt}` : "⟳ generate"}
-              </button>
-            }
-          >
-            {orderedTasks.length === 0 ? (
-              <p className="text-dim text-sm py-1.5">Nothing queued. Tell Olive or add a task below.</p>
-            ) : (
-              <ol>
-                {orderedTasks.map((t, i) => (
-                  <li key={t.id} className="flex items-center gap-3 py-2 border-b border-signal-dim/15 last:border-b-0">
-                    <span className="font-data text-xs text-signal/70 w-5 text-right shrink-0">{i + 1}</span>
-                    <button
-                      onClick={() => setEditing(t)}
-                      className="flex-1 min-w-0 truncate text-left font-body font-medium text-[16px] cursor-pointer hover:text-signal transition-colors duration-200 focus-visible:outline-2 focus-visible:outline-signal rounded"
-                    >
-                      {t.title}
-                    </button>
-                    {t.due_date && (
-                      <span className={`hud-chip ${formatDue(t.due_date, today).includes("overdue") ? "hud-chip-amber" : ""}`}>
-                        {formatDue(t.due_date, today)}
-                      </span>
-                    )}
-                    <span className="flex shrink-0">
-                      <button
-                        onClick={() => move(i, -1)}
-                        disabled={i === 0}
-                        aria-label={`Move ${t.title} up`}
-                        className="w-8 h-8 grid place-items-center text-dim hover:text-signal disabled:opacity-25 cursor-pointer focus-visible:outline-2 focus-visible:outline-signal rounded"
-                      >
-                        <svg viewBox="0 0 24 24" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                          <path d="m18 15-6-6-6 6" />
-                        </svg>
-                      </button>
-                      <button
-                        onClick={() => move(i, 1)}
-                        disabled={i === orderedTasks.length - 1}
-                        aria-label={`Move ${t.title} down`}
-                        className="w-8 h-8 grid place-items-center text-dim hover:text-signal disabled:opacity-25 cursor-pointer focus-visible:outline-2 focus-visible:outline-signal rounded"
-                      >
-                        <svg viewBox="0 0 24 24" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                          <path d="m6 9 6 6 6-6" />
-                        </svg>
-                      </button>
-                    </span>
-                  </li>
-                ))}
-              </ol>
-            )}
-            {brief?.manual_order && (
-              <p className="mt-2 font-data text-[11px] text-dim">your order — held for today</p>
-            )}
-          </Panel>
-
-          <Panel title="Overdue" amber={sections.overdue.length > 0} hint={<span className={`hud-chip ${sections.overdue.length ? "hud-chip-amber" : ""}`}>{sections.overdue.length}</span>}>
-            {sections.overdue.length === 0 ? (
-              <p className="text-dim text-sm py-1.5">Nothing overdue.</p>
-            ) : (
-              <div className="divide-y divide-signal-dim/15">
-                {sections.overdue.map((t) => (
-                  <TaskCard key={t.id} task={t} {...cardProps} />
-                ))}
-              </div>
-            )}
-          </Panel>
-
-          <Panel title="Habits" hint={<span className="hud-chip">{habitStore.habits.length}</span>}>
-            <HabitsView {...habitStore} bare />
-          </Panel>
-        </div>
-
-        {/* CENTER: ORB */}
-        <div className="flex flex-col items-center">
-          <Orb size={420} />
-          <div className="text-center -mt-3 max-w-[440px]">
-            <p className="font-display text-[22px] font-medium tracking-wide text-hud">{greeting(edmontonHour)}</p>
-            <p className="text-[17px] text-dim mt-2 leading-snug">
-              {loading || briefLoading
-                ? "Pulling up your day…"
-                : summarize(sections.overdue.length, sections.today.length, sections.upcoming.length, doneToday)}
-            </p>
-            {error && <p className="text-amber text-sm mt-2">{error} — showing live data.</p>}
+    <TaskDndProvider
+      tasks={open}
+      deps={{
+        today,
+        orderedIds: orderedTasks.map((t) => t.id),
+        saveManualOrder,
+        updateTask: taskStore.updateTask,
+        convertToHabit: async (task) => {
+          await habitStore.addHabit(task.title, "daily");
+          await taskStore.deleteTask(task.id);
+        },
+      }}
+    >
+      <div className="min-h-dvh flex flex-col">
+        {/* top bar */}
+        <header className="flex items-center justify-between px-11 py-5">
+          <div className="flex items-baseline gap-4">
+            <h1 className="font-display font-semibold text-lg tracking-[0.25em] text-signal text-glow">OLIVE</h1>
+            <span className={`text-[15px] ${sections.overdue.length > 0 ? "text-amber" : "text-dim"}`}>{status}</span>
           </div>
-          <div className="w-full max-w-[440px] mt-6">
-            <ChatBar onActionDone={taskStore.refresh} inline />
+          <div className="flex items-center gap-5 font-data text-[13px]">
+            <span className="text-dim">{dateStr}</span>
+            <span className="text-signal">{timeStr}</span>
+          </div>
+        </header>
+
+        {/* main: left | orb | right */}
+        <div className="grid grid-cols-[1fr_460px_1fr] gap-7 px-11 items-start">
+          {/* LEFT */}
+          <div className="flex flex-col gap-6">
+            <PrioritiesPanel
+              orderedTasks={orderedTasks}
+              today={today}
+              onEdit={setEditing}
+              onMove={move}
+              manualOrder={brief?.manual_order !== null && brief?.manual_order !== undefined}
+              headerExtra={
+                <span
+                  role="button"
+                  tabIndex={0}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    void regenerate();
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.stopPropagation();
+                      void regenerate();
+                    }
+                  }}
+                  className="hud-chip hud-chip-signal cursor-pointer focus-visible:outline-2 focus-visible:outline-signal"
+                  aria-label="Regenerate brief"
+                >
+                  {briefLoading ? "…" : generatedAt ? `⟳ ${generatedAt}` : "⟳ generate"}
+                </span>
+              }
+            />
+
+            <DropZone id="habits">
+              <Panel title="Habits" hint={<span className="hud-chip">{habitStore.habits.length}</span>}>
+                <HabitsDropHint />
+                <HabitsView {...habitStore} bare />
+              </Panel>
+            </DropZone>
+          </div>
+
+          {/* CENTER: ORB */}
+          <div className="flex flex-col items-center">
+            <Orb size={420} />
+            <div className="text-center -mt-3 max-w-[440px]">
+              <p className="font-display text-[22px] font-medium tracking-wide text-hud">{greeting(edmontonHour)}</p>
+              <p className="text-[17px] text-dim mt-2 leading-snug">
+                {loading || briefLoading
+                  ? "Pulling up your day…"
+                  : summarize(sections.overdue.length, sections.today.length, sections.upcoming.length, doneToday)}
+              </p>
+              {error && <p className="text-amber text-sm mt-2">{error} — showing live data.</p>}
+            </div>
+            <div className="w-full max-w-[440px] mt-6">
+              <ChatBar onActionDone={taskStore.refresh} inline />
+            </div>
+          </div>
+
+          {/* RIGHT */}
+          <div className="flex flex-col gap-6">
+            <TodaySchedulePanel dueToday={dueToday} cardProps={cardProps} />
+            <DayBlocksPanel openTasks={open} today={today} onEdit={setEditing} />
+            <Panel title="Journal">
+              <JournalView compact />
+            </Panel>
           </div>
         </div>
 
-        {/* RIGHT */}
-        <div className="flex flex-col gap-6">
-          <Panel title="Today" hint={<span className="hud-chip">{`${doneToday}/${doneToday + sections.today.length + sections.overdue.length} done`}</span>}>
-            {sections.today.length === 0 ? (
-              <p className="text-dim text-sm py-1.5">Clear for today.</p>
-            ) : (
-              <div className="divide-y divide-signal-dim/15">
-                {sections.today.map((t) => (
-                  <TaskCard key={t.id} task={t} {...cardProps} />
-                ))}
-              </div>
-            )}
-          </Panel>
-
-          <Panel title="Next 7 Days" hint={<span className="hud-chip">{sections.upcoming.length}</span>}>
-            {sections.upcoming.length === 0 ? (
-              <p className="text-dim text-sm py-1.5">Nothing scheduled.</p>
-            ) : (
-              <div className="divide-y divide-signal-dim/15">
-                {sections.upcoming.map((t) => (
-                  <TaskCard key={t.id} task={t} {...cardProps} />
-                ))}
-              </div>
-            )}
-          </Panel>
-
-          <Panel title="Journal">
-            <JournalView compact />
-          </Panel>
+        {/* BOTTOM: all tasks by category */}
+        <div className="px-11 pt-7 pb-10">
+          <TaskList {...taskStore} />
         </div>
-      </div>
 
-      {/* BOTTOM: all tasks by category */}
-      <div className="px-11 pt-7 pb-10">
-        <TaskList {...taskStore} />
+        {editing && (
+          <TaskForm
+            initial={editing}
+            onClose={() => setEditing(null)}
+            onSubmit={async (input) => {
+              await taskStore.updateTask(editing.id, input);
+            }}
+          />
+        )}
       </div>
-
-      {editing && (
-        <TaskForm
-          initial={editing}
-          onClose={() => setEditing(null)}
-          onSubmit={async (input) => {
-            await taskStore.updateTask(editing.id, input);
-          }}
-        />
-      )}
-    </div>
+    </TaskDndProvider>
   );
 }

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { supabase } from "../lib/supabase";
 import type { Database } from "../lib/database.types";
 import type { Category } from "../lib/categories";
+import type { TimeSection } from "../lib/sections";
 
 export type Task = Database["public"]["Tables"]["tasks"]["Row"];
 export type TaskInput = {
@@ -9,6 +10,8 @@ export type TaskInput = {
   category: Category;
   due_date: string | null;
   priority_weight: number;
+  scheduled_time?: string | null;
+  time_section?: TimeSection | null;
 };
 
 export function useTasks() {
