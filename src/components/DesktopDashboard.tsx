@@ -10,9 +10,9 @@ import { JournalView } from "./JournalView";
 import { Orb } from "./Orb";
 import { TaskForm } from "./TaskForm";
 import { TaskList } from "./TaskList";
-import { DayBlocksPanel } from "./board/DayBlocksPanel";
+import { UpcomingDaysPanel } from "./board/DayBlocksPanel";
 import { PrioritiesPanel } from "./board/PrioritiesPanel";
-import { DropZone, TaskDndProvider, useActiveDragTask } from "./board/TaskDnd";
+import { DropZone, TaskDndProvider, useActiveDrag } from "./board/TaskDnd";
 import { TodaySchedulePanel } from "./board/TodaySchedulePanel";
 
 function Panel({ title, hint, children }: { title: string; hint?: ReactNode; children: ReactNode }) {
@@ -44,11 +44,17 @@ function summarize(overdue: number, due: number, upcoming: number, done: number)
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
-// Habits panel body that glows as a drop target; drop converts task → daily habit
+// Habits panel hint while dragging: task → converts to habit, habit → unschedules
 function HabitsDropHint() {
-  const active = useActiveDragTask();
+  const active = useActiveDrag();
   if (!active) return null;
-  return <p className="font-data text-[11px] text-signal/70 mb-2">drop to turn "{active.title}" into a daily habit</p>;
+  return (
+    <p className="font-data text-[11px] text-signal/70 mb-2">
+      {active.kind === "task"
+        ? `drop to turn "${active.task.title}" into a daily habit`
+        : `drop to unschedule "${active.habit.name}"`}
+    </p>
+  );
 }
 
 export function DesktopDashboard() {
@@ -123,11 +129,13 @@ export function DesktopDashboard() {
   return (
     <TaskDndProvider
       tasks={open}
+      habits={habitStore.habits}
       deps={{
         today,
         orderedIds: orderedTasks.map((t) => t.id),
         saveManualOrder,
         updateTask: taskStore.updateTask,
+        updateHabit: (id, patch) => habitStore.updateHabit(id, patch),
         convertToHabit: async (task) => {
           await habitStore.addHabit(task.title, "daily");
           await taskStore.deleteTask(task.id);
@@ -182,7 +190,7 @@ export function DesktopDashboard() {
             <DropZone id="habits">
               <Panel title="Habits" hint={<span className="hud-chip">{habitStore.habits.length}</span>}>
                 <HabitsDropHint />
-                <HabitsView {...habitStore} bare />
+                <HabitsView {...habitStore} bare draggable />
               </Panel>
             </DropZone>
           </div>
@@ -206,8 +214,8 @@ export function DesktopDashboard() {
 
           {/* RIGHT */}
           <div className="flex flex-col gap-6">
-            <TodaySchedulePanel dueToday={dueToday} cardProps={cardProps} />
-            <DayBlocksPanel openTasks={open} today={today} onEdit={setEditing} />
+            <TodaySchedulePanel dueToday={dueToday} cardProps={cardProps} habitBits={habitStore} />
+            <UpcomingDaysPanel openTasks={open} today={today} onEdit={setEditing} />
             <Panel title="Journal">
               <JournalView compact />
             </Panel>

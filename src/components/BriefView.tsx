@@ -3,7 +3,8 @@ import type { Task, TaskInput } from "../hooks/useTasks";
 import { useBrief, type BriefContent } from "../hooks/useBrief";
 import { edmontonToday } from "../lib/dates";
 import { computeSections, doneTodayCount, effectiveOrder } from "../lib/sections";
-import { DayBlocksPanel } from "./board/DayBlocksPanel";
+import type { HabitStore } from "../hooks/useHabits";
+import { UpcomingDaysPanel } from "./board/DayBlocksPanel";
 import { PrioritiesPanel } from "./board/PrioritiesPanel";
 import { TaskDndProvider } from "./board/TaskDnd";
 import { TodaySchedulePanel } from "./board/TodaySchedulePanel";
@@ -17,6 +18,7 @@ type Props = {
   updateTask: (id: string, patch: Partial<TaskInput>) => Promise<void>;
   onEdit: (task: Task) => void;
   streaks?: { name: string; label: string }[];
+  habitStore?: HabitStore;
 };
 
 function RingGauge({ done, total }: { done: number; total: number }) {
@@ -53,7 +55,7 @@ function RingGauge({ done, total }: { done: number; total: number }) {
   );
 }
 
-export function BriefView({ tasks, loading, completeTask, reopenTask, deleteTask, updateTask, onEdit, streaks = [] }: Props) {
+export function BriefView({ tasks, loading, completeTask, reopenTask, deleteTask, updateTask, onEdit, streaks = [], habitStore }: Props) {
   const { brief, loading: briefLoading, error, regenerate, saveManualOrder } = useBrief();
   const today = edmontonToday();
 
@@ -98,11 +100,13 @@ export function BriefView({ tasks, loading, completeTask, reopenTask, deleteTask
   return (
     <TaskDndProvider
       tasks={open}
+      habits={habitStore?.habits}
       deps={{
         today,
         orderedIds: orderedTasks.map((t) => t.id),
         saveManualOrder,
         updateTask,
+        updateHabit: habitStore ? (id, patch) => habitStore.updateHabit(id, patch) : undefined,
       }}
     >
       <div className="space-y-4">
@@ -146,9 +150,9 @@ export function BriefView({ tasks, loading, completeTask, reopenTask, deleteTask
           manualOrder={brief?.manual_order !== null && brief?.manual_order !== undefined}
         />
 
-        <TodaySchedulePanel dueToday={dueToday} cardProps={cardProps} />
+        <TodaySchedulePanel dueToday={dueToday} cardProps={cardProps} habitBits={habitStore} />
 
-        <DayBlocksPanel openTasks={open} today={today} onEdit={onEdit} />
+        <UpcomingDaysPanel openTasks={open} today={today} onEdit={onEdit} />
       </div>
     </TaskDndProvider>
   );

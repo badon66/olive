@@ -4,16 +4,10 @@ import { scoreTask } from "./ranking";
 export const SECTION_ORDER = ["morning", "midday", "afternoon", "evening", "anytime"] as const;
 export type TimeSection = (typeof SECTION_ORDER)[number];
 
-// Next 7 calendar days (tomorrow…+7) rendered Monday-first — any 7 consecutive
-// days contain each weekday exactly once, so this ordering is total.
-export function dayBlockDates(today: string): string[] {
-  const mondayFirst = (iso: string) => {
-    const [y, m, d] = iso.split("-").map(Number);
-    return (new Date(Date.UTC(y, m - 1, d)).getUTCDay() + 6) % 7; // Mon=0 … Sun=6
-  };
-  return Array.from({ length: 7 }, (_, i) => addDays(today, i + 1)).sort(
-    (a, b) => mondayFirst(a) - mondayFirst(b),
-  );
+// Upcoming day blocks: today plus `daysAhead` more, chronological. The panel
+// shows 3 ahead collapsed and a full week (7) expanded.
+export function upcomingDates(today: string, daysAhead: number): string[] {
+  return Array.from({ length: daysAhead + 1 }, (_, i) => addDays(today, i));
 }
 
 // Timed bookings first (ascending), then flexible tasks by priority desc, created asc.

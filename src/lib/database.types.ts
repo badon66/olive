@@ -103,6 +103,7 @@ export type Database = {
           frequency: Database["public"]["Enums"]["habit_frequency"]
           id: string
           name: string
+          time_section: Database["public"]["Enums"]["time_section"] | null
           user_id: string
         }
         Insert: {
@@ -110,6 +111,7 @@ export type Database = {
           frequency?: Database["public"]["Enums"]["habit_frequency"]
           id?: string
           name: string
+          time_section?: Database["public"]["Enums"]["time_section"] | null
           user_id: string
         }
         Update: {
@@ -117,6 +119,7 @@ export type Database = {
           frequency?: Database["public"]["Enums"]["habit_frequency"]
           id?: string
           name?: string
+          time_section?: Database["public"]["Enums"]["time_section"] | null
           user_id?: string
         }
         Relationships: [

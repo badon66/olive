@@ -38,7 +38,10 @@ export function useHabits() {
       await supabase.from("habits").insert({ name, frequency, user_id: await userId() });
       await refresh();
     },
-    updateHabit: async (id: string, patch: { name?: string; frequency?: "daily" | "weekly" }) => {
+    updateHabit: async (
+      id: string,
+      patch: { name?: string; frequency?: "daily" | "weekly"; time_section?: Habit["time_section"] },
+    ) => {
       await supabase.from("habits").update(patch).eq("id", id);
       await refresh();
     },

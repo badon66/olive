@@ -1,7 +1,8 @@
-import { useMemo, useState, type FormEvent } from "react";
+import { useMemo, useState, type FormEvent, type ReactNode } from "react";
 import type { Checkin, Habit, HabitStore } from "../hooks/useHabits";
 import { edmontonToday } from "../lib/dates";
 import { dailyStreak, last7Days, weeklyStreak } from "../lib/streaks";
+import { DraggableHabit } from "./board/TaskDnd";
 
 export function streakLabel(habit: Habit, checkins: Checkin[], today: string): string {
   const dates = checkins.filter((c) => c.habit_id === habit.id && c.completed).map((c) => c.date);
@@ -10,9 +11,9 @@ export function streakLabel(habit: Habit, checkins: Checkin[], today: string): s
     : `${weeklyStreak(dates, today)}w`;
 }
 
-type Props = HabitStore & { bare?: boolean };
+type Props = HabitStore & { bare?: boolean; draggable?: boolean };
 
-export function HabitsView({ habits, checkins, loading, addHabit, updateHabit, deleteHabit, checkIn, uncheck, saveDetail, bare = false }: Props) {
+export function HabitsView({ habits, checkins, loading, addHabit, updateHabit, deleteHabit, checkIn, uncheck, saveDetail, bare = false, draggable = false }: Props) {
   const [detailFor, setDetailFor] = useState<Checkin | null>(null);
   const [note, setNote] = useState("");
   const [duration, setDuration] = useState("");
@@ -72,8 +73,18 @@ export function HabitsView({ habits, checkins, loading, addHabit, updateHabit, d
             const label = streakLabel(h, checkins, today);
             const streakActive = !label.startsWith("0");
             const showDetail = detailFor !== null && todayCheckin?.id === detailFor.id;
-            return (
-              <div key={h.id} className="py-2.5">
+            // Draggable only inside a DndContext (desktop board) — the wrapper
+            // hook would throw on the standalone mobile Habits tab
+            const wrap = (row: ReactNode) =>
+              draggable ? (
+                <DraggableHabit key={h.id} zone="habitlist" habit={h}>
+                  {row}
+                </DraggableHabit>
+              ) : (
+                <div key={h.id}>{row}</div>
+              );
+            return wrap(
+              <div className="py-2.5">
                 <div className="flex items-center gap-3">
                   <button
                     onClick={() => void toggleToday(h)}
@@ -111,6 +122,7 @@ export function HabitsView({ habits, checkins, loading, addHabit, updateHabit, d
                   </button>
 
                   <span className="hud-chip shrink-0">{h.frequency}</span>
+                  {h.time_section && <span className="hud-chip hud-chip-signal shrink-0">{h.time_section}</span>}
                   <span
                     className={`shrink-0 font-data text-xs tracking-wider ${streakActive ? "text-signal" : "text-dim"}`}
                     aria-label={`Streak ${label}`}

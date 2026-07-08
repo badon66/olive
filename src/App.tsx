@@ -53,6 +53,7 @@ function MobileShell() {
             updateTask={taskStore.updateTask}
             onEdit={setBriefEdit}
             streaks={streaks}
+            habitStore={habitStore}
           />
         )}
         {view === "tasks" && <TaskList {...taskStore} />}

@@ -1,29 +1,25 @@
 import { describe, expect, it } from "vitest";
-import { dayBlockDates, scheduleSort } from "./sections";
+import { scheduleSort, upcomingDates } from "./sections";
 
-describe("dayBlockDates", () => {
-  it("returns the next 7 days (tomorrow onward) ordered Monday-first", () => {
-    // 2026-07-07 is a Tuesday → next 7 days are Wed Jul 8 … Tue Jul 14
-    expect(dayBlockDates("2026-07-07")).toEqual([
-      "2026-07-13", // Mon
-      "2026-07-14", // Tue
-      "2026-07-08", // Wed
-      "2026-07-09", // Thu
-      "2026-07-10", // Fri
-      "2026-07-11", // Sat
-      "2026-07-12", // Sun
+describe("upcomingDates", () => {
+  it("returns today plus the requested days ahead, chronological", () => {
+    expect(upcomingDates("2026-07-07", 3)).toEqual([
+      "2026-07-07",
+      "2026-07-08",
+      "2026-07-09",
+      "2026-07-10",
     ]);
   });
-  it("starts with tomorrow when today is Sunday", () => {
-    // 2026-07-12 is a Sunday → next 7 days are Mon Jul 13 … Sun Jul 19, already Mon-first
-    expect(dayBlockDates("2026-07-12")).toEqual([
-      "2026-07-13",
-      "2026-07-14",
-      "2026-07-15",
-      "2026-07-16",
-      "2026-07-17",
-      "2026-07-18",
-      "2026-07-19",
+  it("expands to a full week ahead (today + 7) and crosses month boundaries", () => {
+    expect(upcomingDates("2026-07-29", 7)).toEqual([
+      "2026-07-29",
+      "2026-07-30",
+      "2026-07-31",
+      "2026-08-01",
+      "2026-08-02",
+      "2026-08-03",
+      "2026-08-04",
+      "2026-08-05",
     ]);
   });
 });
