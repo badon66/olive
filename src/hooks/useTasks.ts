@@ -14,6 +14,8 @@ export type TaskInput = {
   time_section?: TimeSection | null;
 };
 
+export type TaskStore = ReturnType<typeof useTasks>;
+
 export function useTasks() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);

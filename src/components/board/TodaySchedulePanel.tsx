@@ -1,6 +1,8 @@
+import { useState } from "react";
 import type { Checkin, Habit } from "../../hooks/useHabits";
 import type { Task } from "../../hooks/useTasks";
 import { SECTION_ORDER, scheduleSort, type TimeSection } from "../../lib/sections";
+import { SectionPencil } from "../SectionPencil";
 import { TaskCard } from "../TaskCard";
 import { DraggableHabit, DraggableTask, DropZone } from "./TaskDnd";
 
@@ -39,6 +41,7 @@ export function TodaySchedulePanel({
   habitBits?: HabitBits;
 }) {
   const today = cardProps.today;
+  const [editMode, setEditMode] = useState(false);
   const habitChecked = (h: Habit) =>
     habitBits?.checkins.some((c) => c.habit_id === h.id && c.date === today && c.completed) ?? false;
 
@@ -48,7 +51,10 @@ export function TodaySchedulePanel({
         <h3 className="font-display text-xs font-semibold tracking-[0.25em] uppercase text-signal">
           Today's Schedule
         </h3>
-        <span className="hud-chip">{dueToday.length}</span>
+        <span className="flex items-center gap-1.5">
+          <span className="hud-chip">{dueToday.length}</span>
+          <SectionPencil active={editMode} onToggle={() => setEditMode(!editMode)} label="today's schedule" />
+        </span>
       </header>
 
       {dueToday.length === 0 && <p className="text-dim text-sm py-1.5 mb-1">Clear for today — drag something in.</p>}
@@ -102,7 +108,7 @@ export function TodaySchedulePanel({
                   })}
                   {items.map((t) => (
                     <DraggableTask key={t.id} zone="sched" task={t}>
-                      <TaskCard task={t} {...cardProps} />
+                      <TaskCard task={t} {...cardProps} editMode={editMode} />
                     </DraggableTask>
                   ))}
                 </div>

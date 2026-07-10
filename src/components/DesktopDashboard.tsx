@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { useHabits } from "../hooks/useHabits";
-import { useTasks, type Task } from "../hooks/useTasks";
+import type { HabitStore } from "../hooks/useHabits";
+import type { Task, TaskStore } from "../hooks/useTasks";
 import { useBrief, type BriefContent } from "../hooks/useBrief";
 import { edmontonToday } from "../lib/dates";
 import { computeSections, doneTodayCount, effectiveOrder } from "../lib/sections";
@@ -57,9 +57,7 @@ function HabitsDropHint() {
   );
 }
 
-export function DesktopDashboard() {
-  const taskStore = useTasks();
-  const habitStore = useHabits();
+export function DesktopDashboard({ taskStore, habitStore }: { taskStore: TaskStore; habitStore: HabitStore }) {
   const { tasks, loading } = taskStore;
   const { brief, loading: briefLoading, error, regenerate, saveManualOrder } = useBrief();
   const [editing, setEditing] = useState<Task | null>(null);
@@ -143,20 +141,18 @@ export function DesktopDashboard() {
       }}
     >
       <div className="min-h-dvh flex flex-col">
-        {/* top bar */}
-        <header className="flex items-center justify-between px-11 py-5">
-          <div className="flex items-baseline gap-4">
-            <h1 className="font-display font-semibold text-lg tracking-[0.25em] text-signal text-glow">OLIVE</h1>
-            <span className={`text-[15px] ${sections.overdue.length > 0 ? "text-amber" : "text-dim"}`}>{status}</span>
-          </div>
+        {/* top bar — the wordmark lives in the sidebar now */}
+        <header className="flex items-center justify-between px-10 py-5">
+          <span className={`text-[15px] ${sections.overdue.length > 0 ? "text-amber" : "text-dim"}`}>{status}</span>
           <div className="flex items-center gap-5 font-data text-[13px]">
             <span className="text-dim">{dateStr}</span>
             <span className="text-signal">{timeStr}</span>
           </div>
         </header>
 
+
         {/* main: left | orb | right */}
-        <div className="grid grid-cols-[1fr_460px_1fr] gap-7 px-11 items-start">
+        <div className="grid grid-cols-[1fr_460px_1fr] gap-7 px-10 items-start">
           {/* LEFT */}
           <div className="flex flex-col gap-6">
             <PrioritiesPanel
@@ -188,7 +184,7 @@ export function DesktopDashboard() {
             />
 
             <DropZone id="habits">
-              <Panel title="Habits" hint={<span className="hud-chip">{habitStore.habits.length}</span>}>
+              <Panel title="Weekly Tasks" hint={<span className="hud-chip">{habitStore.habits.length}</span>}>
                 <HabitsDropHint />
                 <HabitsView {...habitStore} bare draggable />
               </Panel>
@@ -223,7 +219,7 @@ export function DesktopDashboard() {
         </div>
 
         {/* BOTTOM: all tasks by category */}
-        <div className="px-11 pt-7 pb-10">
+        <div className="px-10 pt-7 pb-10">
           <TaskList {...taskStore} />
         </div>
 

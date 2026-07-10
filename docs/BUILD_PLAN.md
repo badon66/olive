@@ -9,34 +9,61 @@ Phased spec. Each phase ends with a working, usable app. HARD GATE between phase
 The core loop, using only Supabase and the Anthropic API.
 
 - Scaffold: React + Vite + Tailwind PWA, Supabase project, single-user email auth, RLS.
-- Tables: `categories` (id, user_id, name, created_at — seeded with Personal, PowerPlay Customs, Alberta Premium Coatings by default, but the user can add more anytime, by voice or in the UI — this is NOT a fixed enum), `tasks` (id, user_id, title, category_id references categories, due_date, scheduled_time nullable time — set only when the task is a fixed-time booking/appointment, distinct from the flexible `time_section`, status, priority_weight, duration_minutes nullable, time_section enum: morning/midday/afternoon/evening/anytime nullable, created_at, completed_at), `memories` (id, user_id, content, date nullable, tags, created_at).
-- Chat input box (works with Wispr Flow dictation as plain text): natural-language create/edit/complete/delete of tasks via Edge Function → Claude → validated JSON → DB. Every action echoes a confirmation. Includes creating a new category by voice ("make a new section called Groceries").
+- Tables: `categories` (id, user_id, name, color hex, created_at — seeded: Personal = blue, PowerPlay Customs = yellow, Alberta Premium Coatings = a true/pure green, distinct from Olive's own signal-green HUD accent — user can add more anytime, by voice or in the UI, this is NOT a fixed enum), `tasks` (id, user_id, title, category_id references categories, due_date nullable, scheduled_time nullable time — set only when the task is a fixed-time booking/appointment, distinct from the flexible `time_section`, status, priority_weight, duration_minutes nullable, time_section enum: morning/midday/afternoon/evening/anytime nullable, created_at, completed_at), `memories` (id, user_id, content, date nullable, tags, created_at).
+- Chat input box (works with Wispr Flow dictation as plain text): natural-language create/edit/complete/delete of tasks via Edge Function → Claude → validated JSON.
+- **Preview-before-send, as a pop-up modal, voice-only.** After a voice capture is parsed, a centered modal (with backdrop) shows exactly what was understood — not yet saved. Typed text does NOT trigger this modal, since it's already visible/correctable as you type it; this is specifically a check on voice transcription and parsing. Three actions in the modal: pencil icon to edit any field directly, X to discard with nothing created, "Send off" to actually commit it. Applies to voice capture everywhere it's used (tasks, jobs later, weekly tasks) — a shared pattern, not a one-off.
 - Task list UI grouped by category; manual add/edit/delete as forms too (voice is not the only path). User can change a task's `time_section` and `duration_minutes` directly.
-- Due date picker: a proper popup mini calendar, not a native browser date input or dropdown. No prominent year selector needed — everything defaults to the current year.
+- **Category tags:** every task shows a small colored corner tag with its category's color and name. A categories section lists all of them with a pencil icon each, to rename or recolor.
+- **Dedicated per-category sections on the Dashboard:** one panel per category (Personal, PowerPlay Customs, Alberta Premium Coatings, and any the user adds later), each listing only that category's own tasks, with a colored left-edge accent matching the category. Must scale with however many categories actually exist — don't hardcode three.
+- **A separate "Tasks" sidebar tab** for full task management (all tasks, all time, filterable by category/status/scheduled), distinct from the Dashboard's glanceable Today view.
+- **Edit-mode pattern:** sections that support quick editing (the category panels, Weekly Tasks, Active Jobs) get ONE pencil icon in the section header — tapping it toggles edit mode for that section's items, rather than a per-row edit button everywhere.
+- **Sidebar navigation:** Dashboard, Tasks, Weekly Tasks, Active Jobs, Journal, Finance, Groceries (reserved nav slot only — no feature behind it, do not build), Settings.
+- **Scheduled / Not scheduled indicator** on every task regardless of category: "Scheduled" if `due_date` is set, "Not scheduled" if not.
+- Due date picker: proper popup mini calendar — already built, no further work needed.
 
-**Wake time:** `wake_times` table (date, wake_time) — a default of 11:00 applies unless overridden. Each evening (as part of brief generation), ask "what time are you waking up tomorrow?"; answer, if given, overrides the default for that date only. `time_section` boundaries (morning/midday/afternoon/evening) shift relative to wake_time, not a fixed clock — "morning" starts at wake_time, not 7 AM, if wake_time is 11.
+**Tomorrow's schedule setup (replaces a nightly auto-prompt):** a manual icon, "Set up tomorrow's schedule," showing Completed/Uncompleted. Tapping it lets the user give a quick blurb (voice or text) covering wake time AND any blocked windows ("up around 9, dentist 2 to 3:30, don't schedule then"), parsed into a `daily_schedule_setup` row (date, wake_time, blocked_windows jsonb). `time_section` boundaries shift relative to wake_time, not a fixed clock, and the pulled-forward-task logic avoids suggesting anything into blocked windows.
 
-**Daily tasks (recurring, always-on-today):** `daily_tasks` (id, title, time_section, created_at), `daily_task_checkins` (id, daily_task_id, date, completed) — same pattern as habit check-ins. "Add daily task" via voice/text creates one; if no time_section is given, ask ("first thing in the morning, midday, or later?"). These appear on the today view every day without needing a due date.
+(No separate "daily tasks" system — anything that happens every day is just a Weekly Task set to all 7 fixed days. See Phase 2. Do not build a standalone daily-tasks table.)
 
-- Daily brief screen: today, plus a **next 7 days** section shown as individual day blocks (one per day, Monday-first through Sunday) each showing a condensed summary of what's on that day — not a flat list.
-- **Priorities as a collapsible dropdown, not a long visible list.** Collapsed by default, showing just a summary line — e.g. "Priorities — 3 overdue". Overdue tasks are NOT their own section; they're folded into the top of this same dropdown, sorted first, so they're visible in the summary without needing a separate block. Expanding it reveals the full ranked list (due-today + pulled-forward, per the suggested-schedule logic below).
-- **Suggested schedule, not just a ranked list:** overdue + due-today tasks are the must-do baseline. If a `time_section` has little or nothing due in it, pull forward the highest-priority non-due tasks to fill that room, using `duration_minutes` as a rough guide — but always show clearly which items are "due today" vs "pulled forward because there's room," never blend them silently. This is still a suggestion: user can reorder, move sections, or edit duration, and manual placement wins for that day.
-- **Cross-panel drag-and-drop:** tasks can be dragged between the Priorities dropdown, Habits, Today's schedule (time sections), and the next-7-days day blocks. Dragging a task onto a day block sets its `due_date` to that day (e.g. drag "renew license" onto Tuesday's block → due_date becomes Tuesday, it now shows there). Dragging within Today's schedule updates `time_section`. Each drop writes to the database immediately, not just a visual move. Needs a drag-and-drop library (Claude Code's choice — e.g. dnd-kit) — this is a real UI feature, not a quick styling patch, budget accordingly.
+- Daily brief screen: today, plus an **Upcoming Days** row — today + next 3 days shown as **4 blocks side by side horizontally**, not stacked, with an expand arrow to see the full week. Chronological from today.
+- **Priorities as a collapsible dropdown, not a long visible list.** Collapsed by default, showing a summary line — e.g. "Priorities — 3 overdue". Overdue tasks fold into the top of this same dropdown, sorted first, not their own section. Expanding reveals the full ranked list (due-today + pulled-forward, per the suggested-schedule logic below).
+- **Suggested schedule, not just a ranked list:** overdue + due-today tasks are the must-do baseline. If a `time_section` has little or nothing due in it (and isn't a blocked window), pull forward the highest-priority non-due tasks to fill that room, using `duration_minutes` as a rough guide — always show clearly which items are "due today" vs "pulled forward," never blended silently. Still a suggestion: user can reorder, move sections, edit duration; manual placement wins for that day.
+- **Cross-panel drag-and-drop**, between Priorities, Weekly Tasks, Today's schedule (time sections), and the Upcoming Days blocks:
+  - Task → a day block: sets `due_date` to that day. If the task has a `scheduled_time` (a booking), the time stays — only the date changes.
+  - Task → a Today's schedule section: updates `time_section`.
+  - Task → Weekly Tasks, or Weekly Task → a category: converts it between the two — a deliberate, symmetric, two-way feature. **Both directions show a brief undo toast** ("Converted to weekly task — tap to undo") rather than a confirmation popup, so dragging stays fast but nothing is silently unrecoverable.
+  - Weekly Task → a specific day block: see Phase 2 for exactly what this does to that task's planned/completed state.
+  - Each drop writes to the database immediately. Needs a drag-and-drop library — already built (dnd-kit).
 - Scheduled generation: pg_cron (converted from 7:00 America/Edmonton) + pg_net → Edge Function builds the brief and stores it in a `daily_briefs` table so opening the app is instant.
 
-**Follow-up fix round (Phase 1 already built, these are corrections, not new scope):** migrate the existing fixed category enum to the `categories` table above; replace the current due-date input with the calendar popup; convert the next-7-days list into day blocks; add wake-time-anchored scheduling and daily tasks as described above; collapse Priorities into a dropdown with overdue folded in; add `scheduled_time` for bookings; add cross-panel drag-and-drop.
+**Follow-up fix round — current build status:**
+- ✅ Built: Priorities dropdown, `scheduled_time` bookings, cross-panel drag-and-drop core (dnd-kit), calendar date-picker.
+- ⚠️ Needs verification, not yet trusted: dragging a Weekly Task onto a single day — confirm it marks only that day "planned" per Phase 2, not the whole recurring pattern.
+- 🔁 Needs reworking, not removing: task↔Weekly Task drag conversion exists but is currently one-way and destructive (deletes the original task, no undo). Rework per the bullet above: both directions, with undo.
+- ❌ Not yet built: categories color + pencil editing, Upcoming Days as a horizontal 4-block row, preview-before-send breakdown, scheduled/not-scheduled tag, tomorrow's-schedule-setup icon with blocked windows.
+- 🗑️ Dropped from scope entirely — do not build: a separate "daily tasks" system. Folded into Weekly Tasks.
 
-**Done when:** tasks can be created/edited/completed by typed or dictated natural language AND by manual forms; the brief renders each morning with correct local-time logic.
+**Done when:** tasks can be created/edited/completed by typed or dictated natural language (via the preview-before-send flow, editable before commit) AND by manual forms; the brief renders each morning with correct local-time logic; category tags and scheduled/not-scheduled status are visible on every task.
 
-## Phase 2 — Habits + journal
+## Phase 2 — Weekly tasks + journal
 
-- Tables: `habits` (id, name, target_per_week int 1-7 — e.g. "every day" = 7, "3x a week" = 3, created_at), `habit_checkins` (id, habit_id, date, completed), `journal_entries` (id, date, raw_transcript, cleaned_text, tags).
-- Habit display: each habit shown as a row of **7 cubes, Monday first through Sunday last**, filled in as checked off that day. A small indicator shows progress against `target_per_week` (e.g. "2/3 this week"), not just a streak count. Week boundary = Monday.
-- Each check-in OFFERS an optional detail (note and/or duration) — one tap to skip, never required. Add `note` (text, nullable) and `duration_minutes` (int, nullable) to `habit_checkins`. When details exist, the assistant uses them (e.g. surfacing patterns or context in the brief), not just stores them.
+(Renamed from "Habits" — recurrence is more flexible than a simple streak. Naming may change again later; cheap to rename, not structural.)
+
+- Tables: `weekly_tasks` (id, name, time_section nullable, recurrence_mode enum: `count` or `fixed_days`, target_per_week int 1-7 nullable — used when mode is `count`, scheduled_days int[] nullable — 0=Monday..6=Sunday, used when mode is `fixed_days`, created_at), `weekly_task_checkins` (id, weekly_task_id, date, status enum: `planned` or `completed`, note nullable, duration_minutes nullable), `journal_entries` (id, date, entry_time time, raw_transcript, cleaned_text, tags).
+- **Creating one asks which mode fits:** a set number of times with any day working ("4 times a week"), or specific fixed days ("Monday, Wednesday, Friday"). "Every day" = `fixed_days` with all 7 selected.
+- Weekly task display: **7 cubes, Monday first through Sunday last, each cube's state fully independent of the others.** Three states: empty (not scheduled that day), light green (`planned`), full/dark green (`completed`). A cube only darkens when that specific day happens and gets checked off — other cubes stay wherever they already were (e.g. Monday can be fully dark while Wednesday and Friday are still light).
+- **How cubes get planned, per mode:**
+  - `fixed_days`: scheduled weekdays light up automatically at the start of each week, no dragging needed — the pattern is already known (e.g. "gym, Mon/Wed/Fri" lights Monday/Wednesday/Friday every week on its own).
+  - `count`: no fixed pattern, so planning is manual — dragging the task onto a specific day block creates a `planned` checkin for that date, lighting just that cube. Drag onto several days across the week to plan multiple at once.
+  - Either way, checking it off on the actual day updates only that day's row to `completed`.
+- **Progress note shows the full breakdown, not just a leftover count** — target, planned, completed, and however many still need planning, e.g. *"Target: 3x/week · Planned: 1 · Completed: 1 · 1 more to plan."* Numbers must always be internally consistent (planned + completed + remaining-to-plan = target).
+- **Shows up in the actual daily schedule, not just its own tab:** `fixed_days` tasks appear in Today's schedule / Priorities on their scheduled weekdays, in their `time_section`. `count`-mode tasks appear in Today's schedule every day the week's target isn't met yet, and stop appearing once reached.
+- Each check-in OFFERS an optional detail (note and/or duration) — one tap to skip, never required.
+- **Journal — one log per day, not a flat list of entries.** One Journal tab overall; each day has its own log inside it. Multiple captures in a day (e.g. three separate voice notes) all live inside that same day's log, each shown with its own `entry_time` timestamp and its own cleaned text — not scattered as separate standalone entries.
 - Journal: paste/dictate raw text → Edge Function → Claude produces cleaned_text; BOTH raw and cleaned stored and viewable. Cleaning rewrites for coherence only — never adds content, never changes meaning.
-- Journal list + detail view, editable after the fact. **Keep it visually small and low-priority in the layout** — it's a quick-capture utility, not a core feature; don't give it a large dedicated section. Watch for layout overlap with other panels (e.g. Alberta Premium Coatings section) — it should never render hidden behind another panel.
+- **Keep it visually small and low-priority in the layout** — quick-capture utility, not a core feature. Must never render hidden behind another panel — this was seen overlapping the Alberta Premium Coatings section live in the app despite Phase 2 not officially having started; verify it's actually resolved, don't assume the existing spec line already caught it.
 
-**Done when:** a rambling dictated entry produces a faithful cleaned version with the raw kept; the 7-cube week resets correctly on Monday and progress-vs-target displays accurately; journal renders compactly with no layout overlap.
+**Done when:** a rambling dictated entry produces a faithful cleaned version with the raw kept, correctly grouped under that day's single log with a timestamp; the 7-cube week resets correctly on Monday with each cube's planned/completed state independent and accurate for both recurrence modes; the progress note's numbers always add up; journal renders compactly with no layout overlap.
 
 ## Phase 3 — Active jobs log
 
@@ -84,11 +111,11 @@ The core loop, using only Supabase and the Anthropic API.
 
 ## Phase 7.5 — Design polish pass
 
-Deliberately separate from Phases 1–7. Don't chase pixel-perfect matching after each individual phase above — the layout will keep shifting as panels get added, so judging it early wastes effort. This is the one dedicated pass, once there's enough real content on screen (tasks, habits, jobs, finance, pace, maintenance, weather) to actually judge against Olive Dashboard v2.
+Deliberately separate from Phases 1–7. Don't chase pixel-perfect matching after each individual phase above — the layout will keep shifting as panels get added, so judging it early wastes effort. This is the one dedicated pass, once there's enough real content on screen (tasks, habits, jobs, finance, pace, maintenance, weather) to actually judge against Olive Dashboard v3 (see CLAUDE.md's Design direction — sidebar, forest green, orb, category sections).
 
-- Use the UI/UX Pro Max skill + the Claude Design reference together to bring the full dashboard in line: orb placement, panel spacing, which panels deserve more visual weight, spacing rhythm.
+- Use the UI/UX Pro Max skill + the v3 reference files together to bring the full dashboard in line: orb placement, sidebar, panel spacing, which panels deserve more visual weight, spacing rhythm.
 - This is a styling pass on existing components, not a rebuild — same "modify, don't rebuild" instruction as before applies.
-- **Done when:** the dashboard, with all Phase 1–7 content present, genuinely resembles Olive Dashboard v2 — not before, since there isn't enough content to compare against until this point.
+- **Done when:** the dashboard, with all Phase 1–7 content present, genuinely resembles Olive Dashboard v3 — not before, since there isn't enough content to compare against until this point.
 
 ## Phase 8 — Telegram bot (mobile front door)
 
@@ -111,6 +138,8 @@ Deliberately separate from Phases 1–7. Don't chase pixel-perfect matching afte
 Wake-word/always-listening voice; customer records/quotes/invoices; any money movement; any approval-queue machinery (nothing executes, so nothing needs approving); writing to the Google Sheet; multi-user anything.
 
 **Later idea, not decided, zero cost to wait:** an optional read-only markdown export of journal entries and daily briefs, synced to a folder for browsing in Obsidian (or similar). Olive would never read from it — it's a mirror for the user, not a memory source. Safe to add anytime later since the underlying data is already structured rows in Postgres; exporting it doesn't require any current schema or architecture changes.
+
+**Another later idea, not decided:** a dedicated Groceries feature — an actual list with items, not just a task category. Explicitly parked, not part of any current phase.
 
 ## Open questions — blocked until answered
 

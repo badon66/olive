@@ -8,14 +8,22 @@
 @import "@fontsource/ibm-plex-mono/500.css";
 
 @theme {
-  --color-void: #050b0a;
-  --color-panel: rgba(12, 32, 26, 0.55);
-  --color-signal: #2effb5;
-  --color-signal-dim: #1d8f6b;
+  /* v3 direction: darker, richer forest/emerald — muted, not neon */
+  --color-void: #070d0a;
+  --color-panel: rgba(10, 26, 18, 0.55);
+  --color-panel-border: rgba(63, 169, 104, 0.22);
+  --color-signal: #3fa968; /* primary readable accent (muted emerald) — text, borders, icons */
+  --color-signal-dim: #1f6e45; /* deep forest — solid fills, resting deep tone, dim borders */
+  --color-glow: #3fa968; /* used in glow shadows (reads brighter through blur) */
   --color-hud: #eafbf3;
   --color-dim: #7fa89a;
   --color-amber: #ffb454;
   --color-critical: #ff5c5c;
+  /* per-category accent colors (dashboard sections) */
+  --color-cat-personal: #4a9eff;
+  --color-cat-powerplay: #f5c518;
+  --color-cat-alberta: #52c41a;
+  --color-cat-groceries: #ff8a5b;
   --font-display: "Orbitron Variable", sans-serif;
   --font-body: "Rajdhani", sans-serif;
   --font-data: "IBM Plex Mono", monospace;
@@ -23,45 +31,43 @@
 
 body {
   @apply bg-void text-hud font-body;
-  /* HUD atmosphere: radial glow up top + faint circuit grid */
+  /* HUD atmosphere: soft forest glow up top + faint scan-line grid */
   background-image:
-    radial-gradient(ellipse 55% 40% at 50% 12%, rgba(46, 255, 181, 0.06), transparent 60%),
-    repeating-linear-gradient(0deg, rgba(46, 255, 181, 0.025) 0 1px, transparent 1px 48px),
-    repeating-linear-gradient(90deg, rgba(46, 255, 181, 0.025) 0 1px, transparent 1px 48px);
+    radial-gradient(ellipse 900px 500px at 65% 0%, rgba(63, 169, 104, 0.09), transparent 60%),
+    repeating-linear-gradient(0deg, rgba(63, 169, 104, 0.02) 0 1px, transparent 1px 3px);
   background-attachment: fixed;
 }
 
 @layer components {
-  /* Glass panel with targeting-reticle corner brackets */
+  /* Glass panel — thin forest border; hover = soft outer glow + a brighter
+     "sheen" line along the top edge (v3 treatment), not a full neon outline. */
   .hud-panel {
     position: relative;
     background: var(--color-panel);
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
-    border: 1px solid rgba(46, 255, 181, 0.16);
-    border-radius: 0.5rem;
-  }
-  .hud-panel::before,
-  .hud-panel::after {
-    content: "";
-    position: absolute;
-    width: 14px;
-    height: 14px;
-    pointer-events: none;
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    border: 1px solid var(--color-panel-border);
+    border-radius: 0.625rem;
+    overflow: hidden;
+    transition: box-shadow 0.25s ease, border-color 0.25s ease;
   }
   .hud-panel::before {
-    top: -1px;
-    left: -1px;
-    border-top: 2px solid var(--color-signal);
-    border-left: 2px solid var(--color-signal);
-    border-top-left-radius: 0.5rem;
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 8%;
+    right: 8%;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, transparent, transparent);
+    transition: background 0.25s ease;
+    pointer-events: none;
   }
-  .hud-panel::after {
-    bottom: -1px;
-    right: -1px;
-    border-bottom: 2px solid var(--color-signal);
-    border-right: 2px solid var(--color-signal);
-    border-bottom-right-radius: 0.5rem;
+  .hud-panel:hover {
+    border-color: rgba(63, 169, 104, 0.5);
+    box-shadow: 0 8px 28px rgba(63, 169, 104, 0.14), inset 0 0 0 1px rgba(63, 169, 104, 0.15);
+  }
+  .hud-panel:hover::before {
+    background: linear-gradient(90deg, transparent, var(--color-glow), transparent);
   }
 
   .hud-input {
@@ -69,8 +75,8 @@ body {
     width: 100%;
     min-height: 44px;
     padding: 0.5rem 0.75rem;
-    background: rgba(5, 11, 10, 0.6);
-    border: 1px solid rgba(46, 255, 181, 0.25);
+    background: rgba(7, 13, 10, 0.6);
+    border: 1px solid var(--color-panel-border);
     border-radius: 0.375rem;
     color: var(--color-hud);
     font-family: var(--font-body);
@@ -83,7 +89,7 @@ body {
   .hud-input:focus {
     outline: none;
     border-color: var(--color-signal);
-    box-shadow: 0 0 0 1px rgba(46, 255, 181, 0.4), 0 0 12px rgba(46, 255, 181, 0.15);
+    box-shadow: 0 0 0 1px rgba(63, 169, 104, 0.4), 0 0 12px rgba(63, 169, 104, 0.15);
   }
 
   .hud-button {
@@ -93,20 +99,20 @@ body {
     gap: 0.5rem;
     min-height: 44px;
     padding: 0.5rem 1rem;
-    background: rgba(46, 255, 181, 0.08);
+    background: rgba(63, 169, 104, 0.08);
     border: 1px solid var(--color-signal-dim);
-    border-radius: 0.375rem;
+    border-radius: 0.5rem;
     color: var(--color-signal);
     font-family: var(--font-display);
     font-size: 0.75rem;
-    letter-spacing: 0.15em;
+    letter-spacing: 0.12em;
     text-transform: uppercase;
     cursor: pointer;
     transition: background 200ms ease-out, box-shadow 200ms ease-out, transform 150ms ease-out;
   }
   .hud-button:hover {
-    background: rgba(46, 255, 181, 0.15);
-    box-shadow: 0 0 16px rgba(46, 255, 181, 0.2);
+    background: rgba(63, 169, 104, 0.15);
+    box-shadow: 0 0 16px rgba(63, 169, 104, 0.2);
   }
   .hud-button:active {
     transform: scale(0.97);
@@ -120,13 +126,23 @@ body {
     cursor: default;
     box-shadow: none;
   }
+  /* Solid primary (v3 "send off") — deep forest fill with glow border */
+  .hud-button-primary {
+    background: var(--color-signal-dim);
+    border-color: var(--color-glow);
+    color: var(--color-hud);
+  }
+  .hud-button-primary:hover {
+    background: #24805170;
+    box-shadow: 0 0 18px rgba(63, 169, 104, 0.35);
+  }
 
   .hud-chip {
     display: inline-flex;
     align-items: center;
     gap: 0.25rem;
     padding: 0.125rem 0.5rem;
-    border: 1px solid rgba(46, 255, 181, 0.25);
+    border: 1px solid var(--color-panel-border);
     border-radius: 9999px;
     color: var(--color-dim);
     font-family: var(--font-data);
@@ -139,12 +155,12 @@ body {
     color: var(--color-amber);
   }
   .hud-chip-signal {
-    border-color: rgba(46, 255, 181, 0.5);
+    border-color: rgba(63, 169, 104, 0.5);
     color: var(--color-signal);
   }
 
   .text-glow {
-    text-shadow: 0 0 12px rgba(46, 255, 181, 0.45);
+    text-shadow: 0 0 12px rgba(63, 169, 104, 0.45);
   }
 
   .pulse-live {
@@ -164,7 +180,8 @@ body {
       animation: none;
     }
     .hud-button,
-    .hud-input {
+    .hud-input,
+    .hud-panel {
       transition: none;
     }
   }

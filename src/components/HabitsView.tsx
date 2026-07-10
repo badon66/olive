@@ -2,6 +2,7 @@ import { useMemo, useState, type FormEvent, type ReactNode } from "react";
 import type { Checkin, Habit, HabitStore } from "../hooks/useHabits";
 import { edmontonToday } from "../lib/dates";
 import { dailyStreak, last7Days, weeklyStreak } from "../lib/streaks";
+import { SectionPencil } from "./SectionPencil";
 import { DraggableHabit } from "./board/TaskDnd";
 
 export function streakLabel(habit: Habit, checkins: Checkin[], today: string): string {
@@ -20,6 +21,7 @@ export function HabitsView({ habits, checkins, loading, addHabit, updateHabit, d
   const [adding, setAdding] = useState(false);
   const [editing, setEditing] = useState<Habit | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<Habit | null>(null);
+  const [editMode, setEditMode] = useState(false);
   const today = edmontonToday();
   const week = useMemo(() => last7Days(today), [today]);
 
@@ -62,6 +64,11 @@ export function HabitsView({ habits, checkins, loading, addHabit, updateHabit, d
 
   const rows = (
     <>
+      {habits.length > 0 && (
+        <div className="flex justify-end -mt-1 -mb-1">
+          <SectionPencil active={editMode} onToggle={() => setEditMode(!editMode)} label="weekly tasks" />
+        </div>
+      )}
       {habits.length === 0 ? (
         <p className="text-dim text-sm py-2">No habits yet. Add one to start a streak.</p>
       ) : (
@@ -95,7 +102,7 @@ export function HabitsView({ habits, checkins, loading, addHabit, updateHabit, d
                       className={`w-5 h-5 rounded-full border grid place-items-center transition-colors duration-200 ${
                         todayCheckin
                           ? "border-signal bg-signal/20"
-                          : "border-signal-dim hover:border-signal hover:shadow-[0_0_8px_rgba(46,255,181,0.4)]"
+                          : "border-signal-dim hover:border-signal hover:shadow-[0_0_8px_rgba(63,169,104,0.4)]"
                       }`}
                     >
                       {todayCheckin && (
@@ -107,9 +114,12 @@ export function HabitsView({ habits, checkins, loading, addHabit, updateHabit, d
                   </button>
 
                   <button
-                    onClick={() => setEditing(h)}
-                    className="flex-1 min-w-0 text-left cursor-pointer focus-visible:outline-2 focus-visible:outline-signal rounded"
-                    aria-label={`Edit ${h.name}`}
+                    onClick={() => editMode && setEditing(h)}
+                    disabled={!editMode}
+                    className={`flex-1 min-w-0 text-left rounded ${
+                      editMode ? "cursor-pointer focus-visible:outline-2 focus-visible:outline-signal" : "cursor-default"
+                    }`}
+                    aria-label={editMode ? `Edit ${h.name}` : h.name}
                   >
                     <p className="font-body font-semibold text-base leading-snug truncate">{h.name}</p>
                     {todayCheckin && (todayCheckin.note || todayCheckin.duration_minutes) && (
@@ -296,7 +306,7 @@ function HabitForm({
                 onClick={() => setFrequency(f)}
                 className={`flex-1 min-h-[44px] rounded border font-data text-sm cursor-pointer transition-colors duration-150 ${
                   frequency === f
-                    ? "border-signal text-signal bg-signal/10 shadow-[0_0_8px_rgba(46,255,181,0.25)]"
+                    ? "border-signal text-signal bg-signal/10 shadow-[0_0_8px_rgba(63,169,104,0.25)]"
                     : "border-signal-dim/40 text-dim hover:border-signal-dim"
                 }`}
               >

@@ -126,7 +126,7 @@ export function TaskDndProvider({
         {children}
         <DragOverlay dropAnimation={{ duration: 180, easing: "ease-out" }}>
           {active && (
-            <div className="hud-panel px-3 py-2 font-body font-semibold text-sm text-signal shadow-[0_0_20px_rgba(46,255,181,0.35)] cursor-grabbing">
+            <div className="hud-panel px-3 py-2 font-body font-semibold text-sm text-signal shadow-[0_0_20px_rgba(63,169,104,0.35)] cursor-grabbing">
               {active.kind === "habit" && <span className="font-data text-[10px] text-dim mr-2">HABIT</span>}
               {overlayLabel}
             </div>
@@ -216,7 +216,7 @@ export function DropZone({
     <div
       ref={setNodeRef}
       className={`transition-all duration-200 rounded ${
-        isOver ? "bg-signal/5 shadow-[inset_0_0_0_1px_#2EFFB5,0_0_14px_rgba(46,255,181,0.25)]" : ""
+        isOver ? "bg-signal/5 shadow-[inset_0_0_0_1px_#3FA968,0_0_14px_rgba(63,169,104,0.25)]" : ""
       } ${className}`}
     >
       {children}

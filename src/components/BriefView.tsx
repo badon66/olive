@@ -28,18 +28,18 @@ function RingGauge({ done, total }: { done: number; total: number }) {
   return (
     <div className="relative w-36 h-36 mx-auto" role="img" aria-label={`${done} of ${total} tasks done today`}>
       <svg viewBox="0 0 128 128" className="w-full h-full -rotate-90">
-        <circle cx="64" cy="64" r={r} fill="none" stroke="rgba(46,255,181,0.12)" strokeWidth="8" />
+        <circle cx="64" cy="64" r={r} fill="none" stroke="rgba(63,169,104,0.12)" strokeWidth="8" />
         <circle
           cx="64"
           cy="64"
           r={r}
           fill="none"
-          stroke="#2EFFB5"
+          stroke="#3FA968"
           strokeWidth="8"
           strokeLinecap="round"
           strokeDasharray={c}
           strokeDashoffset={c * (1 - frac)}
-          style={{ filter: "drop-shadow(0 0 6px rgba(46,255,181,0.5))", transition: "stroke-dashoffset 400ms ease-out" }}
+          style={{ filter: "drop-shadow(0 0 6px rgba(63,169,104,0.5))", transition: "stroke-dashoffset 400ms ease-out" }}
         />
       </svg>
       <div className="absolute inset-0 grid place-items-center -mt-1">

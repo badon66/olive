@@ -38,16 +38,16 @@ export function Orb({ size = 420 }: { size?: number }) {
       const pulse = 0.88 + 0.12 * Math.sin(t * 0.012);
 
       const halo = ctx.createRadialGradient(cx, cy, 0, cx, cy, 145 * scale * pulse);
-      halo.addColorStop(0, `rgba(46,255,181,${0.24 * pulse})`);
-      halo.addColorStop(0.35, `rgba(46,255,181,${0.08 * pulse})`);
-      halo.addColorStop(1, "rgba(46,255,181,0)");
+      halo.addColorStop(0, `rgba(63,169,104,${0.24 * pulse})`);
+      halo.addColorStop(0.35, `rgba(63,169,104,${0.08 * pulse})`);
+      halo.addColorStop(1, "rgba(63,169,104,0)");
       ctx.fillStyle = halo;
       ctx.fillRect(0, 0, W, H);
 
       const core = ctx.createRadialGradient(cx, cy, 0, cx, cy, 36 * scale * pulse);
-      core.addColorStop(0, `rgba(222,255,243,${0.9 * pulse})`);
-      core.addColorStop(0.5, `rgba(46,255,181,${0.45 * pulse})`);
-      core.addColorStop(1, "rgba(46,255,181,0)");
+      core.addColorStop(0, `rgba(200,255,225,${0.9 * pulse})`);
+      core.addColorStop(0.5, `rgba(63,169,104,${0.45 * pulse})`);
+      core.addColorStop(1, "rgba(63,169,104,0)");
       ctx.fillStyle = core;
       ctx.beginPath();
       ctx.arc(cx, cy, 36 * scale * pulse, 0, Math.PI * 2);
@@ -62,7 +62,7 @@ export function Orb({ size = 420 }: { size?: number }) {
         const y = cy + R * Math.cos(p.phi) * 0.85 + R * 0.12 * Math.sin(p.theta * 0.5);
         const depth = (Math.sin(p.phi) * Math.sin(p.theta) + 1) / 2;
         const a = (0.13 + 0.5 * depth) * (0.6 + 0.4 * Math.sin(p.tw));
-        ctx.fillStyle = `rgba(46,255,181,${a.toFixed(3)})`;
+        ctx.fillStyle = `rgba(63,169,104,${a.toFixed(3)})`;
         ctx.beginPath();
         ctx.arc(x, y, p.size * (0.6 + 0.6 * depth), 0, Math.PI * 2);
         ctx.fill();

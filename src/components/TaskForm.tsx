@@ -119,7 +119,7 @@ export function TaskForm({ initial, onSubmit, onClose }: Props) {
                 onClick={() => setPriority(p)}
                 className={`flex-1 min-h-[44px] rounded border font-data text-sm cursor-pointer transition-colors duration-150 ${
                   priority === p
-                    ? "border-signal text-signal bg-signal/10 shadow-[0_0_8px_rgba(46,255,181,0.25)]"
+                    ? "border-signal text-signal bg-signal/10 shadow-[0_0_8px_rgba(63,169,104,0.25)]"
                     : "border-signal-dim/40 text-dim hover:border-signal-dim"
                 }`}
               >
