@@ -1,17 +1,17 @@
 import { useCallback, useEffect, useState } from "react";
 import { supabase } from "../lib/supabase";
 import type { Database } from "../lib/database.types";
-import type { Category } from "../lib/categories";
 import type { TimeSection } from "../lib/sections";
 
 export type Task = Database["public"]["Tables"]["tasks"]["Row"];
 export type TaskInput = {
   title: string;
-  category: Category;
+  category_id: string;
   due_date: string | null;
   priority_weight: number;
   scheduled_time?: string | null;
   time_section?: TimeSection | null;
+  duration_minutes?: number | null;
 };
 
 export type TaskStore = ReturnType<typeof useTasks>;

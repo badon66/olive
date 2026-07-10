@@ -1,16 +1,12 @@
-export const CATEGORY_LABELS = {
-  personal: "Personal",
-  powerplay: "PowerPlay Customs",
-  alberta_premium: "Alberta Premium Coatings",
-} as const;
-export type Category = keyof typeof CATEGORY_LABELS;
-
-// Per-category accent colors (dashboard sections' left-edge + dot). Keyed to the
-// --color-cat-* tokens; when categories move to a table, this map moves with them.
-export const CATEGORY_COLORS: Record<Category, string> = {
-  personal: "var(--color-cat-personal)",
-  powerplay: "var(--color-cat-powerplay)",
-  alberta_premium: "var(--color-cat-alberta)",
-};
-
-export const CATEGORY_ORDER = Object.keys(CATEGORY_LABELS) as Category[];
+// Categories live in the `categories` table (user-defined, voice-addable) —
+// this file only keeps the color palette offered when creating/recoloring one.
+export const CATEGORY_PALETTE = [
+  "#4a9eff", // blue
+  "#f5c518", // yellow
+  "#52c41a", // true green (distinct from the HUD signal accent)
+  "#ff8a5b", // coral
+  "#c084fc", // violet
+  "#38bdf8", // sky
+  "#fb7185", // rose
+  "#facc15", // gold
+];

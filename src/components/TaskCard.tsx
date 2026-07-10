@@ -11,9 +11,11 @@ type Props = {
   // v3 edit-mode pattern: rows are read-only (complete ring only) until the
   // section's pencil toggles editing on — then title opens the form + delete shows
   editMode?: boolean;
+  // Category corner tag (color + name); omit in contexts already grouped by category
+  category?: { name: string; color: string };
 };
 
-export function TaskCard({ task, today, onComplete, onReopen, onEdit, onDelete, editMode = false }: Props) {
+export function TaskCard({ task, today, onComplete, onReopen, onEdit, onDelete, editMode = false, category }: Props) {
   const done = task.status === "completed";
   const overdue = !done && task.due_date !== null && formatDue(task.due_date, today).includes("overdue");
 
@@ -47,8 +49,16 @@ export function TaskCard({ task, today, onComplete, onReopen, onEdit, onDelete, 
         }`}
         aria-label={editMode ? `Edit ${task.title}` : task.title}
       >
-        <p className={`font-body font-semibold text-base leading-snug ${done ? "line-through" : ""}`}>
-          {task.title}
+        <p className={`flex items-center gap-2 font-body font-semibold text-base leading-snug ${done ? "line-through" : ""}`}>
+          <span className="truncate">{task.title}</span>
+          {category && (
+            <span
+              className="shrink-0 inline-flex items-center gap-1 px-1.5 py-px rounded-sm font-data text-[9.5px] tracking-wide uppercase"
+              style={{ color: category.color, background: `${category.color}1f`, border: `1px solid ${category.color}55` }}
+            >
+              {category.name}
+            </span>
+          )}
         </p>
         <p className="flex items-center gap-2 mt-0.5">
           {task.due_date && (
@@ -59,6 +69,10 @@ export function TaskCard({ task, today, onComplete, onReopen, onEdit, onDelete, 
           {task.scheduled_time && (
             <span className="hud-chip hud-chip-signal">⏱ {task.scheduled_time.slice(0, 5)}</span>
           )}
+          {/* BUILD_PLAN: scheduled / not-scheduled indicator on every task */}
+          <span className={`hud-chip ${task.due_date ? "hud-chip-signal" : "!border-dim/30 !text-dim/70"}`}>
+            {task.due_date ? "scheduled" : "not scheduled"}
+          </span>
           <span className="font-data text-[0.65rem] text-dim tracking-widest" aria-label={`Priority ${task.priority_weight} of 5`}>
             {"▮".repeat(task.priority_weight)}
             <span className="opacity-30">{"▮".repeat(5 - task.priority_weight)}</span>

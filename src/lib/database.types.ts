@@ -14,6 +14,38 @@ export type Database = {
   }
   public: {
     Tables: {
+      categories: {
+        Row: {
+          color: string
+          created_at: string
+          id: string
+          name: string
+          user_id: string
+        }
+        Insert: {
+          color?: string
+          created_at?: string
+          id?: string
+          name: string
+          user_id: string
+        }
+        Update: {
+          color?: string
+          created_at?: string
+          id?: string
+          name?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "categories_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "app_user"
+            referencedColumns: ["user_id"]
+          },
+        ]
+      }
       daily_briefs: {
         Row: {
           brief_date: string
@@ -49,82 +81,37 @@ export type Database = {
           },
         ]
       }
-      habit_checkins: {
+      daily_schedule_setup: {
         Row: {
-          completed: boolean
+          blocked_windows: Json
           created_at: string
           date: string
-          duration_minutes: number | null
-          habit_id: string
           id: string
-          note: string | null
+          raw_blurb: string | null
           user_id: string
+          wake_time: string
         }
         Insert: {
-          completed?: boolean
+          blocked_windows?: Json
           created_at?: string
           date: string
-          duration_minutes?: number | null
-          habit_id: string
           id?: string
-          note?: string | null
+          raw_blurb?: string | null
           user_id: string
+          wake_time?: string
         }
         Update: {
-          completed?: boolean
+          blocked_windows?: Json
           created_at?: string
           date?: string
-          duration_minutes?: number | null
-          habit_id?: string
           id?: string
-          note?: string | null
+          raw_blurb?: string | null
           user_id?: string
+          wake_time?: string
         }
         Relationships: [
           {
-            foreignKeyName: "habit_checkins_habit_id_fkey"
-            columns: ["habit_id"]
-            isOneToOne: false
-            referencedRelation: "habits"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "habit_checkins_user_id_fkey"
-            columns: ["user_id"]
-            isOneToOne: false
-            referencedRelation: "app_user"
-            referencedColumns: ["user_id"]
-          },
-        ]
-      }
-      habits: {
-        Row: {
-          created_at: string
-          frequency: Database["public"]["Enums"]["habit_frequency"]
-          id: string
-          name: string
-          time_section: Database["public"]["Enums"]["time_section"] | null
-          user_id: string
-        }
-        Insert: {
-          created_at?: string
-          frequency?: Database["public"]["Enums"]["habit_frequency"]
-          id?: string
-          name: string
-          time_section?: Database["public"]["Enums"]["time_section"] | null
-          user_id: string
-        }
-        Update: {
-          created_at?: string
-          frequency?: Database["public"]["Enums"]["habit_frequency"]
-          id?: string
-          name?: string
-          time_section?: Database["public"]["Enums"]["time_section"] | null
-          user_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "habits_user_id_fkey"
+            foreignKeyName: "daily_schedule_setup_user_id_fkey"
             columns: ["user_id"]
             isOneToOne: false
             referencedRelation: "app_user"
@@ -137,6 +124,7 @@ export type Database = {
           cleaned_text: string | null
           created_at: string
           date: string
+          entry_time: string
           id: string
           raw_transcript: string
           tags: string[]
@@ -146,6 +134,7 @@ export type Database = {
           cleaned_text?: string | null
           created_at?: string
           date: string
+          entry_time?: string
           id?: string
           raw_transcript: string
           tags?: string[]
@@ -155,6 +144,7 @@ export type Database = {
           cleaned_text?: string | null
           created_at?: string
           date?: string
+          entry_time?: string
           id?: string
           raw_transcript?: string
           tags?: string[]
@@ -207,10 +197,11 @@ export type Database = {
       }
       tasks: {
         Row: {
-          category: Database["public"]["Enums"]["task_category"]
+          category_id: string
           completed_at: string | null
           created_at: string
           due_date: string | null
+          duration_minutes: number | null
           id: string
           priority_weight: number
           scheduled_time: string | null
@@ -220,10 +211,11 @@ export type Database = {
           user_id: string
         }
         Insert: {
-          category?: Database["public"]["Enums"]["task_category"]
+          category_id: string
           completed_at?: string | null
           created_at?: string
           due_date?: string | null
+          duration_minutes?: number | null
           id?: string
           priority_weight?: number
           scheduled_time?: string | null
@@ -233,10 +225,11 @@ export type Database = {
           user_id: string
         }
         Update: {
-          category?: Database["public"]["Enums"]["task_category"]
+          category_id?: string
           completed_at?: string | null
           created_at?: string
           due_date?: string | null
+          duration_minutes?: number | null
           id?: string
           priority_weight?: number
           scheduled_time?: string | null
@@ -247,7 +240,103 @@ export type Database = {
         }
         Relationships: [
           {
+            foreignKeyName: "tasks_category_id_fkey"
+            columns: ["category_id"]
+            isOneToOne: false
+            referencedRelation: "categories"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "tasks_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "app_user"
+            referencedColumns: ["user_id"]
+          },
+        ]
+      }
+      weekly_task_checkins: {
+        Row: {
+          created_at: string
+          date: string
+          duration_minutes: number | null
+          id: string
+          note: string | null
+          status: Database["public"]["Enums"]["checkin_status"]
+          user_id: string
+          weekly_task_id: string
+        }
+        Insert: {
+          created_at?: string
+          date: string
+          duration_minutes?: number | null
+          id?: string
+          note?: string | null
+          status?: Database["public"]["Enums"]["checkin_status"]
+          user_id: string
+          weekly_task_id: string
+        }
+        Update: {
+          created_at?: string
+          date?: string
+          duration_minutes?: number | null
+          id?: string
+          note?: string | null
+          status?: Database["public"]["Enums"]["checkin_status"]
+          user_id?: string
+          weekly_task_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "habit_checkins_habit_id_fkey"
+            columns: ["weekly_task_id"]
+            isOneToOne: false
+            referencedRelation: "weekly_tasks"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "habit_checkins_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "app_user"
+            referencedColumns: ["user_id"]
+          },
+        ]
+      }
+      weekly_tasks: {
+        Row: {
+          created_at: string
+          id: string
+          name: string
+          recurrence_mode: Database["public"]["Enums"]["recurrence_mode"]
+          scheduled_days: number[] | null
+          target_per_week: number | null
+          time_section: Database["public"]["Enums"]["time_section"] | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          name: string
+          recurrence_mode?: Database["public"]["Enums"]["recurrence_mode"]
+          scheduled_days?: number[] | null
+          target_per_week?: number | null
+          time_section?: Database["public"]["Enums"]["time_section"] | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          name?: string
+          recurrence_mode?: Database["public"]["Enums"]["recurrence_mode"]
+          scheduled_days?: number[] | null
+          target_per_week?: number | null
+          time_section?: Database["public"]["Enums"]["time_section"] | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "habits_user_id_fkey"
             columns: ["user_id"]
             isOneToOne: false
             referencedRelation: "app_user"
@@ -269,8 +358,8 @@ export type Database = {
       get_cron_secret: { Args: never; Returns: string }
     }
     Enums: {
-      habit_frequency: "daily" | "weekly"
-      task_category: "personal" | "powerplay" | "alberta_premium"
+      checkin_status: "planned" | "completed"
+      recurrence_mode: "count" | "fixed_days"
       task_status: "open" | "completed"
       time_section: "morning" | "midday" | "afternoon" | "evening" | "anytime"
     }
@@ -400,8 +489,8 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
-      habit_frequency: ["daily", "weekly"],
-      task_category: ["personal", "powerplay", "alberta_premium"],
+      checkin_status: ["planned", "completed"],
+      recurrence_mode: ["count", "fixed_days"],
       task_status: ["open", "completed"],
       time_section: ["morning", "midday", "afternoon", "evening", "anytime"],
     },
