@@ -32,8 +32,15 @@ export function JournalView({ compact = false }: { compact?: boolean }) {
 
   const save = async (cleaned: Preview | null) => {
     setBusy(true);
+    const entryTime = new Intl.DateTimeFormat("en-GB", {
+      timeZone: "America/Edmonton",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    }).format(new Date());
     await saveEntry({
       date,
+      entry_time: entryTime,
       raw_transcript: raw.trim(),
       cleaned_text: cleaned?.cleaned_text ?? null,
       tags: cleaned?.tags ?? [],
@@ -123,29 +130,49 @@ export function JournalView({ compact = false }: { compact?: boolean }) {
         )}
       </section>
 
-      {/* List */}
+      {/* One log per day — captures within a day live under that day's header,
+          each with its own entry_time (BUILD_PLAN: not a flat list) */}
       {entries.length === 0 ? (
         <p className="text-dim text-sm">No entries yet.</p>
       ) : (
         <section className={compact ? "" : "hud-panel p-2"}>
-          <div className="divide-y divide-signal-dim/15">
-            {visible.map((e) => (
-              <button
-                key={e.id}
-                onClick={() => setOpenEntry(e)}
-                className="w-full text-left flex items-center gap-3 px-2 py-2.5 cursor-pointer hover:bg-signal/5 focus-visible:outline-2 focus-visible:outline-signal rounded"
-              >
-                <span className="font-data text-xs text-signal-dim shrink-0 w-14">{formatDue(e.date, today)}</span>
-                <span className="flex-1 min-w-0 truncate font-body text-sm">
-                  {(e.cleaned_text ?? e.raw_transcript).slice(0, 80)}
-                </span>
-                {e.cleaned_text === null && <span className="hud-chip hud-chip-amber shrink-0">raw</span>}
-                {e.tags.slice(0, 2).map((t) => (
-                  <span key={t} className="hud-chip shrink-0 hidden sm:inline-flex">{t}</span>
-                ))}
-              </button>
-            ))}
-          </div>
+          {(() => {
+            const days = new Map<string, typeof visible>();
+            for (const e of visible) {
+              const list = days.get(e.date) ?? [];
+              list.push(e);
+              days.set(e.date, list);
+            }
+            return [...days.entries()].map(([day, dayEntries]) => (
+              <div key={day} className="mb-1">
+                <p className="flex items-baseline gap-2 px-2 pt-2 pb-1">
+                  <span className="font-display text-[11px] tracking-[0.15em] uppercase text-signal">
+                    {formatDue(day, today)}
+                  </span>
+                  <span className="font-data text-[10px] text-dim">{day}</span>
+                  <span className="hud-chip">{dayEntries.length}</span>
+                </p>
+                <div className="divide-y divide-signal-dim/15 border-l border-signal-dim/25 ml-2">
+                  {dayEntries.map((e) => (
+                    <button
+                      key={e.id}
+                      onClick={() => setOpenEntry(e)}
+                      className="w-full text-left flex items-center gap-3 px-2 py-2 cursor-pointer hover:bg-signal/5 focus-visible:outline-2 focus-visible:outline-signal rounded"
+                    >
+                      <span className="font-data text-[11px] text-signal-dim shrink-0">{e.entry_time.slice(0, 5)}</span>
+                      <span className="flex-1 min-w-0 truncate font-body text-sm">
+                        {(e.cleaned_text ?? e.raw_transcript).slice(0, 80)}
+                      </span>
+                      {e.cleaned_text === null && <span className="hud-chip hud-chip-amber shrink-0">raw</span>}
+                      {e.tags.slice(0, 2).map((t) => (
+                        <span key={t} className="hud-chip shrink-0 hidden sm:inline-flex">{t}</span>
+                      ))}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ));
+          })()}
           {compact && entries.length > 5 && (
             <button
               className="w-full font-data text-xs text-dim py-2 cursor-pointer hover:text-signal"

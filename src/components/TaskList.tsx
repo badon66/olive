@@ -6,6 +6,7 @@ import { edmontonToday } from "../lib/dates";
 import { SectionPencil } from "./SectionPencil";
 import { TaskCard } from "./TaskCard";
 import { TaskForm } from "./TaskForm";
+import { DropZone } from "./board/TaskDnd";
 
 type Props = {
   tasks: Task[];
@@ -16,9 +17,12 @@ type Props = {
   completeTask: (id: string) => Promise<void>;
   reopenTask: (id: string) => Promise<void>;
   deleteTask: (id: string) => Promise<void>;
+  // Only when rendered inside a TaskDndProvider (dashboard): category panels
+  // become drop targets for weekly-task → task conversion
+  droppableCategories?: boolean;
 };
 
-export function TaskList({ tasks, loading, categoryStore, addTask, updateTask, completeTask, reopenTask, deleteTask }: Props) {
+export function TaskList({ tasks, loading, categoryStore, addTask, updateTask, completeTask, reopenTask, deleteTask, droppableCategories = false }: Props) {
   const { categories } = categoryStore;
   const [editing, setEditing] = useState<Task | null>(null);
   const [adding, setAdding] = useState(false);
@@ -64,8 +68,8 @@ export function TaskList({ tasks, loading, categoryStore, addTask, updateTask, c
         {categories.map((cat) => {
           const group = open.filter((t) => t.category_id === cat.id);
           const inEdit = editSections.has(cat.id);
-          return (
-            <section key={cat.id} className="hud-panel p-4 lg:p-5" style={{ borderLeft: `3px solid ${cat.color}` }}>
+          const panel = (
+            <section className="hud-panel p-4 lg:p-5" style={{ borderLeft: `3px solid ${cat.color}` }}>
               <header className="flex items-center justify-between mb-1 gap-2">
                 <h2 className="flex items-center gap-2 min-w-0 font-display text-xs tracking-[0.2em] uppercase text-hud">
                   <span
@@ -90,6 +94,13 @@ export function TaskList({ tasks, loading, categoryStore, addTask, updateTask, c
                 </div>
               )}
             </section>
+          );
+          return droppableCategories ? (
+            <DropZone key={cat.id} id={`cat:${cat.id}`}>
+              {panel}
+            </DropZone>
+          ) : (
+            <div key={cat.id}>{panel}</div>
           );
         })}
       </div>

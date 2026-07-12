@@ -1,15 +1,18 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import type { HabitStore } from "../hooks/useHabits";
+import { supabase } from "../lib/supabase";
+import type { CategoryStore } from "../hooks/useCategories";
 import type { Task, TaskStore } from "../hooks/useTasks";
+import type { WeeklyStore, WeeklyTask } from "../hooks/useWeeklyTasks";
 import { useBrief, type BriefContent } from "../hooks/useBrief";
 import { edmontonToday } from "../lib/dates";
 import { computeSections, doneTodayCount, effectiveOrder } from "../lib/sections";
 import { ChatBar } from "./ChatBar";
-import { HabitsView } from "./HabitsView";
 import { JournalView } from "./JournalView";
 import { Orb } from "./Orb";
+import { ScheduleSetupButton } from "./ScheduleSetup";
 import { TaskForm } from "./TaskForm";
 import { TaskList } from "./TaskList";
+import { WeeklyTasksView } from "./WeeklyTasksView";
 import { UpcomingDaysPanel } from "./board/DayBlocksPanel";
 import { PrioritiesPanel } from "./board/PrioritiesPanel";
 import { DropZone, TaskDndProvider, useActiveDrag } from "./board/TaskDnd";
@@ -44,20 +47,28 @@ function summarize(overdue: number, due: number, upcoming: number, done: number)
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
-// Habits panel hint while dragging: task → converts to habit, habit → unschedules
-function HabitsDropHint() {
+// Weekly panel hint while dragging: task → converts (with undo), weekly → unschedules
+function WeeklyDropHint() {
   const active = useActiveDrag();
   if (!active) return null;
   return (
     <p className="font-data text-[11px] text-signal/70 mb-2">
       {active.kind === "task"
-        ? `drop to turn "${active.task.title}" into a daily habit`
-        : `drop to unschedule "${active.habit.name}"`}
+        ? `drop to turn "${active.task.title}" into a weekly task`
+        : `drop to unschedule "${active.weekly.name}"`}
     </p>
   );
 }
 
-export function DesktopDashboard({ taskStore, habitStore }: { taskStore: TaskStore; habitStore: HabitStore }) {
+export function DesktopDashboard({
+  taskStore,
+  weeklyStore,
+  categoryStore,
+}: {
+  taskStore: TaskStore;
+  weeklyStore: WeeklyStore;
+  categoryStore: CategoryStore;
+}) {
   const { tasks, loading } = taskStore;
   const { brief, loading: briefLoading, error, regenerate, saveManualOrder } = useBrief();
   const [editing, setEditing] = useState<Task | null>(null);
@@ -120,36 +131,84 @@ export function DesktopDashboard({ taskStore, habitStore }: { taskStore: TaskSto
     onReopen: taskStore.reopenTask,
     onEdit: setEditing,
     onDelete: taskStore.deleteTask,
+    categoryOf: (t: Task) => categoryStore.byId.get(t.category_id),
   };
 
   const dueToday = [...sections.overdue, ...sections.today];
 
+  // Two-way task ↔ weekly conversion, each returning an undo closure (BUILD_PLAN)
+  const convertTaskToWeekly = async (task: Task) => {
+    const { data: wt, error: werr } = await supabase
+      .from("weekly_tasks")
+      .insert({
+        user_id: task.user_id,
+        name: task.title,
+        recurrence_mode: "fixed_days" as const,
+        scheduled_days: [0, 1, 2, 3, 4, 5, 6],
+        time_section: task.time_section,
+      })
+      .select("id")
+      .single();
+    if (werr) throw werr;
+    await supabase.from("tasks").delete().eq("id", task.id);
+    await Promise.all([taskStore.refresh(), weeklyStore.refresh()]);
+    return async () => {
+      await supabase.from("weekly_tasks").delete().eq("id", wt.id);
+      await supabase.from("tasks").insert(task); // same id, original fields
+      await Promise.all([taskStore.refresh(), weeklyStore.refresh()]);
+    };
+  };
+
+  const convertWeeklyToTask = async (weekly: WeeklyTask, categoryId: string) => {
+    const { data: history } = await supabase.from("weekly_task_checkins").select("*").eq("weekly_task_id", weekly.id);
+    const { data: created, error: terr } = await supabase
+      .from("tasks")
+      .insert({
+        user_id: weekly.user_id,
+        title: weekly.name,
+        category_id: categoryId,
+        time_section: weekly.time_section,
+      })
+      .select("id")
+      .single();
+    if (terr) throw terr;
+    await supabase.from("weekly_tasks").delete().eq("id", weekly.id); // checkins cascade
+    await Promise.all([taskStore.refresh(), weeklyStore.refresh()]);
+    return async () => {
+      await supabase.from("tasks").delete().eq("id", created.id);
+      await supabase.from("weekly_tasks").insert(weekly); // same id restores links
+      if (history?.length) await supabase.from("weekly_task_checkins").insert(history);
+      await Promise.all([taskStore.refresh(), weeklyStore.refresh()]);
+    };
+  };
+
   return (
     <TaskDndProvider
       tasks={open}
-      habits={habitStore.habits}
+      weeklyTasks={weeklyStore.weeklyTasks}
       deps={{
         today,
         orderedIds: orderedTasks.map((t) => t.id),
         saveManualOrder,
         updateTask: taskStore.updateTask,
-        updateHabit: (id, patch) => habitStore.updateHabit(id, patch),
-        convertToHabit: async (task) => {
-          await habitStore.addHabit(task.title, "daily");
-          await taskStore.deleteTask(task.id);
-        },
+        setWeeklySection: (id, s) => weeklyStore.updateWeeklyTask(id, { time_section: s }),
+        planWeeklyDay: (id, date) => weeklyStore.planDay(id, date),
+        convertTaskToWeekly,
+        convertWeeklyToTask,
       }}
     >
       <div className="min-h-dvh flex flex-col">
-        {/* top bar — the wordmark lives in the sidebar now */}
-        <header className="flex items-center justify-between px-10 py-5">
+        {/* top bar — the wordmark lives in the sidebar */}
+        <header className="flex items-center justify-between px-10 py-5 gap-4">
           <span className={`text-[15px] ${sections.overdue.length > 0 ? "text-amber" : "text-dim"}`}>{status}</span>
-          <div className="flex items-center gap-5 font-data text-[13px]">
-            <span className="text-dim">{dateStr}</span>
-            <span className="text-signal">{timeStr}</span>
+          <div className="flex items-center gap-4">
+            <ScheduleSetupButton />
+            <div className="flex items-center gap-5 font-data text-[13px]">
+              <span className="text-dim">{dateStr}</span>
+              <span className="text-signal">{timeStr}</span>
+            </div>
           </div>
         </header>
-
 
         {/* main: left | orb | right */}
         <div className="grid grid-cols-[1fr_460px_1fr] gap-7 px-10 items-start">
@@ -161,6 +220,7 @@ export function DesktopDashboard({ taskStore, habitStore }: { taskStore: TaskSto
               onEdit={setEditing}
               onMove={move}
               manualOrder={brief?.manual_order !== null && brief?.manual_order !== undefined}
+              categoryOf={cardProps.categoryOf}
               headerExtra={
                 <span
                   role="button"
@@ -183,10 +243,10 @@ export function DesktopDashboard({ taskStore, habitStore }: { taskStore: TaskSto
               }
             />
 
-            <DropZone id="habits">
-              <Panel title="Weekly Tasks" hint={<span className="hud-chip">{habitStore.habits.length}</span>}>
-                <HabitsDropHint />
-                <HabitsView {...habitStore} bare draggable />
+            <DropZone id="weekly">
+              <Panel title="Weekly Tasks" hint={<span className="hud-chip">{weeklyStore.weeklyTasks.length}</span>}>
+                <WeeklyDropHint />
+                <WeeklyTasksView {...weeklyStore} bare draggable />
               </Panel>
             </DropZone>
           </div>
@@ -204,13 +264,19 @@ export function DesktopDashboard({ taskStore, habitStore }: { taskStore: TaskSto
               {error && <p className="text-amber text-sm mt-2">{error} — showing live data.</p>}
             </div>
             <div className="w-full max-w-[440px] mt-6">
-              <ChatBar onActionDone={taskStore.refresh} inline />
+              <ChatBar
+                onActionDone={async () => {
+                  await Promise.all([taskStore.refresh(), categoryStore.refresh()]);
+                }}
+                inline
+                taskTitleById={(id) => tasks.find((t) => t.id === id)?.title}
+              />
             </div>
           </div>
 
           {/* RIGHT */}
           <div className="flex flex-col gap-6">
-            <TodaySchedulePanel dueToday={dueToday} cardProps={cardProps} habitBits={habitStore} />
+            <TodaySchedulePanel dueToday={dueToday} cardProps={cardProps} weeklyBits={weeklyStore} />
             <UpcomingDaysPanel openTasks={open} today={today} onEdit={setEditing} />
             <Panel title="Journal">
               <JournalView compact />
@@ -218,14 +284,15 @@ export function DesktopDashboard({ taskStore, habitStore }: { taskStore: TaskSto
           </div>
         </div>
 
-        {/* BOTTOM: all tasks by category */}
+        {/* BOTTOM: per-category dashboard sections (drop targets for weekly → task) */}
         <div className="px-10 pt-7 pb-10">
-          <TaskList {...taskStore} />
+          <TaskList {...taskStore} categoryStore={categoryStore} droppableCategories />
         </div>
 
         {editing && (
           <TaskForm
             initial={editing}
+            categories={categoryStore.categories}
             onClose={() => setEditing(null)}
             onSubmit={async (input) => {
               await taskStore.updateTask(editing.id, input);

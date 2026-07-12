@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, type CSSProperties, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import {
   DndContext,
   DragOverlay,
@@ -15,15 +15,16 @@ import {
   type DragStartEvent,
 } from "@dnd-kit/core";
 import { arrayMove } from "@dnd-kit/sortable";
-import type { Habit } from "../../hooks/useHabits";
 import type { Task } from "../../hooks/useTasks";
+import type { WeeklyTask } from "../../hooks/useWeeklyTasks";
 import type { TimeSection } from "../../lib/sections";
 
 // Draggable ids are "<zone>:<id>" so the same item can appear in several panels
-// without collisions; payload data carries taskId OR habitId. Droppable ids:
-// "section:<time_section>", "day:<YYYY-MM-DD>", "habits", "prio:<taskId>".
+// without collisions; payload data carries taskId OR weeklyId. Droppable ids:
+// "section:<time_section>", "day:<YYYY-MM-DD>", "weekly", "cat:<categoryId>",
+// "prio:<taskId>".
 
-export type ActiveDrag = { kind: "task"; task: Task } | { kind: "habit"; habit: Habit };
+export type ActiveDrag = { kind: "task"; task: Task } | { kind: "weekly"; weekly: WeeklyTask };
 
 export type DndDeps = {
   today: string;
@@ -33,10 +34,13 @@ export type DndDeps = {
     id: string,
     patch: { due_date?: string | null; time_section?: TimeSection | null },
   ) => Promise<void>;
-  // Drag a habit into a schedule section (or back onto Habits to unschedule)
-  updateHabit?: (id: string, patch: { time_section: TimeSection | null }) => Promise<void>;
-  // Desktop only: dropping a task on Habits converts it into a daily habit
-  convertToHabit?: (task: Task) => Promise<void>;
+  // Weekly task drops: into a schedule section, or onto a day block (plans just
+  // that day — a `planned` checkin, not the recurring pattern)
+  setWeeklySection?: (id: string, section: TimeSection | null) => Promise<void>;
+  planWeeklyDay?: (id: string, date: string) => Promise<void>;
+  // Two-way conversion (BUILD_PLAN): each returns an undo closure for the toast
+  convertTaskToWeekly?: (task: Task) => Promise<() => Promise<void>>;
+  convertWeeklyToTask?: (weekly: WeeklyTask, categoryId: string) => Promise<() => Promise<void>>;
 };
 
 const ActiveDragContext = createContext<ActiveDrag | null>(null);
@@ -48,31 +52,43 @@ const collision: CollisionDetection = (args) => {
   return precise.length > 0 ? precise : rectIntersection(args);
 };
 
+type UndoToast = { message: string; undo: () => Promise<void> };
+
 export function TaskDndProvider({
   deps,
   tasks,
-  habits = [],
+  weeklyTasks = [],
   children,
 }: {
   deps: DndDeps;
   tasks: Task[];
-  habits?: Habit[];
+  weeklyTasks?: WeeklyTask[];
   children: ReactNode;
 }) {
   const [active, setActive] = useState<ActiveDrag | null>(null);
+  const [toast, setToast] = useState<UndoToast | null>(null);
+  const toastTimer = useRef<number | undefined>(undefined);
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
     useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 8 } }),
   );
 
+  useEffect(() => () => window.clearTimeout(toastTimer.current), []);
+
+  const showUndo = (message: string, undo: () => Promise<void>) => {
+    window.clearTimeout(toastTimer.current);
+    setToast({ message, undo });
+    toastTimer.current = window.setTimeout(() => setToast(null), 7000);
+  };
+
   const onDragStart = (e: DragStartEvent) => {
-    const data = e.active.data.current as { taskId?: string; habitId?: string } | undefined;
+    const data = e.active.data.current as { taskId?: string; weeklyId?: string } | undefined;
     if (data?.taskId) {
       const task = tasks.find((t) => t.id === data.taskId);
       setActive(task ? { kind: "task", task } : null);
-    } else if (data?.habitId) {
-      const habit = habits.find((h) => h.id === data.habitId);
-      setActive(habit ? { kind: "habit", habit } : null);
+    } else if (data?.weeklyId) {
+      const weekly = weeklyTasks.find((w) => w.id === data.weeklyId);
+      setActive(weekly ? { kind: "weekly", weekly } : null);
     }
   };
 
@@ -82,14 +98,20 @@ export function TaskDndProvider({
     const over = e.over?.id;
     if (!item || typeof over !== "string") return;
 
-    if (item.kind === "habit") {
-      if (!deps.updateHabit) return;
-      if (over.startsWith("section:")) {
-        await deps.updateHabit(item.habit.id, { time_section: over.slice("section:".length) as TimeSection });
-      } else if (over === "habits") {
-        await deps.updateHabit(item.habit.id, { time_section: null });
+    if (item.kind === "weekly") {
+      const w = item.weekly;
+      if (over.startsWith("section:") && deps.setWeeklySection) {
+        await deps.setWeeklySection(w.id, over.slice("section:".length) as TimeSection);
+      } else if (over.startsWith("day:") && deps.planWeeklyDay) {
+        // Plans only that specific day (a `planned` checkin) — never the pattern
+        await deps.planWeeklyDay(w.id, over.slice("day:".length));
+      } else if (over.startsWith("cat:") && deps.convertWeeklyToTask) {
+        const undo = await deps.convertWeeklyToTask(w, over.slice("cat:".length));
+        showUndo(`Converted "${w.name}" to a task — tap to undo`, undo);
+      } else if (over === "weekly" && deps.setWeeklySection) {
+        await deps.setWeeklySection(w.id, null); // back home = unschedule from day parts
       }
-      return; // habits have no dates — day blocks and priorities ignore them
+      return;
     }
 
     const task = item.task;
@@ -97,9 +119,11 @@ export function TaskDndProvider({
       const section = over.slice("section:".length) as TimeSection;
       await deps.updateTask(task.id, { due_date: deps.today, time_section: section });
     } else if (over.startsWith("day:")) {
+      // Booking times survive a date move — only due_date changes
       await deps.updateTask(task.id, { due_date: over.slice("day:".length) });
-    } else if (over === "habits" && deps.convertToHabit) {
-      await deps.convertToHabit(task);
+    } else if (over === "weekly" && deps.convertTaskToWeekly) {
+      const undo = await deps.convertTaskToWeekly(task);
+      showUndo(`Converted "${task.title}" to a weekly task — tap to undo`, undo);
     } else if (over.startsWith("prio:")) {
       // Reorder within priorities: move task to the position of the row it was dropped on
       const overId = over.slice("prio:".length);
@@ -112,7 +136,7 @@ export function TaskDndProvider({
     }
   };
 
-  const overlayLabel = active?.kind === "task" ? active.task.title : active?.habit.name;
+  const overlayLabel = active?.kind === "task" ? active.task.title : active?.weekly.name;
 
   return (
     <ActiveDragContext.Provider value={active}>
@@ -127,12 +151,29 @@ export function TaskDndProvider({
         <DragOverlay dropAnimation={{ duration: 180, easing: "ease-out" }}>
           {active && (
             <div className="hud-panel px-3 py-2 font-body font-semibold text-sm text-signal shadow-[0_0_20px_rgba(63,169,104,0.35)] cursor-grabbing">
-              {active.kind === "habit" && <span className="font-data text-[10px] text-dim mr-2">HABIT</span>}
+              {active.kind === "weekly" && <span className="font-data text-[10px] text-dim mr-2">WEEKLY</span>}
               {overlayLabel}
             </div>
           )}
         </DragOverlay>
       </DndContext>
+
+      {/* Undo toast: conversions are fast but never silently unrecoverable */}
+      {toast && (
+        <div className="fixed bottom-6 inset-x-0 z-50 flex justify-center px-4 pointer-events-none">
+          <button
+            onClick={async () => {
+              window.clearTimeout(toastTimer.current);
+              const t = toast;
+              setToast(null);
+              await t.undo();
+            }}
+            className="pointer-events-auto hud-panel !border-signal/50 px-4 py-2.5 font-body text-sm text-hud shadow-[0_0_24px_rgba(63,169,104,0.3)] cursor-pointer hover:!border-signal"
+          >
+            {toast.message}
+          </button>
+        </div>
+      )}
     </ActiveDragContext.Provider>
   );
 }
@@ -146,7 +187,7 @@ function DraggableRow({
   className = "",
 }: {
   id: string;
-  data: { taskId?: string; habitId?: string };
+  data: { taskId?: string; weeklyId?: string };
   children: ReactNode;
   className?: string;
 }) {
@@ -183,19 +224,19 @@ export function DraggableTask({
   );
 }
 
-export function DraggableHabit({
+export function DraggableWeekly({
   zone,
-  habit,
+  weekly,
   children,
   className = "",
 }: {
   zone: string;
-  habit: Habit;
+  weekly: WeeklyTask;
   children: ReactNode;
   className?: string;
 }) {
   return (
-    <DraggableRow id={`${zone}:${habit.id}`} data={{ habitId: habit.id }} className={className}>
+    <DraggableRow id={`${zone}:${weekly.id}`} data={{ weeklyId: weekly.id }} className={className}>
       {children}
     </DraggableRow>
   );

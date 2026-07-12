@@ -10,11 +10,12 @@ type Props = {
   onMove: (index: number, dir: -1 | 1) => void;
   manualOrder: boolean;
   headerExtra?: ReactNode;
+  categoryOf?: (t: Task) => { name: string; color: string } | undefined;
 };
 
 // Collapsible dropdown, collapsed by default. Overdue tasks are folded in at
 // the top (never their own section) and drive the summary line.
-export function PrioritiesPanel({ orderedTasks, today, onEdit, onMove, manualOrder, headerExtra }: Props) {
+export function PrioritiesPanel({ orderedTasks, today, onEdit, onMove, manualOrder, headerExtra, categoryOf }: Props) {
   const [open, setOpen] = useState(false);
 
   const isOverdue = (t: Task) => t.due_date !== null && t.due_date < today;
@@ -84,6 +85,17 @@ export function PrioritiesPanel({ orderedTasks, today, onEdit, onMove, manualOrd
                       >
                         {t.title}
                       </button>
+                      {(() => {
+                        const cat = categoryOf?.(t);
+                        return cat ? (
+                          <span
+                            className="shrink-0 hidden sm:inline-flex items-center px-1.5 py-px rounded-sm font-data text-[9.5px] tracking-wide uppercase"
+                            style={{ color: cat.color, background: `${cat.color}1f`, border: `1px solid ${cat.color}55` }}
+                          >
+                            {cat.name}
+                          </span>
+                        ) : null;
+                      })()}
                       {t.due_date && (
                         <span className={`hud-chip ${overdue ? "hud-chip-amber" : ""}`}>
                           {formatDue(t.due_date, today)}

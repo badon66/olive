@@ -1,9 +1,11 @@
 import { useMemo } from "react";
 import type { Task, TaskInput } from "../hooks/useTasks";
+import type { CategoryStore } from "../hooks/useCategories";
+import type { WeeklyStore } from "../hooks/useWeeklyTasks";
 import { useBrief, type BriefContent } from "../hooks/useBrief";
 import { edmontonToday } from "../lib/dates";
 import { computeSections, doneTodayCount, effectiveOrder } from "../lib/sections";
-import type { HabitStore } from "../hooks/useHabits";
+import { ScheduleSetupButton } from "./ScheduleSetup";
 import { UpcomingDaysPanel } from "./board/DayBlocksPanel";
 import { PrioritiesPanel } from "./board/PrioritiesPanel";
 import { TaskDndProvider } from "./board/TaskDnd";
@@ -17,8 +19,8 @@ type Props = {
   deleteTask: (id: string) => Promise<void>;
   updateTask: (id: string, patch: Partial<TaskInput>) => Promise<void>;
   onEdit: (task: Task) => void;
-  streaks?: { name: string; label: string }[];
-  habitStore?: HabitStore;
+  categoryStore: CategoryStore;
+  weeklyStore?: WeeklyStore;
 };
 
 function RingGauge({ done, total }: { done: number; total: number }) {
@@ -55,7 +57,7 @@ function RingGauge({ done, total }: { done: number; total: number }) {
   );
 }
 
-export function BriefView({ tasks, loading, completeTask, reopenTask, deleteTask, updateTask, onEdit, streaks = [], habitStore }: Props) {
+export function BriefView({ tasks, loading, completeTask, reopenTask, deleteTask, updateTask, onEdit, categoryStore, weeklyStore }: Props) {
   const { brief, loading: briefLoading, error, regenerate, saveManualOrder } = useBrief();
   const today = edmontonToday();
 
@@ -83,6 +85,7 @@ export function BriefView({ tasks, loading, completeTask, reopenTask, deleteTask
     onReopen: reopenTask,
     onEdit,
     onDelete: deleteTask,
+    categoryOf: (t: Task) => categoryStore.byId.get(t.category_id),
   };
 
   if (loading || briefLoading) return <p className="text-dim pulse-live">Building your brief…</p>;
@@ -100,25 +103,29 @@ export function BriefView({ tasks, loading, completeTask, reopenTask, deleteTask
   return (
     <TaskDndProvider
       tasks={open}
-      habits={habitStore?.habits}
+      weeklyTasks={weeklyStore?.weeklyTasks}
       deps={{
         today,
         orderedIds: orderedTasks.map((t) => t.id),
         saveManualOrder,
         updateTask,
-        updateHabit: habitStore ? (id, patch) => habitStore.updateHabit(id, patch) : undefined,
+        setWeeklySection: weeklyStore ? (id, s) => weeklyStore.updateWeeklyTask(id, { time_section: s }) : undefined,
+        planWeeklyDay: weeklyStore ? (id, date) => weeklyStore.planDay(id, date) : undefined,
       }}
     >
       <div className="space-y-4">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-2 flex-wrap">
           <h2 className="font-display text-sm tracking-[0.25em] uppercase text-hud">Daily Brief</h2>
-          <button
-            onClick={() => void regenerate()}
-            className="hud-chip hud-chip-signal cursor-pointer focus-visible:outline-2 focus-visible:outline-signal"
-            aria-label="Regenerate brief"
-          >
-            {generatedAt ? `⟳ ${generatedAt}` : "⟳ generate"}
-          </button>
+          <span className="flex items-center gap-2">
+            <ScheduleSetupButton />
+            <button
+              onClick={() => void regenerate()}
+              className="hud-chip hud-chip-signal cursor-pointer focus-visible:outline-2 focus-visible:outline-signal"
+              aria-label="Regenerate brief"
+            >
+              {generatedAt ? `⟳ ${generatedAt}` : "⟳ generate"}
+            </button>
+          </span>
         </div>
 
         {error && (
@@ -129,19 +136,6 @@ export function BriefView({ tasks, loading, completeTask, reopenTask, deleteTask
           <RingGauge done={doneToday} total={doneToday + sections.today.length + sections.overdue.length} />
         </section>
 
-        {streaks.length > 0 && (
-          <section className="hud-panel p-4">
-            <h3 className="font-display text-xs tracking-[0.25em] uppercase text-signal mb-2">Streaks</h3>
-            <div className="flex flex-wrap gap-1.5">
-              {streaks.map((s) => (
-                <span key={s.name} className={`hud-chip ${s.label.startsWith("0") ? "" : "hud-chip-signal"}`}>
-                  {s.name} ▮ {s.label}
-                </span>
-              ))}
-            </div>
-          </section>
-        )}
-
         <PrioritiesPanel
           orderedTasks={orderedTasks}
           today={today}
@@ -150,7 +144,7 @@ export function BriefView({ tasks, loading, completeTask, reopenTask, deleteTask
           manualOrder={brief?.manual_order !== null && brief?.manual_order !== undefined}
         />
 
-        <TodaySchedulePanel dueToday={dueToday} cardProps={cardProps} habitBits={habitStore} />
+        <TodaySchedulePanel dueToday={dueToday} cardProps={cardProps} weeklyBits={weeklyStore} />
 
         <UpcomingDaysPanel openTasks={open} today={today} onEdit={onEdit} />
       </div>

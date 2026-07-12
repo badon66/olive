@@ -3,14 +3,15 @@ import { AuthGate } from "./components/AuthGate";
 import { BriefView } from "./components/BriefView";
 import { ChatBar } from "./components/ChatBar";
 import { DesktopDashboard } from "./components/DesktopDashboard";
-import { HabitsView, streakLabel } from "./components/HabitsView";
 import { JournalView } from "./components/JournalView";
 import { NAV_LABELS, Sidebar, type NavKey } from "./components/Sidebar";
 import { TaskForm } from "./components/TaskForm";
 import { TaskList } from "./components/TaskList";
-import { useHabits } from "./hooks/useHabits";
+import { WeeklyTasksView } from "./components/WeeklyTasksView";
+import { useCategories } from "./hooks/useCategories";
 import { useMediaQuery } from "./hooks/useMediaQuery";
 import { useTasks, type Task } from "./hooks/useTasks";
+import { useWeeklyTasks } from "./hooks/useWeeklyTasks";
 import { edmontonToday } from "./lib/dates";
 
 // Reserved nav slots (Active Jobs, Finance, Groceries, Settings) — real
@@ -37,16 +38,12 @@ function Shell() {
   const [editTask, setEditTask] = useState<Task | null>(null);
   const isDesktop = useMediaQuery("(min-width: 1024px)");
   const taskStore = useTasks();
-  const habitStore = useHabits();
+  const weeklyStore = useWeeklyTasks();
+  const categoryStore = useCategories();
   const today = edmontonToday();
 
-  const streaks = habitStore.habits.map((h) => ({
-    name: h.name,
-    label: streakLabel(h, habitStore.checkins, today),
-  }));
-
   const dashboard = isDesktop ? (
-    <DesktopDashboard taskStore={taskStore} habitStore={habitStore} />
+    <DesktopDashboard taskStore={taskStore} weeklyStore={weeklyStore} categoryStore={categoryStore} />
   ) : (
     <div className="px-4 py-4 pb-32 max-w-2xl w-full mx-auto">
       <BriefView
@@ -57,8 +54,8 @@ function Shell() {
         deleteTask={taskStore.deleteTask}
         updateTask={taskStore.updateTask}
         onEdit={setEditTask}
-        streaks={streaks}
-        habitStore={habitStore}
+        categoryStore={categoryStore}
+        weeklyStore={weeklyStore}
       />
     </div>
   );
@@ -68,8 +65,8 @@ function Shell() {
       dashboard
     ) : (
       <div className={`px-4 lg:px-10 py-5 pb-32 w-full ${nav === "journal" ? "max-w-3xl" : "max-w-5xl"}`}>
-        {nav === "tasks" && <TaskList {...taskStore} />}
-        {nav === "weekly" && <HabitsView {...habitStore} />}
+        {nav === "tasks" && <TaskList {...taskStore} categoryStore={categoryStore} />}
+        {nav === "weekly" && <WeeklyTasksView {...weeklyStore} />}
         {nav === "journal" && <JournalView />}
         {(nav === "jobs" || nav === "finance" || nav === "groceries" || nav === "settings") && (
           <Placeholder nav={nav} />
@@ -106,12 +103,20 @@ function Shell() {
         <main className="flex-1">{inner}</main>
 
         {/* quick capture stays global on mobile; desktop has it inline under the orb */}
-        {!isDesktop && <ChatBar onActionDone={taskStore.refresh} />}
+        {!isDesktop && (
+          <ChatBar
+            onActionDone={async () => {
+              await Promise.all([taskStore.refresh(), categoryStore.refresh()]);
+            }}
+            taskTitleById={(id) => taskStore.tasks.find((t) => t.id === id)?.title}
+          />
+        )}
       </div>
 
       {editTask && (
         <TaskForm
           initial={editTask}
+          categories={categoryStore.categories}
           onClose={() => setEditTask(null)}
           onSubmit={async (input) => {
             await taskStore.updateTask(editTask.id, input);

@@ -1,10 +1,13 @@
-import { useState } from "react";
-import type { Checkin, Habit } from "../../hooks/useHabits";
+import { useEffect, useState } from "react";
+import { supabase } from "../../lib/supabase";
 import type { Task } from "../../hooks/useTasks";
+import type { WeeklyCheckin, WeeklyTask } from "../../hooks/useWeeklyTasks";
+import type { BlockedWindow } from "../../lib/api";
 import { SECTION_ORDER, scheduleSort, type TimeSection } from "../../lib/sections";
+import { appearsToday } from "../../lib/weekly";
 import { SectionPencil } from "../SectionPencil";
 import { TaskCard } from "../TaskCard";
-import { DraggableHabit, DraggableTask, DropZone } from "./TaskDnd";
+import { DraggableTask, DraggableWeekly, DropZone } from "./TaskDnd";
 
 const SECTION_LABELS: Record<TimeSection, string> = {
   morning: "Morning",
@@ -20,30 +23,53 @@ type CardProps = {
   onReopen: (id: string) => void;
   onEdit: (task: Task) => void;
   onDelete: (id: string) => void;
+  categoryOf?: (task: Task) => { name: string; color: string } | undefined;
 };
 
-type HabitBits = {
-  habits: Habit[];
-  checkins: Checkin[];
-  checkIn: (habitId: string, date: string) => Promise<Checkin | null>;
-  uncheck: (habitId: string, date: string) => Promise<void>;
+type WeeklyBits = {
+  weeklyTasks: WeeklyTask[];
+  checkins: WeeklyCheckin[];
+  completeDay: (id: string, date: string) => Promise<void>;
+  uncompleteDay: (task: WeeklyTask, date: string) => Promise<void>;
 };
 
-// Tasks due today grouped by time_section, plus habits scheduled into a section
-// (habit.time_section). Sections are drop targets for both.
+// Tasks due today grouped by time_section, plus weekly tasks that belong today
+// (fixed_days on their weekdays; count-mode until the week's target is met).
+// Shows today's wake time + blocked windows when a schedule setup exists.
 export function TodaySchedulePanel({
   dueToday,
   cardProps,
-  habitBits,
+  weeklyBits,
 }: {
   dueToday: Task[];
   cardProps: CardProps;
-  habitBits?: HabitBits;
+  weeklyBits?: WeeklyBits;
 }) {
   const today = cardProps.today;
   const [editMode, setEditMode] = useState(false);
-  const habitChecked = (h: Habit) =>
-    habitBits?.checkins.some((c) => c.habit_id === h.id && c.date === today && c.completed) ?? false;
+  const [setup, setSetup] = useState<{ wake_time: string; blocked_windows: BlockedWindow[] } | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    void supabase
+      .from("daily_schedule_setup")
+      .select("wake_time, blocked_windows")
+      .eq("date", today)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (alive) {
+          setSetup(
+            data ? { wake_time: data.wake_time, blocked_windows: (data.blocked_windows ?? []) as BlockedWindow[] } : null,
+          );
+        }
+      });
+    return () => {
+      alive = false;
+    };
+  }, [today]);
+
+  const checkinsFor = (id: string) => (weeklyBits?.checkins ?? []).filter((c) => c.weekly_task_id === id);
+  const weeklyToday = (weeklyBits?.weeklyTasks ?? []).filter((t) => appearsToday(t, checkinsFor(t.id), today));
 
   return (
     <section className="hud-panel p-4">
@@ -52,43 +78,54 @@ export function TodaySchedulePanel({
           Today's Schedule
         </h3>
         <span className="flex items-center gap-1.5">
-          <span className="hud-chip">{dueToday.length}</span>
+          <span className="hud-chip">{dueToday.length + weeklyToday.length}</span>
           <SectionPencil active={editMode} onToggle={() => setEditMode(!editMode)} label="today's schedule" />
         </span>
       </header>
 
-      {dueToday.length === 0 && <p className="text-dim text-sm py-1.5 mb-1">Clear for today — drag something in.</p>}
+      {setup && (
+        <p className="flex flex-wrap gap-1.5 mb-2">
+          <span className="hud-chip hud-chip-signal">wake {setup.wake_time.slice(0, 5)}</span>
+          {setup.blocked_windows.map((w, i) => (
+            <span key={i} className="hud-chip hud-chip-amber">
+              ⛔ {w.start}–{w.end} {w.label}
+            </span>
+          ))}
+        </p>
+      )}
+
+      {dueToday.length === 0 && weeklyToday.length === 0 && (
+        <p className="text-dim text-sm py-1.5 mb-1">Clear for today — drag something in.</p>
+      )}
 
       <div className="space-y-2">
         {SECTION_ORDER.map((section) => {
           const items = dueToday.filter((t) => (t.time_section ?? "anytime") === section).sort(scheduleSort);
-          const sectionHabits = (habitBits?.habits ?? []).filter((h) => h.time_section === section);
+          const sectionWeekly = weeklyToday.filter((t) => (t.time_section ?? "anytime") === section);
           return (
             <DropZone key={section} id={`section:${section}`} className="border border-signal-dim/15 rounded p-2">
               <p className="font-data text-[11px] text-dim uppercase tracking-widest mb-0.5">
                 {SECTION_LABELS[section]}
               </p>
-              {items.length === 0 && sectionHabits.length === 0 ? (
+              {items.length === 0 && sectionWeekly.length === 0 ? (
                 <p className="text-dim/50 text-xs py-1">—</p>
               ) : (
                 <div className="divide-y divide-signal-dim/15">
-                  {sectionHabits.map((h) => {
-                    const checked = habitChecked(h);
+                  {sectionWeekly.map((t) => {
+                    const checked = checkinsFor(t.id).some((c) => c.date === today && c.status === "completed");
                     return (
-                      <DraggableHabit key={h.id} zone="schedhabit" habit={h}>
+                      <DraggableWeekly key={t.id} zone="schedweekly" weekly={t}>
                         <div className="flex items-center gap-3 py-1.5">
                           <button
                             onClick={() =>
-                              checked ? void habitBits!.uncheck(h.id, today) : void habitBits!.checkIn(h.id, today)
+                              checked ? void weeklyBits!.uncompleteDay(t, today) : void weeklyBits!.completeDay(t.id, today)
                             }
-                            aria-label={checked ? `Uncheck ${h.name}` : `Check off ${h.name}`}
+                            aria-label={checked ? `Uncheck ${t.name}` : `Check off ${t.name}`}
                             className="shrink-0 w-9 h-9 grid place-items-center cursor-pointer focus-visible:outline-2 focus-visible:outline-signal rounded-full"
                           >
                             <span
                               className={`w-4 h-4 rounded-full border grid place-items-center transition-colors duration-200 ${
-                                checked
-                                  ? "border-signal bg-signal/20"
-                                  : "border-signal-dim hover:border-signal"
+                                checked ? "border-signal bg-signal/20" : "border-signal-dim hover:border-signal"
                               }`}
                             >
                               {checked && (
@@ -99,16 +136,16 @@ export function TodaySchedulePanel({
                             </span>
                           </button>
                           <span className={`flex-1 min-w-0 truncate font-body text-[15px] ${checked ? "opacity-50 line-through" : ""}`}>
-                            {h.name}
+                            {t.name}
                           </span>
-                          <span className="hud-chip shrink-0">habit</span>
+                          <span className="hud-chip shrink-0">weekly</span>
                         </div>
-                      </DraggableHabit>
+                      </DraggableWeekly>
                     );
                   })}
                   {items.map((t) => (
                     <DraggableTask key={t.id} zone="sched" task={t}>
-                      <TaskCard task={t} {...cardProps} editMode={editMode} />
+                      <TaskCard task={t} {...cardProps} editMode={editMode} category={cardProps.categoryOf?.(t)} />
                     </DraggableTask>
                   ))}
                 </div>

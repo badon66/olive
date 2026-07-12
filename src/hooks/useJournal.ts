@@ -13,7 +13,7 @@ export function useJournal() {
       .from("journal_entries")
       .select("*")
       .order("date", { ascending: false })
-      .order("created_at", { ascending: false })
+      .order("entry_time", { ascending: false })
       .limit(100);
     if (!error && data) setEntries(data);
     setLoading(false);
@@ -29,7 +29,13 @@ export function useJournal() {
     entries,
     loading,
     refresh,
-    saveEntry: async (input: { date: string; raw_transcript: string; cleaned_text: string | null; tags: string[] }) => {
+    saveEntry: async (input: {
+      date: string;
+      entry_time: string;
+      raw_transcript: string;
+      cleaned_text: string | null;
+      tags: string[];
+    }) => {
       await supabase.from("journal_entries").insert({ ...input, user_id: await userId() });
       await refresh();
     },
