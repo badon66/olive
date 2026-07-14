@@ -1,18 +1,18 @@
 import { useState } from "react";
+import { AddMenu, type AddKind } from "./components/AddMenu";
 import { AuthGate } from "./components/AuthGate";
 import { BriefView } from "./components/BriefView";
 import { ChatBar } from "./components/ChatBar";
 import { DesktopDashboard } from "./components/DesktopDashboard";
 import { JournalView } from "./components/JournalView";
 import { NAV_LABELS, Sidebar, type NavKey } from "./components/Sidebar";
+import { CategoryForm, TaskList } from "./components/TaskList";
 import { TaskForm } from "./components/TaskForm";
-import { TaskList } from "./components/TaskList";
-import { WeeklyTasksView } from "./components/WeeklyTasksView";
+import { WeeklyTaskForm, WeeklyTasksView } from "./components/WeeklyTasksView";
 import { useCategories } from "./hooks/useCategories";
 import { useMediaQuery } from "./hooks/useMediaQuery";
 import { useTasks, type Task } from "./hooks/useTasks";
 import { useWeeklyTasks } from "./hooks/useWeeklyTasks";
-import { edmontonToday } from "./lib/dates";
 
 // Reserved nav slots (Active Jobs, Finance, Groceries, Settings) — real
 // features arrive in later phases; the sidebar entry exists per CLAUDE.md.
@@ -36,11 +36,11 @@ function Shell() {
   const [nav, setNav] = useState<NavKey>("dashboard");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [editTask, setEditTask] = useState<Task | null>(null);
+  const [addKind, setAddKind] = useState<AddKind | null>(null);
   const isDesktop = useMediaQuery("(min-width: 1024px)");
   const taskStore = useTasks();
   const weeklyStore = useWeeklyTasks();
   const categoryStore = useCategories();
-  const today = edmontonToday();
 
   const dashboard = isDesktop ? (
     <DesktopDashboard taskStore={taskStore} weeklyStore={weeklyStore} categoryStore={categoryStore} />
@@ -51,7 +51,6 @@ function Shell() {
         loading={taskStore.loading}
         completeTask={taskStore.completeTask}
         reopenTask={taskStore.reopenTask}
-        deleteTask={taskStore.deleteTask}
         updateTask={taskStore.updateTask}
         onEdit={setEditTask}
         categoryStore={categoryStore}
@@ -95,12 +94,20 @@ function Shell() {
               <h1 className="font-display text-signal text-base tracking-[0.25em] text-glow">
                 {nav === "dashboard" ? "OLIVE" : NAV_LABELS[nav].toUpperCase()}
               </h1>
-              <span className="font-data text-xs text-dim w-11 text-right">{today.slice(5)}</span>
+              <AddMenu onSelect={setAddKind} />
             </div>
           </header>
         )}
 
-        <main className="flex-1">{inner}</main>
+        <main className="flex-1 relative">
+          {/* ONE pencil, top corner of the main content (desktop) — opens the add-new menu */}
+          {isDesktop && (
+            <div className="absolute top-4 right-10 z-30">
+              <AddMenu onSelect={setAddKind} />
+            </div>
+          )}
+          {inner}
+        </main>
 
         {/* quick capture stays global on mobile; desktop has it inline under the orb */}
         {!isDesktop && (
@@ -120,6 +127,36 @@ function Shell() {
           onClose={() => setEditTask(null)}
           onSubmit={async (input) => {
             await taskStore.updateTask(editTask.id, input);
+          }}
+          onDelete={async () => {
+            await taskStore.deleteTask(editTask.id);
+          }}
+        />
+      )}
+
+      {/* Add-new modals, launched from the pencil menu */}
+      {addKind === "task" && (
+        <TaskForm
+          categories={categoryStore.categories}
+          onClose={() => setAddKind(null)}
+          onSubmit={async (input) => {
+            await taskStore.addTask(input);
+          }}
+        />
+      )}
+      {addKind === "weekly" && (
+        <WeeklyTaskForm
+          onClose={() => setAddKind(null)}
+          onSubmit={async (input) => {
+            await weeklyStore.addWeeklyTask(input);
+          }}
+        />
+      )}
+      {addKind === "category" && (
+        <CategoryForm
+          onClose={() => setAddKind(null)}
+          onSubmit={async (name, color) => {
+            await categoryStore.addCategory(name, color);
           }}
         />
       )}

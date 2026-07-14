@@ -6,16 +6,14 @@ type Props = {
   today: string;
   onComplete: (id: string) => void;
   onReopen: (id: string) => void;
+  // Revised editing pattern: clicking the item opens its edit modal directly;
+  // deleting happens inside that modal, not on the row
   onEdit: (task: Task) => void;
-  onDelete: (id: string) => void;
-  // v3 edit-mode pattern: rows are read-only (complete ring only) until the
-  // section's pencil toggles editing on — then title opens the form + delete shows
-  editMode?: boolean;
   // Category corner tag (color + name); omit in contexts already grouped by category
   category?: { name: string; color: string };
 };
 
-export function TaskCard({ task, today, onComplete, onReopen, onEdit, onDelete, editMode = false, category }: Props) {
+export function TaskCard({ task, today, onComplete, onReopen, onEdit, category }: Props) {
   const done = task.status === "completed";
   const overdue = !done && task.due_date !== null && formatDue(task.due_date, today).includes("overdue");
 
@@ -42,12 +40,9 @@ export function TaskCard({ task, today, onComplete, onReopen, onEdit, onDelete, 
       </button>
 
       <button
-        onClick={() => editMode && onEdit(task)}
-        disabled={!editMode}
-        className={`flex-1 min-w-0 text-left rounded ${
-          editMode ? "cursor-pointer focus-visible:outline-2 focus-visible:outline-signal" : "cursor-default"
-        }`}
-        aria-label={editMode ? `Edit ${task.title}` : task.title}
+        onClick={() => onEdit(task)}
+        className="flex-1 min-w-0 text-left rounded cursor-pointer focus-visible:outline-2 focus-visible:outline-signal"
+        aria-label={`Edit ${task.title}`}
       >
         <p className={`flex items-center gap-2 font-body font-semibold text-base leading-snug ${done ? "line-through" : ""}`}>
           <span className="truncate">{task.title}</span>
@@ -80,17 +75,6 @@ export function TaskCard({ task, today, onComplete, onReopen, onEdit, onDelete, 
         </p>
       </button>
 
-      {editMode && (
-        <button
-          onClick={() => onDelete(task.id)}
-          aria-label={`Delete ${task.title}`}
-          className="shrink-0 w-11 h-11 grid place-items-center text-dim hover:text-critical cursor-pointer transition-colors duration-200 focus-visible:outline-2 focus-visible:outline-signal rounded-full"
-        >
-          <svg viewBox="0 0 24 24" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-            <path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
-          </svg>
-        </button>
-      )}
     </div>
   );
 }

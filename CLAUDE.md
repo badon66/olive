@@ -57,7 +57,7 @@ Concrete tokens if not re-derived by the skill:
 - **Hover treatment on panels/cards:** a soft outer glow (box-shadow in signal-green-glow) plus a thin brighter highlight line along the top edge — a "sheen," not a full neon outline
 - **Persistent left sidebar for navigation** — sized comfortably large and legible, not cramped. Nav items: Dashboard, Tasks, Weekly Tasks, Active Jobs, Journal, Finance, Groceries (reserved nav slot only — no feature behind it yet, do not build), Settings. This is the ONLY navigation; don't duplicate these same links again as cards in the main content area. Main content shows real information, not decorative shortcut tiles.
 - **Dedicated per-category sections on the Dashboard** — one panel per category (Personal, PowerPlay Customs, Alberta Premium Coatings, and any category the user adds later), each showing only that category's own tasks, with a colored left-edge accent matching the category's color. This must scale dynamically with however many categories actually exist — don't hardcode three panels.
-- **Edit-mode pattern:** sections that support quick editing get ONE pencil icon in the section header, not a per-row edit button. Tapping it toggles edit mode for that section's items. Anything not editable this way lives on its own dedicated sidebar tab instead (e.g. full task management, Finance detail).
+- **Editing pattern (no per-section pencils):** click an existing item directly to open an edit modal scoped to it. Separately, ONE pencil in the top corner of the main content opens an "add new" menu. Anything not editable this way lives on its own dedicated sidebar tab instead (e.g. full task management, Finance detail).
 - **Voice-preview pop-up:** the preview-before-send breakdown (see BUILD_PLAN.md Phase 1) is a centered modal with a backdrop, not an inline element under the input box — and it only appears after a voice capture, not typed text.
 - Apply this direction from Phase 1 onward so components are styled correctly from the start rather than needing a redesign pass later
 
@@ -81,7 +81,7 @@ Concrete tokens if not re-derived by the skill:
 - `npm run test` — Vitest unit tests (`src/**/*.test.ts`)
 - `npm run lint` — oxlint
 - Migrations: add a SQL file to `supabase/migrations/`, apply the identical SQL to project `dpkdsmvskryettdxcvpp` via Supabase MCP `apply_migration`
-- Edge functions: edit under `supabase/functions/`, deploy via Supabase MCP `deploy_edge_function` (include `_shared/*` files; `daily-brief` deploys with verify_jwt OFF, `assistant`, `journal-clean` and `schedule-setup` with it ON)
+- Edge functions: edit under `supabase/functions/`, deploy via Supabase MCP `deploy_edge_function` (include `_shared/*` files; `daily-brief` deploys with verify_jwt OFF, `assistant` and `journal-clean` with it ON)
 - Secrets: `anthropic_api_key`, `cron_secret`, `project_url` all live in Supabase Vault (read by edge functions via service-role-only RPCs `get_anthropic_key()`/`get_cron_secret()`); local copies in gitignored `.env`/`.env.local`
 - Keep this section current as the project evolves — add new scripts, functions, or secrets here as they're built.
 

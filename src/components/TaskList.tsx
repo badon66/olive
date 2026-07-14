@@ -3,7 +3,6 @@ import type { Task, TaskInput } from "../hooks/useTasks";
 import type { CategoryRow, CategoryStore } from "../hooks/useCategories";
 import { CATEGORY_PALETTE } from "../lib/categories";
 import { edmontonToday } from "../lib/dates";
-import { SectionPencil } from "./SectionPencil";
 import { TaskCard } from "./TaskCard";
 import { TaskForm } from "./TaskForm";
 import { DropZone } from "./board/TaskDnd";
@@ -22,25 +21,15 @@ type Props = {
   droppableCategories?: boolean;
 };
 
-export function TaskList({ tasks, loading, categoryStore, addTask, updateTask, completeTask, reopenTask, deleteTask, droppableCategories = false }: Props) {
+// Revised editing pattern: no per-section pencils, no scattered add buttons.
+// Clicking a task opens its edit modal; clicking a category chip opens that
+// category's edit modal. Adding anything happens via the global pencil menu.
+export function TaskList({ tasks, loading, categoryStore, updateTask, completeTask, reopenTask, deleteTask, droppableCategories = false }: Props) {
   const { categories } = categoryStore;
   const [editing, setEditing] = useState<Task | null>(null);
-  const [adding, setAdding] = useState(false);
-  const [confirmDelete, setConfirmDelete] = useState<Task | null>(null);
   const [showCompleted, setShowCompleted] = useState(false);
-  // One pencil per section (v3): which category sections are in edit mode
-  const [editSections, setEditSections] = useState<Set<string>>(new Set());
   const [editCategory, setEditCategory] = useState<CategoryRow | null>(null);
-  const [addingCategory, setAddingCategory] = useState(false);
   const today = edmontonToday();
-
-  const toggleEditSection = (key: string) =>
-    setEditSections((prev) => {
-      const next = new Set(prev);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      return next;
-    });
 
   const open = useMemo(() => tasks.filter((t) => t.status === "open"), [tasks]);
   const completed = useMemo(
@@ -57,7 +46,6 @@ export function TaskList({ tasks, loading, categoryStore, addTask, updateTask, c
     onComplete: completeTask,
     onReopen: reopenTask,
     onEdit: setEditing,
-    onDelete: (id: string) => setConfirmDelete(tasks.find((t) => t.id === id) ?? null),
   };
 
   if (loading || categoryStore.loading) return <p className="text-dim pulse-live">Loading tasks…</p>;
@@ -67,7 +55,6 @@ export function TaskList({ tasks, loading, categoryStore, addTask, updateTask, c
       <div className="space-y-4 lg:grid lg:grid-cols-[repeat(auto-fit,minmax(320px,1fr))] lg:gap-6 lg:space-y-0 lg:items-start">
         {categories.map((cat) => {
           const group = open.filter((t) => t.category_id === cat.id);
-          const inEdit = editSections.has(cat.id);
           const panel = (
             <section className="hud-panel p-4 lg:p-5" style={{ borderLeft: `3px solid ${cat.color}` }}>
               <header className="flex items-center justify-between mb-1 gap-2">
@@ -79,17 +66,14 @@ export function TaskList({ tasks, loading, categoryStore, addTask, updateTask, c
                   />
                   <span className="truncate">{cat.name}</span>
                 </h2>
-                <span className="flex items-center gap-1.5 shrink-0">
-                  <span className="hud-chip">{group.length}</span>
-                  <SectionPencil active={inEdit} onToggle={() => toggleEditSection(cat.id)} label={cat.name} />
-                </span>
+                <span className="hud-chip shrink-0">{group.length}</span>
               </header>
               {group.length === 0 ? (
-                <p className="text-dim text-sm py-2">Nothing here. Add one below or tell Olive.</p>
+                <p className="text-dim text-sm py-2">Nothing here. Tell Olive or use the pencil menu.</p>
               ) : (
                 <div className="divide-y divide-signal-dim/15">
                   {group.map((t) => (
-                    <TaskCard key={t.id} task={t} {...cardProps} editMode={inEdit} />
+                    <TaskCard key={t.id} task={t} {...cardProps} />
                   ))}
                 </div>
               )}
@@ -105,126 +89,73 @@ export function TaskList({ tasks, loading, categoryStore, addTask, updateTask, c
         })}
       </div>
 
-      <button className="hud-button w-full" onClick={() => setAdding(true)}>
-        + Add task
-      </button>
-
-      {/* Categories management: rename / recolor via per-row pencil, add new */}
+      {/* Categories: click one to rename/recolor (its own scoped edit modal) */}
       <section className="hud-panel p-4">
         <header className="flex items-center justify-between mb-2">
           <h2 className="font-display text-xs tracking-[0.25em] uppercase text-signal">Categories</h2>
-          <button className="hud-chip hud-chip-signal cursor-pointer" onClick={() => setAddingCategory(true)}>
-            + new
-          </button>
         </header>
         <div className="flex flex-wrap gap-2">
           {categories.map((c) => (
-            <span key={c.id} className="inline-flex items-center gap-1.5 pl-2 pr-1 py-1 rounded border border-panel-border">
+            <button
+              key={c.id}
+              onClick={() => setEditCategory(c)}
+              aria-label={`Edit category ${c.name}`}
+              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded border border-panel-border cursor-pointer hover:border-signal/50 transition-colors duration-150 focus-visible:outline-2 focus-visible:outline-signal"
+            >
               <span className="w-2.5 h-2.5 rounded-full" style={{ background: c.color, boxShadow: `0 0 6px ${c.color}` }} aria-hidden="true" />
               <span className="font-body text-sm">{c.name}</span>
-              <SectionPencil active={editCategory?.id === c.id} onToggle={() => setEditCategory(c)} label={c.name} />
-            </span>
+            </button>
           ))}
         </div>
       </section>
 
       {completed.length > 0 && (
         <section className="pt-2">
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setShowCompleted(!showCompleted)}
-              className="flex-1 text-left font-display text-xs tracking-[0.25em] uppercase text-dim py-2 cursor-pointer focus-visible:outline-2 focus-visible:outline-signal"
-              aria-expanded={showCompleted}
-            >
-              {showCompleted ? "▾" : "▸"} Completed ({completed.length})
-            </button>
-            {showCompleted && (
-              <SectionPencil
-                active={editSections.has("completed")}
-                onToggle={() => toggleEditSection("completed")}
-                label="completed tasks"
-              />
-            )}
-          </div>
+          <button
+            onClick={() => setShowCompleted(!showCompleted)}
+            className="w-full text-left font-display text-xs tracking-[0.25em] uppercase text-dim py-2 cursor-pointer focus-visible:outline-2 focus-visible:outline-signal"
+            aria-expanded={showCompleted}
+          >
+            {showCompleted ? "▾" : "▸"} Completed ({completed.length})
+          </button>
           {showCompleted && (
             <div className="divide-y divide-signal-dim/15">
               {completed.map((t) => (
-                <TaskCard
-                  key={t.id}
-                  task={t}
-                  {...cardProps}
-                  editMode={editSections.has("completed")}
-                  category={categoryStore.byId.get(t.category_id)}
-                />
+                <TaskCard key={t.id} task={t} {...cardProps} category={categoryStore.byId.get(t.category_id)} />
               ))}
             </div>
           )}
         </section>
       )}
 
-      {(adding || editing) && (
+      {editing && (
         <TaskForm
-          initial={editing ?? undefined}
+          initial={editing}
           categories={categories}
-          onClose={() => {
-            setAdding(false);
-            setEditing(null);
-          }}
+          onClose={() => setEditing(null)}
           onSubmit={async (input) => {
-            if (editing) await updateTask(editing.id, input);
-            else await addTask(input);
+            await updateTask(editing.id, input);
+          }}
+          onDelete={async () => {
+            await deleteTask(editing.id);
           }}
         />
       )}
 
-      {(editCategory || addingCategory) && (
+      {editCategory && (
         <CategoryForm
-          initial={editCategory ?? undefined}
-          onClose={() => {
-            setEditCategory(null);
-            setAddingCategory(false);
-          }}
+          initial={editCategory}
+          onClose={() => setEditCategory(null)}
           onSubmit={async (name, color) => {
-            if (editCategory) await categoryStore.updateCategory(editCategory.id, { name, color });
-            else await categoryStore.addCategory(name, color);
+            await categoryStore.updateCategory(editCategory.id, { name, color });
           }}
         />
-      )}
-
-      {confirmDelete && (
-        <div
-          className="fixed inset-0 z-30 grid place-items-center bg-black/60 p-6"
-          onClick={() => setConfirmDelete(null)}
-          role="dialog"
-          aria-modal="true"
-          aria-label="Confirm delete"
-        >
-          <div className="hud-panel p-5 w-full max-w-sm space-y-4" onClick={(e) => e.stopPropagation()}>
-            <p className="font-body">
-              Delete <span className="text-signal font-semibold">{confirmDelete.title}</span>?
-            </p>
-            <div className="flex gap-3">
-              <button className="hud-button flex-1" onClick={() => setConfirmDelete(null)}>
-                Cancel
-              </button>
-              <button
-                className="hud-button flex-1 !border-critical/60 !text-critical hover:!bg-critical/10"
-                onClick={async () => {
-                  await deleteTask(confirmDelete.id);
-                  setConfirmDelete(null);
-                }}
-              >
-                Delete
-              </button>
-            </div>
-          </div>
-        </div>
       )}
     </div>
   );
 }
 
-function CategoryForm({
+export function CategoryForm({
   initial,
   onSubmit,
   onClose,

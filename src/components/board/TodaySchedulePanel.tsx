@@ -5,7 +5,6 @@ import type { WeeklyCheckin, WeeklyTask } from "../../hooks/useWeeklyTasks";
 import type { BlockedWindow } from "../../lib/api";
 import { SECTION_ORDER, scheduleSort, type TimeSection } from "../../lib/sections";
 import { appearsToday } from "../../lib/weekly";
-import { SectionPencil } from "../SectionPencil";
 import { TaskCard } from "../TaskCard";
 import { DraggableTask, DraggableWeekly, DropZone } from "./TaskDnd";
 
@@ -22,7 +21,6 @@ type CardProps = {
   onComplete: (id: string) => void;
   onReopen: (id: string) => void;
   onEdit: (task: Task) => void;
-  onDelete: (id: string) => void;
   categoryOf?: (task: Task) => { name: string; color: string } | undefined;
 };
 
@@ -46,7 +44,6 @@ export function TodaySchedulePanel({
   weeklyBits?: WeeklyBits;
 }) {
   const today = cardProps.today;
-  const [editMode, setEditMode] = useState(false);
   const [setup, setSetup] = useState<{ wake_time: string; blocked_windows: BlockedWindow[] } | null>(null);
 
   useEffect(() => {
@@ -77,10 +74,7 @@ export function TodaySchedulePanel({
         <h3 className="font-display text-xs font-semibold tracking-[0.25em] uppercase text-signal">
           Today's Schedule
         </h3>
-        <span className="flex items-center gap-1.5">
-          <span className="hud-chip">{dueToday.length + weeklyToday.length}</span>
-          <SectionPencil active={editMode} onToggle={() => setEditMode(!editMode)} label="today's schedule" />
-        </span>
+        <span className="hud-chip">{dueToday.length + weeklyToday.length}</span>
       </header>
 
       {setup && (
@@ -145,7 +139,7 @@ export function TodaySchedulePanel({
                   })}
                   {items.map((t) => (
                     <DraggableTask key={t.id} zone="sched" task={t}>
-                      <TaskCard task={t} {...cardProps} editMode={editMode} category={cardProps.categoryOf?.(t)} />
+                      <TaskCard task={t} {...cardProps} category={cardProps.categoryOf?.(t)} />
                     </DraggableTask>
                   ))}
                 </div>

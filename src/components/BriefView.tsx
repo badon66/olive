@@ -6,6 +6,7 @@ import { useBrief, type BriefContent } from "../hooks/useBrief";
 import { edmontonToday } from "../lib/dates";
 import { computeSections, doneTodayCount, effectiveOrder } from "../lib/sections";
 import { ScheduleSetupButton } from "./ScheduleSetup";
+import { WeeklyTasksView } from "./WeeklyTasksView";
 import { UpcomingDaysPanel } from "./board/DayBlocksPanel";
 import { PrioritiesPanel } from "./board/PrioritiesPanel";
 import { TaskDndProvider } from "./board/TaskDnd";
@@ -16,7 +17,6 @@ type Props = {
   loading: boolean;
   completeTask: (id: string) => Promise<void>;
   reopenTask: (id: string) => Promise<void>;
-  deleteTask: (id: string) => Promise<void>;
   updateTask: (id: string, patch: Partial<TaskInput>) => Promise<void>;
   onEdit: (task: Task) => void;
   categoryStore: CategoryStore;
@@ -57,7 +57,7 @@ function RingGauge({ done, total }: { done: number; total: number }) {
   );
 }
 
-export function BriefView({ tasks, loading, completeTask, reopenTask, deleteTask, updateTask, onEdit, categoryStore, weeklyStore }: Props) {
+export function BriefView({ tasks, loading, completeTask, reopenTask, updateTask, onEdit, categoryStore, weeklyStore }: Props) {
   const { brief, loading: briefLoading, error, regenerate, saveManualOrder } = useBrief();
   const today = edmontonToday();
 
@@ -84,7 +84,6 @@ export function BriefView({ tasks, loading, completeTask, reopenTask, deleteTask
     onComplete: completeTask,
     onReopen: reopenTask,
     onEdit,
-    onDelete: deleteTask,
     categoryOf: (t: Task) => categoryStore.byId.get(t.category_id),
   };
 
@@ -136,6 +135,20 @@ export function BriefView({ tasks, loading, completeTask, reopenTask, deleteTask
           <RingGauge done={doneToday} total={doneToday + sections.today.length + sections.overdue.length} />
         </section>
 
+        {/* Section order per BUILD_PLAN: Weekly Tasks first, Priorities demoted to the bottom */}
+        {weeklyStore && (
+          <section className="hud-panel p-4">
+            <h3 className="font-display text-xs font-semibold tracking-[0.25em] uppercase text-signal mb-2">
+              Weekly Tasks
+            </h3>
+            <WeeklyTasksView {...weeklyStore} bare />
+          </section>
+        )}
+
+        <TodaySchedulePanel dueToday={dueToday} cardProps={cardProps} weeklyBits={weeklyStore} />
+
+        <UpcomingDaysPanel openTasks={open} today={today} onEdit={onEdit} />
+
         <PrioritiesPanel
           orderedTasks={orderedTasks}
           today={today}
@@ -143,10 +156,6 @@ export function BriefView({ tasks, loading, completeTask, reopenTask, deleteTask
           onMove={move}
           manualOrder={brief?.manual_order !== null && brief?.manual_order !== undefined}
         />
-
-        <TodaySchedulePanel dueToday={dueToday} cardProps={cardProps} weeklyBits={weeklyStore} />
-
-        <UpcomingDaysPanel openTasks={open} today={today} onEdit={onEdit} />
       </div>
     </TaskDndProvider>
   );

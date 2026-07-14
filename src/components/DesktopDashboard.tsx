@@ -30,6 +30,14 @@ function Panel({ title, hint, children }: { title: string; hint?: ReactNode; chi
   );
 }
 
+function PlaceholderPanel({ title, copy }: { title: string; copy: string }) {
+  return (
+    <Panel title={title} hint={<span className="hud-chip">soon</span>}>
+      <p className="text-dim text-sm py-1.5">{copy}</p>
+    </Panel>
+  );
+}
+
 function greeting(hour: number): string {
   if (hour < 12) return "Good morning, Keenan";
   if (hour < 17) return "Good afternoon, Keenan";
@@ -130,7 +138,6 @@ export function DesktopDashboard({
     onComplete: taskStore.completeTask,
     onReopen: taskStore.reopenTask,
     onEdit: setEditing,
-    onDelete: taskStore.deleteTask,
     categoryOf: (t: Task) => categoryStore.byId.get(t.category_id),
   };
 
@@ -198,8 +205,8 @@ export function DesktopDashboard({
       }}
     >
       <div className="min-h-dvh flex flex-col">
-        {/* top bar — the wordmark lives in the sidebar */}
-        <header className="flex items-center justify-between px-10 py-5 gap-4">
+        {/* top bar — wordmark lives in the sidebar; pr clears the global add pencil */}
+        <header className="flex items-center justify-between px-10 pr-24 py-5 gap-4">
           <span className={`text-[15px] ${sections.overdue.length > 0 ? "text-amber" : "text-dim"}`}>{status}</span>
           <div className="flex items-center gap-4">
             <ScheduleSetupButton />
@@ -210,83 +217,79 @@ export function DesktopDashboard({
           </div>
         </header>
 
-        {/* main: left | orb | right */}
-        <div className="grid grid-cols-[1fr_460px_1fr] gap-7 px-10 items-start">
-          {/* LEFT */}
-          <div className="flex flex-col gap-6">
-            <PrioritiesPanel
-              orderedTasks={orderedTasks}
-              today={today}
-              onEdit={setEditing}
-              onMove={move}
-              manualOrder={brief?.manual_order !== null && brief?.manual_order !== undefined}
-              categoryOf={cardProps.categoryOf}
-              headerExtra={
-                <span
-                  role="button"
-                  tabIndex={0}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    void regenerate();
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" || e.key === " ") {
-                      e.stopPropagation();
-                      void regenerate();
-                    }
-                  }}
-                  className="hud-chip hud-chip-signal cursor-pointer focus-visible:outline-2 focus-visible:outline-signal"
-                  aria-label="Regenerate brief"
-                >
-                  {briefLoading ? "…" : generatedAt ? `⟳ ${generatedAt}` : "⟳ generate"}
-                </span>
-              }
+        {/* HERO: orb + greeting + capture bar, centered */}
+        <div className="flex flex-col items-center px-10">
+          <Orb size={380} />
+          <div className="text-center -mt-3 max-w-[520px]">
+            <p className="font-display text-[22px] font-medium tracking-wide text-hud">{greeting(edmontonHour)}</p>
+            <p className="text-[17px] text-dim mt-2 leading-snug">
+              {loading || briefLoading
+                ? "Pulling up your day…"
+                : summarize(sections.overdue.length, sections.today.length, sections.upcoming.length, doneToday)}
+            </p>
+            {error && <p className="text-amber text-sm mt-2">{error} — showing live data.</p>}
+          </div>
+          <div className="w-full max-w-[560px] mt-5">
+            <ChatBar
+              onActionDone={async () => {
+                await Promise.all([taskStore.refresh(), categoryStore.refresh()]);
+              }}
+              inline
+              taskTitleById={(id) => tasks.find((t) => t.id === id)?.title}
             />
-
-            <DropZone id="weekly">
-              <Panel title="Weekly Tasks" hint={<span className="hud-chip">{weeklyStore.weeklyTasks.length}</span>}>
-                <WeeklyDropHint />
-                <WeeklyTasksView {...weeklyStore} bare draggable />
-              </Panel>
-            </DropZone>
           </div>
+        </div>
 
-          {/* CENTER: ORB */}
-          <div className="flex flex-col items-center">
-            <Orb size={420} />
-            <div className="text-center -mt-3 max-w-[440px]">
-              <p className="font-display text-[22px] font-medium tracking-wide text-hud">{greeting(edmontonHour)}</p>
-              <p className="text-[17px] text-dim mt-2 leading-snug">
-                {loading || briefLoading
-                  ? "Pulling up your day…"
-                  : summarize(sections.overdue.length, sections.today.length, sections.upcoming.length, doneToday)}
-              </p>
-              {error && <p className="text-amber text-sm mt-2">{error} — showing live data.</p>}
-            </div>
-            <div className="w-full max-w-[440px] mt-6">
-              <ChatBar
-                onActionDone={async () => {
-                  await Promise.all([taskStore.refresh(), categoryStore.refresh()]);
-                }}
-                inline
-                taskTitleById={(id) => tasks.find((t) => t.id === id)?.title}
-              />
-            </div>
-          </div>
+        {/* SECTION ORDER (BUILD_PLAN): Weekly Tasks first, then category panels,
+            then remaining panels, Priorities deliberately near the bottom */}
+        <div className="flex flex-col gap-6 px-10 pt-7 pb-10">
+          <DropZone id="weekly">
+            <Panel title="Weekly Tasks" hint={<span className="hud-chip">{weeklyStore.weeklyTasks.length}</span>}>
+              <WeeklyDropHint />
+              <WeeklyTasksView {...weeklyStore} bare draggable />
+            </Panel>
+          </DropZone>
 
-          {/* RIGHT */}
-          <div className="flex flex-col gap-6">
+          <TaskList {...taskStore} categoryStore={categoryStore} droppableCategories />
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 2xl:grid-cols-[repeat(auto-fit,minmax(380px,1fr))] gap-6 items-start">
             <TodaySchedulePanel dueToday={dueToday} cardProps={cardProps} weeklyBits={weeklyStore} />
             <UpcomingDaysPanel openTasks={open} today={today} onEdit={setEditing} />
+            <PlaceholderPanel title="Finance" copy="Balance and spending land here in Phase 6." />
+            <PlaceholderPanel title="Active Jobs" copy="The jobs log lands here in Phase 3." />
             <Panel title="Journal">
               <JournalView compact />
             </Panel>
           </div>
-        </div>
 
-        {/* BOTTOM: per-category dashboard sections (drop targets for weekly → task) */}
-        <div className="px-10 pt-7 pb-10">
-          <TaskList {...taskStore} categoryStore={categoryStore} droppableCategories />
+          <PrioritiesPanel
+            orderedTasks={orderedTasks}
+            today={today}
+            onEdit={setEditing}
+            onMove={move}
+            manualOrder={brief?.manual_order !== null && brief?.manual_order !== undefined}
+            categoryOf={cardProps.categoryOf}
+            headerExtra={
+              <span
+                role="button"
+                tabIndex={0}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  void regenerate();
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.stopPropagation();
+                    void regenerate();
+                  }
+                }}
+                className="hud-chip hud-chip-signal cursor-pointer focus-visible:outline-2 focus-visible:outline-signal"
+                aria-label="Regenerate brief"
+              >
+                {briefLoading ? "…" : generatedAt ? `⟳ ${generatedAt}` : "⟳ generate"}
+              </span>
+            }
+          />
         </div>
 
         {editing && (
@@ -296,6 +299,9 @@ export function DesktopDashboard({
             onClose={() => setEditing(null)}
             onSubmit={async (input) => {
               await taskStore.updateTask(editing.id, input);
+            }}
+            onDelete={async () => {
+              await taskStore.deleteTask(editing.id);
             }}
           />
         )}

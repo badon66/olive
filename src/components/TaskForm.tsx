@@ -9,9 +9,11 @@ type Props = {
   categories: CategoryRow[];
   onSubmit: (input: TaskInput) => Promise<void>;
   onClose: () => void;
+  // Deleting lives inside the item's edit modal (revised editing pattern)
+  onDelete?: () => Promise<void>;
 };
 
-export function TaskForm({ initial, categories, onSubmit, onClose }: Props) {
+export function TaskForm({ initial, categories, onSubmit, onClose, onDelete }: Props) {
   const [title, setTitle] = useState(initial?.title ?? "");
   const [categoryId, setCategoryId] = useState(initial?.category_id ?? categories[0]?.id ?? "");
   const [dueDate, setDueDate] = useState(initial?.due_date ?? "");
@@ -20,6 +22,7 @@ export function TaskForm({ initial, categories, onSubmit, onClose }: Props) {
   const [timeSection, setTimeSection] = useState<TimeSection | "">(initial?.time_section ?? "");
   const [duration, setDuration] = useState(initial?.duration_minutes ? String(initial.duration_minutes) : "");
   const [busy, setBusy] = useState(false);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
@@ -144,9 +147,30 @@ export function TaskForm({ initial, categories, onSubmit, onClose }: Props) {
           </div>
         </fieldset>
 
-        <button className="hud-button w-full" disabled={busy || !title.trim() || !categoryId}>
-          {busy ? "Saving…" : initial ? "Save changes" : "Add task"}
-        </button>
+        <div className="flex gap-3">
+          {initial && onDelete && (
+            <button
+              type="button"
+              className="hud-button !border-critical/60 !text-critical hover:!bg-critical/10 px-4"
+              disabled={busy}
+              onClick={async () => {
+                if (!confirmingDelete) {
+                  setConfirmingDelete(true);
+                  return;
+                }
+                setBusy(true);
+                await onDelete();
+                setBusy(false);
+                onClose();
+              }}
+            >
+              {confirmingDelete ? "Confirm delete?" : "Delete"}
+            </button>
+          )}
+          <button className="hud-button flex-1" disabled={busy || !title.trim() || !categoryId}>
+            {busy ? "Saving…" : initial ? "Save changes" : "Add task"}
+          </button>
+        </div>
       </form>
     </div>
   );

@@ -3,7 +3,6 @@ import type { WeeklyCheckin, WeeklyStore, WeeklyTask } from "../hooks/useWeeklyT
 import { edmontonToday } from "../lib/dates";
 import { SECTION_ORDER } from "../lib/sections";
 import { cubeStates, progress, weekDates, type CubeState } from "../lib/weekly";
-import { SectionPencil } from "./SectionPencil";
 import { DraggableWeekly } from "./board/TaskDnd";
 
 const DAY_LETTERS = ["M", "T", "W", "T", "F", "S", "S"];
@@ -31,7 +30,6 @@ export function WeeklyTasksView({
   weeklyTasks,
   checkins,
   loading,
-  addWeeklyTask,
   updateWeeklyTask,
   deleteWeeklyTask,
   planDay,
@@ -45,10 +43,8 @@ export function WeeklyTasksView({
   const [detailFor, setDetailFor] = useState<WeeklyCheckin | null>(null);
   const [note, setNote] = useState("");
   const [duration, setDuration] = useState("");
-  const [adding, setAdding] = useState(false);
   const [editing, setEditing] = useState<WeeklyTask | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<WeeklyTask | null>(null);
-  const [editMode, setEditMode] = useState(false);
   const today = edmontonToday();
   const week = useMemo(() => weekDates(today), [today]);
 
@@ -96,13 +92,8 @@ export function WeeklyTasksView({
 
   const rows = (
     <>
-      {weeklyTasks.length > 0 && (
-        <div className="flex justify-end -mt-1 -mb-1">
-          <SectionPencil active={editMode} onToggle={() => setEditMode(!editMode)} label="weekly tasks" />
-        </div>
-      )}
       {weeklyTasks.length === 0 ? (
-        <p className="text-dim text-sm py-2">No weekly tasks yet. Add one below.</p>
+        <p className="text-dim text-sm py-2">No weekly tasks yet. Use the pencil menu to add one.</p>
       ) : (
         <div className="divide-y divide-signal-dim/15">
           {weeklyTasks.map((t) => {
@@ -114,12 +105,9 @@ export function WeeklyTasksView({
               <div className="py-2.5">
                 <div className="flex items-center gap-3 flex-wrap">
                   <button
-                    onClick={() => editMode && setEditing(t)}
-                    disabled={!editMode}
-                    className={`min-w-0 text-left rounded ${
-                      editMode ? "cursor-pointer focus-visible:outline-2 focus-visible:outline-signal" : "cursor-default"
-                    }`}
-                    aria-label={editMode ? `Edit ${t.name}` : t.name}
+                    onClick={() => setEditing(t)}
+                    className="min-w-0 text-left rounded cursor-pointer focus-visible:outline-2 focus-visible:outline-signal"
+                    aria-label={`Edit ${t.name}`}
                   >
                     <p className="font-body font-semibold text-base leading-snug truncate">{t.name}</p>
                   </button>
@@ -193,9 +181,6 @@ export function WeeklyTasksView({
         </div>
       )}
 
-      <button className="hud-button w-full mt-3" onClick={() => setAdding(true)}>
-        + Add weekly task
-      </button>
     </>
   );
 
@@ -203,17 +188,13 @@ export function WeeklyTasksView({
     <div>
       {bare ? rows : <section className="hud-panel p-4">{rows}</section>}
 
-      {(adding || editing) && (
+      {editing && (
         <WeeklyTaskForm
-          initial={editing ?? undefined}
-          onClose={() => {
-            setAdding(false);
-            setEditing(null);
-          }}
-          onDelete={editing ? () => setConfirmDelete(editing) : undefined}
+          initial={editing}
+          onClose={() => setEditing(null)}
+          onDelete={() => setConfirmDelete(editing)}
           onSubmit={async (input) => {
-            if (editing) await updateWeeklyTask(editing.id, input);
-            else await addWeeklyTask(input);
+            await updateWeeklyTask(editing.id, input);
           }}
         />
       )}
@@ -252,7 +233,7 @@ export function WeeklyTasksView({
   );
 }
 
-function WeeklyTaskForm({
+export function WeeklyTaskForm({
   initial,
   onSubmit,
   onClose,
