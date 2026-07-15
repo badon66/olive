@@ -240,26 +240,35 @@ export function DesktopDashboard({
           </div>
         </div>
 
-        {/* SECTION ORDER (BUILD_PLAN): Weekly Tasks first, then category panels,
-            then remaining panels, Priorities deliberately near the bottom */}
-        <div className="flex flex-col gap-6 px-10 pt-7 pb-10">
-          <DropZone id="weekly">
-            <Panel title="Weekly Tasks" hint={<span className="hud-chip">{weeklyStore.weeklyTasks.length}</span>}>
-              <WeeklyDropHint />
-              <WeeklyTasksView {...weeklyStore} bare draggable />
-            </Panel>
-          </DropZone>
+        {/* DASHBOARD LAYOUT (BUILD_PLAN): explicit two-column split, not a
+            vertical stack. LEFT: Weekly Tasks → category panels → Finance.
+            RIGHT: Today's Schedule → Upcoming Days → Active Jobs → Journal.
+            Priorities full-width below both. */}
+        <div className="px-10 pt-7 pb-10 space-y-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
+            {/* LEFT column */}
+            <div className="flex flex-col gap-6 min-w-0">
+              <DropZone id="weekly">
+                <Panel title="Weekly Tasks" hint={<span className="hud-chip">{weeklyStore.weeklyTasks.length}</span>}>
+                  <WeeklyDropHint />
+                  <WeeklyTasksView {...weeklyStore} bare draggable />
+                </Panel>
+              </DropZone>
 
-          <TaskList {...taskStore} categoryStore={categoryStore} droppableCategories />
+              <TaskList {...taskStore} categoryStore={categoryStore} droppableCategories />
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 2xl:grid-cols-[repeat(auto-fit,minmax(380px,1fr))] gap-6 items-start">
-            <TodaySchedulePanel dueToday={dueToday} cardProps={cardProps} weeklyBits={weeklyStore} />
-            <UpcomingDaysPanel openTasks={open} today={today} onEdit={setEditing} />
-            <PlaceholderPanel title="Finance" copy="Balance and spending land here in Phase 6." />
-            <PlaceholderPanel title="Active Jobs" copy="The jobs log lands here in Phase 3." />
-            <Panel title="Journal">
-              <JournalView compact />
-            </Panel>
+              <PlaceholderPanel title="Finance" copy="Balance and spending land here in Phase 6." />
+            </div>
+
+            {/* RIGHT column */}
+            <div className="flex flex-col gap-6 min-w-0">
+              <TodaySchedulePanel dueToday={dueToday} cardProps={cardProps} weeklyBits={weeklyStore} />
+              <UpcomingDaysPanel openTasks={open} today={today} onEdit={setEditing} />
+              <PlaceholderPanel title="Active Jobs" copy="The jobs log lands here in Phase 3." />
+              <Panel title="Journal">
+                <JournalView compact />
+              </Panel>
+            </div>
           </div>
 
           <PrioritiesPanel

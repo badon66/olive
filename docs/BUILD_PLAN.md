@@ -17,7 +17,12 @@ The core loop, using only Supabase and the Anthropic API.
 - **Dedicated per-category sections on the Dashboard:** one panel per category (Personal, PowerPlay Customs, Alberta Premium Coatings, and any the user adds later), each listing only that category's own tasks, with a colored left-edge accent matching the category. Must scale with however many categories actually exist — don't hardcode three.
 - **A separate "Tasks" sidebar tab** for full task management (all tasks, all time, filterable by category/status/scheduled), distinct from the Dashboard's glanceable Today view.
 - **Editing pattern (revised — no per-section pencils):** clicking an existing item directly opens an edit modal scoped to just that item — click "Gym" under Weekly Tasks to change its frequency/planned days; click a task under any category section to edit its title/category/schedule. Separately, ONE pencil icon lives in the top corner of the main content area — pressing it opens an "add new" menu (add task, add weekly task, add job, etc.), replacing scattered add buttons. Two distinct interactions, not one.
-- **Dashboard section order:** orb, capture bar, Weekly Tasks (the top section), then the per-category panels (Personal/PowerPlay Customs/Alberta Premium Coatings), then remaining panels (Finance, Active Jobs, Upcoming Days, Journal — exact arrangement still open), with Priorities pushed down near the bottom rather than prominent — deliberately deprioritized, not deleted.
+- **Dashboard layout — explicit two-column split on desktop, not a vertical stack:**
+  - Orb + capture bar: centered, full-width, above both columns.
+  - LEFT column, top to bottom: Weekly Tasks → the three category panels (Personal, PowerPlay Customs, Alberta Premium Coatings) → Finance.
+  - RIGHT column, top to bottom: Today's Schedule → Upcoming Days → Active Jobs → Journal.
+  - Below both columns, full width: Priorities — deliberately deprioritized to the bottom, not deleted, still collapsible.
+  - On mobile: single column, same top-to-bottom order as left-column-then-right-column concatenated; category panels move to their own Tasks-tab view to keep the scroll manageable (not inline on the mobile dashboard).
 - **Sidebar navigation:** Dashboard, Tasks, Weekly Tasks, Active Jobs, Journal, Finance, Groceries (reserved nav slot only — no feature behind it, do not build), Settings.
 - **Scheduled / Not scheduled indicator** on every task regardless of category: "Scheduled" if `due_date` is set, "Not scheduled" if not.
 - Due date picker: proper popup mini calendar — already built, no further work needed.
