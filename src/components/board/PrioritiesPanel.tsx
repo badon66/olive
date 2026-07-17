@@ -11,11 +11,13 @@ type Props = {
   manualOrder: boolean;
   headerExtra?: ReactNode;
   categoryOf?: (t: Task) => { name: string; color: string } | undefined;
+  // bare: content only — the dashboard's DashSection provides panel + title
+  bare?: boolean;
 };
 
 // Collapsible dropdown, collapsed by default. Overdue tasks are folded in at
 // the top (never their own section) and drive the summary line.
-export function PrioritiesPanel({ orderedTasks, today, onEdit, onMove, manualOrder, headerExtra, categoryOf }: Props) {
+export function PrioritiesPanel({ orderedTasks, today, onEdit, onMove, manualOrder, headerExtra, categoryOf, bare = false }: Props) {
   const [open, setOpen] = useState(false);
 
   const isOverdue = (t: Task) => t.due_date !== null && t.due_date < today;
@@ -35,17 +37,19 @@ export function PrioritiesPanel({ orderedTasks, today, onEdit, onMove, manualOrd
           .filter(Boolean)
           .join(" · ");
 
-  return (
-    <section className={`hud-panel p-4 ${overdueCount > 0 ? "!border-amber/40" : ""}`}>
+  const inner = (
+    <>
       <button
         onClick={() => setOpen(!open)}
         aria-expanded={open}
         className="w-full flex items-center justify-between gap-3 cursor-pointer focus-visible:outline-2 focus-visible:outline-signal rounded min-h-[44px]"
       >
         <span className="flex items-baseline gap-3 min-w-0">
-          <span className="font-display text-xs font-semibold tracking-[0.25em] uppercase text-signal shrink-0">
-            Priorities
-          </span>
+          {!bare && (
+            <span className="font-display text-xs font-semibold tracking-[0.25em] uppercase text-signal shrink-0">
+              Priorities
+            </span>
+          )}
           <span className={`text-sm truncate ${overdueCount > 0 ? "text-amber" : "text-dim"}`}>{summary}</span>
         </span>
         <span className="flex items-center gap-2 shrink-0">
@@ -133,6 +137,12 @@ export function PrioritiesPanel({ orderedTasks, today, onEdit, onMove, manualOrd
       )}
 
       {open && manualOrder && <p className="mt-2 font-data text-[11px] text-dim">your order — held for today</p>}
-    </section>
+    </>
+  );
+
+  if (bare) return inner;
+
+  return (
+    <section className={`hud-panel p-4 ${overdueCount > 0 ? "!border-amber/40" : ""}`}>{inner}</section>
   );
 }

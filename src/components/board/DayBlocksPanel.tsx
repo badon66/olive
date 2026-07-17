@@ -24,19 +24,19 @@ export function UpcomingDaysPanel({
   openTasks,
   today,
   onEdit,
+  bare = false,
 }: {
   openTasks: Task[];
   today: string;
   onEdit: (t: Task) => void;
+  // bare: content only — the dashboard's DashSection provides panel + title
+  bare?: boolean;
 }) {
   const [expanded, setExpanded] = useState(false);
   const dates = upcomingDates(today, expanded ? 7 : 3);
 
-  return (
-    <section className="hud-panel p-4">
-      <header className="flex items-center justify-between mb-2">
-        <h3 className="font-display text-xs font-semibold tracking-[0.25em] uppercase text-signal">Upcoming Days</h3>
-        <button
+  const expandButton = (
+    <button
           onClick={() => setExpanded(!expanded)}
           aria-expanded={expanded}
           aria-label={expanded ? "Show fewer days" : "Show the full week"}
@@ -55,10 +55,11 @@ export function UpcomingDaysPanel({
           >
             <path d="m6 9 6 6 6-6" />
           </svg>
-        </button>
-      </header>
+    </button>
+  );
 
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+  const blocks = (
+    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
         {dates.map((date) => {
           const items = openTasks.filter((t) => t.due_date === date).sort(scheduleSort);
           const isToday = date === today;
@@ -104,7 +105,25 @@ export function UpcomingDaysPanel({
             </DropZone>
           );
         })}
-      </div>
+    </div>
+  );
+
+  if (bare) {
+    return (
+      <>
+        <div className="flex justify-end mb-1">{expandButton}</div>
+        {blocks}
+      </>
+    );
+  }
+
+  return (
+    <section className="hud-panel p-4">
+      <header className="flex items-center justify-between mb-2">
+        <h3 className="font-display text-xs font-semibold tracking-[0.25em] uppercase text-signal">Upcoming Days</h3>
+        {expandButton}
+      </header>
+      {blocks}
     </section>
   );
 }

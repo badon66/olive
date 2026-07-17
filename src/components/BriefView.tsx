@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import type { Task, TaskInput } from "../hooks/useTasks";
 import type { CategoryStore } from "../hooks/useCategories";
 import type { WeeklyStore } from "../hooks/useWeeklyTasks";
@@ -6,7 +6,7 @@ import { useBrief, type BriefContent } from "../hooks/useBrief";
 import { edmontonToday } from "../lib/dates";
 import { computeSections, doneTodayCount, effectiveOrder } from "../lib/sections";
 import { ScheduleSetupButton } from "./ScheduleSetup";
-import { WeeklyTasksView } from "./WeeklyTasksView";
+import { WeeklyTaskForm, WeeklyTasksView } from "./WeeklyTasksView";
 import { UpcomingDaysPanel } from "./board/DayBlocksPanel";
 import { PrioritiesPanel } from "./board/PrioritiesPanel";
 import { TaskDndProvider } from "./board/TaskDnd";
@@ -21,6 +21,7 @@ type Props = {
   onEdit: (task: Task) => void;
   categoryStore: CategoryStore;
   weeklyStore?: WeeklyStore;
+  customize?: boolean;
 };
 
 function RingGauge({ done, total }: { done: number; total: number }) {
@@ -57,8 +58,9 @@ function RingGauge({ done, total }: { done: number; total: number }) {
   );
 }
 
-export function BriefView({ tasks, loading, completeTask, reopenTask, updateTask, onEdit, categoryStore, weeklyStore }: Props) {
+export function BriefView({ tasks, loading, completeTask, reopenTask, updateTask, onEdit, categoryStore, weeklyStore, customize = false }: Props) {
   const { brief, loading: briefLoading, error, regenerate, saveManualOrder } = useBrief();
+  const [addWeekly, setAddWeekly] = useState(false);
   const today = edmontonToday();
 
   const open = useMemo(() => tasks.filter((t) => t.status === "open"), [tasks]);
@@ -138,11 +140,33 @@ export function BriefView({ tasks, loading, completeTask, reopenTask, updateTask
         {/* Section order per BUILD_PLAN: Weekly Tasks first, Priorities demoted to the bottom */}
         {weeklyStore && (
           <section className="hud-panel p-4">
-            <h3 className="font-display text-xs font-semibold tracking-[0.25em] uppercase text-signal mb-2">
-              Weekly Tasks
-            </h3>
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="font-display text-xs font-semibold tracking-[0.25em] uppercase text-signal">
+                Weekly Tasks
+              </h3>
+              {customize && (
+                <button
+                  onClick={() => setAddWeekly(true)}
+                  aria-label="Add weekly task"
+                  className="w-8 h-8 grid place-items-center rounded border border-signal/50 text-signal cursor-pointer hover:bg-signal/15 transition-all duration-150 focus-visible:outline-2 focus-visible:outline-signal"
+                >
+                  <svg viewBox="0 0 24 24" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+                    <path d="M12 5v14M5 12h14" />
+                  </svg>
+                </button>
+              )}
+            </div>
             <WeeklyTasksView {...weeklyStore} bare />
           </section>
+        )}
+
+        {addWeekly && weeklyStore && (
+          <WeeklyTaskForm
+            onClose={() => setAddWeekly(false)}
+            onSubmit={async (input) => {
+              await weeklyStore.addWeeklyTask(input);
+            }}
+          />
         )}
 
         <TodaySchedulePanel dueToday={dueToday} cardProps={cardProps} weeklyBits={weeklyStore} />

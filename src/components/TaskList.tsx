@@ -19,16 +19,20 @@ type Props = {
   // Only when rendered inside a TaskDndProvider (dashboard): category panels
   // become drop targets for weekly-task → task conversion
   droppableCategories?: boolean;
+  // Customize mode ON: section headers show "+" adds (tasks into a category,
+  // new categories). OFF: clean view — adds via voice or the dashboard.
+  customize?: boolean;
 };
 
-// Revised editing pattern: no per-section pencils, no scattered add buttons.
-// Clicking a task opens its edit modal; clicking a category chip opens that
-// category's edit modal. Adding anything happens via the global pencil menu.
-export function TaskList({ tasks, loading, categoryStore, updateTask, completeTask, reopenTask, deleteTask, droppableCategories = false }: Props) {
+// Editing pattern: clicking a task opens its edit modal; clicking a category
+// chip opens that category's edit modal — always, no toggle needed.
+export function TaskList({ tasks, loading, categoryStore, addTask, updateTask, completeTask, reopenTask, deleteTask, droppableCategories = false, customize = false }: Props) {
   const { categories } = categoryStore;
   const [editing, setEditing] = useState<Task | null>(null);
   const [showCompleted, setShowCompleted] = useState(false);
   const [editCategory, setEditCategory] = useState<CategoryRow | null>(null);
+  const [addTaskCat, setAddTaskCat] = useState<string | null>(null);
+  const [addingCategory, setAddingCategory] = useState(false);
   const today = edmontonToday();
 
   const open = useMemo(() => tasks.filter((t) => t.status === "open"), [tasks]);
@@ -66,7 +70,20 @@ export function TaskList({ tasks, loading, categoryStore, updateTask, completeTa
                   />
                   <span className="truncate">{cat.name}</span>
                 </h2>
-                <span className="hud-chip shrink-0">{group.length}</span>
+                <span className="flex items-center gap-1.5 shrink-0">
+                  <span className="hud-chip">{group.length}</span>
+                  {customize && (
+                    <button
+                      onClick={() => setAddTaskCat(cat.id)}
+                      aria-label={`Add task to ${cat.name}`}
+                      className="w-8 h-8 grid place-items-center rounded border border-signal/50 text-signal cursor-pointer hover:bg-signal/15 transition-all duration-150 focus-visible:outline-2 focus-visible:outline-signal"
+                    >
+                      <svg viewBox="0 0 24 24" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+                        <path d="M12 5v14M5 12h14" />
+                      </svg>
+                    </button>
+                  )}
+                </span>
               </header>
               {group.length === 0 ? (
                 <p className="text-dim text-sm py-2">Nothing here. Tell Olive or use the pencil menu.</p>
@@ -93,6 +110,11 @@ export function TaskList({ tasks, loading, categoryStore, updateTask, completeTa
       <section className="hud-panel p-4">
         <header className="flex items-center justify-between mb-2">
           <h2 className="font-display text-xs tracking-[0.25em] uppercase text-signal">Categories</h2>
+          {customize && (
+            <button className="hud-chip hud-chip-signal cursor-pointer" onClick={() => setAddingCategory(true)}>
+              + new
+            </button>
+          )}
         </header>
         <div className="flex flex-wrap gap-2">
           {categories.map((c) => (
@@ -148,6 +170,26 @@ export function TaskList({ tasks, loading, categoryStore, updateTask, completeTa
           onClose={() => setEditCategory(null)}
           onSubmit={async (name, color) => {
             await categoryStore.updateCategory(editCategory.id, { name, color });
+          }}
+        />
+      )}
+
+      {addingCategory && (
+        <CategoryForm
+          onClose={() => setAddingCategory(false)}
+          onSubmit={async (name, color) => {
+            await categoryStore.addCategory(name, color);
+          }}
+        />
+      )}
+
+      {addTaskCat && (
+        <TaskForm
+          categories={categories}
+          defaults={{ category_id: addTaskCat }}
+          onClose={() => setAddTaskCat(null)}
+          onSubmit={async (input) => {
+            await addTask(input);
           }}
         />
       )}

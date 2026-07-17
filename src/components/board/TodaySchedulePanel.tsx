@@ -38,10 +38,13 @@ export function TodaySchedulePanel({
   dueToday,
   cardProps,
   weeklyBits,
+  bare = false,
 }: {
   dueToday: Task[];
   cardProps: CardProps;
   weeklyBits?: WeeklyBits;
+  // bare: content only — the dashboard's DashSection provides panel + title
+  bare?: boolean;
 }) {
   const today = cardProps.today;
   const [setup, setSetup] = useState<{ wake_time: string; blocked_windows: BlockedWindow[] } | null>(null);
@@ -68,15 +71,8 @@ export function TodaySchedulePanel({
   const checkinsFor = (id: string) => (weeklyBits?.checkins ?? []).filter((c) => c.weekly_task_id === id);
   const weeklyToday = (weeklyBits?.weeklyTasks ?? []).filter((t) => appearsToday(t, checkinsFor(t.id), today));
 
-  return (
-    <section className="hud-panel p-4">
-      <header className="flex items-center justify-between mb-2">
-        <h3 className="font-display text-xs font-semibold tracking-[0.25em] uppercase text-signal">
-          Today's Schedule
-        </h3>
-        <span className="hud-chip">{dueToday.length + weeklyToday.length}</span>
-      </header>
-
+  const body = (
+    <>
       {setup && (
         <p className="flex flex-wrap gap-1.5 mb-2">
           <span className="hud-chip hud-chip-signal">wake {setup.wake_time.slice(0, 5)}</span>
@@ -148,6 +144,20 @@ export function TodaySchedulePanel({
           );
         })}
       </div>
+    </>
+  );
+
+  if (bare) return body;
+
+  return (
+    <section className="hud-panel p-4">
+      <header className="flex items-center justify-between mb-2">
+        <h3 className="font-display text-xs font-semibold tracking-[0.25em] uppercase text-signal">
+          Today's Schedule
+        </h3>
+        <span className="hud-chip">{dueToday.length + weeklyToday.length}</span>
+      </header>
+      {body}
     </section>
   );
 }

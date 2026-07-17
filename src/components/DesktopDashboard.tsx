@@ -1,42 +1,33 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import GridLayout, { type LayoutItem } from "react-grid-layout";
 import { supabase } from "../lib/supabase";
 import type { CategoryStore } from "../hooks/useCategories";
 import type { Task, TaskStore } from "../hooks/useTasks";
 import type { WeeklyStore, WeeklyTask } from "../hooks/useWeeklyTasks";
 import { useBrief, type BriefContent } from "../hooks/useBrief";
+import { useDashboardLayout } from "../hooks/useDashboardLayout";
+import { DEFAULT_LABELS, catKey } from "../lib/dashboardLayout";
 import { edmontonToday } from "../lib/dates";
 import { computeSections, doneTodayCount, effectiveOrder } from "../lib/sections";
+import { CategoryPanelBody } from "./CategoryPanel";
 import { ChatBar } from "./ChatBar";
+import { DashSection } from "./DashSection";
 import { JournalView } from "./JournalView";
 import { Orb } from "./Orb";
 import { ScheduleSetupButton } from "./ScheduleSetup";
 import { TaskForm } from "./TaskForm";
-import { TaskList } from "./TaskList";
-import { WeeklyTasksView } from "./WeeklyTasksView";
+import { WeeklyTaskForm, WeeklyTasksView } from "./WeeklyTasksView";
 import { UpcomingDaysPanel } from "./board/DayBlocksPanel";
 import { PrioritiesPanel } from "./board/PrioritiesPanel";
 import { DropZone, TaskDndProvider, useActiveDrag } from "./board/TaskDnd";
 import { TodaySchedulePanel } from "./board/TodaySchedulePanel";
 
-function Panel({ title, hint, children }: { title: string; hint?: ReactNode; children: ReactNode }) {
-  return (
-    <section className="hud-panel p-5">
-      <header className="flex items-center justify-between mb-3">
-        <h2 className="font-display text-xs font-semibold tracking-[0.25em] uppercase text-signal">{title}</h2>
-        {hint}
-      </header>
-      {children}
-    </section>
-  );
-}
-
-function PlaceholderPanel({ title, copy }: { title: string; copy: string }) {
-  return (
-    <Panel title={title} hint={<span className="hud-chip">soon</span>}>
-      <p className="text-dim text-sm py-1.5">{copy}</p>
-    </Panel>
-  );
-}
+// react-grid-layout geometry: small rows + measured content heights so every
+// section is exactly as tall as what's inside it.
+const GRID_COLS = 12;
+const ROW_H = 10;
+const MARGIN = 20;
+const pxToUnits = (px: number) => Math.max(4, Math.ceil((px + MARGIN) / (ROW_H + MARGIN)));
 
 function greeting(hour: number): string {
   if (hour < 12) return "Good morning, Keenan";
@@ -72,14 +63,18 @@ export function DesktopDashboard({
   taskStore,
   weeklyStore,
   categoryStore,
+  customize,
 }: {
   taskStore: TaskStore;
   weeklyStore: WeeklyStore;
   categoryStore: CategoryStore;
+  customize: boolean;
 }) {
   const { tasks, loading } = taskStore;
   const { brief, loading: briefLoading, error, regenerate, saveManualOrder } = useBrief();
   const [editing, setEditing] = useState<Task | null>(null);
+  const [addWeekly, setAddWeekly] = useState(false);
+  const [addTaskCat, setAddTaskCat] = useState<string | null>(null);
   const [now, setNow] = useState(() => new Date());
 
   useEffect(() => {
@@ -106,6 +101,55 @@ export function DesktopDashboard({
     void saveManualOrder(ids);
   };
 
+  // ---- customize-mode layout: persisted per-user, heights measured live ----
+  const categoryIds = useMemo(() => categoryStore.categories.map((c) => c.id), [categoryStore.categories]);
+  const { layout: savedLayout, loaded: layoutLoaded, savePositions, saveLabel } = useDashboardLayout(categoryIds);
+  const [heights, setHeights] = useState<Record<string, number>>({});
+  const onMeasure = useCallback((key: string, px: number) => {
+    setHeights((prev) => (Math.abs((prev[key] ?? 0) - px) < 4 ? prev : { ...prev, [key]: px }));
+  }, []);
+
+  const gridRef = useRef<HTMLDivElement>(null);
+  const [gridWidth, setGridWidth] = useState(1200);
+  useEffect(() => {
+    const el = gridRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => setGridWidth(el.offsetWidth));
+    ro.observe(el);
+    setGridWidth(el.offsetWidth);
+    return () => ro.disconnect();
+  }, []);
+
+  const sectionKeys = useMemo(
+    () => ["weekly", ...categoryIds.map(catKey), "finance", "schedule", "upcoming", "jobs", "journal", "priorities"],
+    [categoryIds],
+  );
+
+  const labelFor = (key: string): string => {
+    const custom = savedLayout[key]?.label;
+    if (custom) return custom;
+    if (key.startsWith("cat:")) return categoryStore.byId.get(key.slice(4))?.name ?? "Category";
+    return DEFAULT_LABELS[key] ?? key;
+  };
+
+  const rglLayout: LayoutItem[] = sectionKeys.map((key) => {
+    const pos = savedLayout[key] ?? { x: 0, y: 999, w: 6 };
+    return {
+      i: key,
+      x: pos.x,
+      y: pos.y,
+      w: pos.w,
+      h: pxToUnits(heights[key] ?? 120),
+      minW: 3,
+      maxW: GRID_COLS,
+      resizeHandles: ["e", "w"] as const,
+    };
+  });
+
+  const onLayoutCommit = (l: readonly LayoutItem[]) =>
+    savePositions(l.map((it) => ({ key: it.i, x: it.x, y: it.y, w: it.w })));
+
+  // ---- clock / status ----
   const edmontonHour = Number(
     new Intl.DateTimeFormat("en-US", { timeZone: "America/Edmonton", hour: "numeric", hour12: false }).format(now),
   );
@@ -189,6 +233,81 @@ export function DesktopDashboard({
     };
   };
 
+  const sectionContent = (key: string) => {
+    if (key === "weekly") {
+      return (
+        <DropZone id="weekly">
+          <WeeklyDropHint />
+          <WeeklyTasksView {...weeklyStore} bare draggable />
+        </DropZone>
+      );
+    }
+    if (key.startsWith("cat:")) {
+      const cat = categoryStore.byId.get(key.slice(4));
+      if (!cat) return null;
+      return <CategoryPanelBody category={cat} tasks={tasks} cardProps={cardProps} />;
+    }
+    if (key === "finance") return <p className="text-dim text-sm py-1.5">Balance and spending land here in Phase 6.</p>;
+    if (key === "jobs") return <p className="text-dim text-sm py-1.5">The jobs log lands here in Phase 3.</p>;
+    if (key === "schedule") return <TodaySchedulePanel bare dueToday={dueToday} cardProps={cardProps} weeklyBits={weeklyStore} />;
+    if (key === "upcoming") return <UpcomingDaysPanel bare openTasks={open} today={today} onEdit={setEditing} />;
+    if (key === "journal") return <JournalView compact />;
+    if (key === "priorities") {
+      return (
+        <PrioritiesPanel
+          bare
+          orderedTasks={orderedTasks}
+          today={today}
+          onEdit={setEditing}
+          onMove={move}
+          manualOrder={brief?.manual_order !== null && brief?.manual_order !== undefined}
+          categoryOf={cardProps.categoryOf}
+        />
+      );
+    }
+    return null;
+  };
+
+  const hintFor = (key: string) => {
+    if (key === "weekly") return <span className="hud-chip">{weeklyStore.weeklyTasks.length}</span>;
+    if (key === "schedule") return <span className="hud-chip">{dueToday.length}</span>;
+    if (key === "priorities") {
+      return (
+        <span
+          role="button"
+          tabIndex={0}
+          onClick={() => void regenerate()}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") void regenerate();
+          }}
+          className="hud-chip hud-chip-signal cursor-pointer focus-visible:outline-2 focus-visible:outline-signal"
+          aria-label="Regenerate brief"
+        >
+          {briefLoading ? "…" : generatedAt ? `⟳ ${generatedAt}` : "⟳ generate"}
+        </span>
+      );
+    }
+    if (key.startsWith("cat:")) {
+      const cat = categoryStore.byId.get(key.slice(4));
+      const count = cat ? open.filter((t) => t.category_id === cat.id).length : 0;
+      return (
+        <span className="flex items-center gap-1.5">
+          {cat && (
+            <span className="w-2 h-2 rounded-full" style={{ background: cat.color, boxShadow: `0 0 8px ${cat.color}` }} aria-hidden="true" />
+          )}
+          <span className="hud-chip">{count}</span>
+        </span>
+      );
+    }
+    return undefined;
+  };
+
+  const onAddFor = (key: string) => {
+    if (key === "weekly") return () => setAddWeekly(true);
+    if (key.startsWith("cat:")) return () => setAddTaskCat(key.slice(4));
+    return undefined; // spec: "+" lives on Weekly Tasks and category panels
+  };
+
   return (
     <TaskDndProvider
       tasks={open}
@@ -205,7 +324,7 @@ export function DesktopDashboard({
       }}
     >
       <div className="min-h-dvh flex flex-col">
-        {/* top bar — wordmark lives in the sidebar; pr clears the global add pencil */}
+        {/* top bar — wordmark lives in the sidebar; pr clears the global pencil */}
         <header className="flex items-center justify-between px-10 pr-24 py-5 gap-4">
           <span className={`text-[15px] ${sections.overdue.length > 0 ? "text-amber" : "text-dim"}`}>{status}</span>
           <div className="flex items-center gap-4">
@@ -217,7 +336,8 @@ export function DesktopDashboard({
           </div>
         </header>
 
-        {/* HERO: orb + greeting + capture bar, centered */}
+        {/* HERO: orb + greeting + capture bar — fixed in place; sections
+            rearrange around it, never over it */}
         <div className="flex flex-col items-center px-10">
           <Orb size={380} />
           <div className="text-center -mt-3 max-w-[520px]">
@@ -240,65 +360,51 @@ export function DesktopDashboard({
           </div>
         </div>
 
-        {/* DASHBOARD LAYOUT (BUILD_PLAN): explicit two-column split, not a
-            vertical stack. LEFT: Weekly Tasks → category panels → Finance.
-            RIGHT: Today's Schedule → Upcoming Days → Active Jobs → Journal.
-            Priorities full-width below both. */}
-        <div className="px-10 pt-7 pb-10 space-y-6">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
-            {/* LEFT column */}
-            <div className="flex flex-col gap-6 min-w-0">
-              <DropZone id="weekly">
-                <Panel title="Weekly Tasks" hint={<span className="hud-chip">{weeklyStore.weeklyTasks.length}</span>}>
-                  <WeeklyDropHint />
-                  <WeeklyTasksView {...weeklyStore} bare draggable />
-                </Panel>
-              </DropZone>
-
-              <TaskList {...taskStore} categoryStore={categoryStore} droppableCategories />
-
-              <PlaceholderPanel title="Finance" copy="Balance and spending land here in Phase 6." />
-            </div>
-
-            {/* RIGHT column */}
-            <div className="flex flex-col gap-6 min-w-0">
-              <TodaySchedulePanel dueToday={dueToday} cardProps={cardProps} weeklyBits={weeklyStore} />
-              <UpcomingDaysPanel openTasks={open} today={today} onEdit={setEditing} />
-              <PlaceholderPanel title="Active Jobs" copy="The jobs log lands here in Phase 3." />
-              <Panel title="Journal">
-                <JournalView compact />
-              </Panel>
-            </div>
-          </div>
-
-          <PrioritiesPanel
-            orderedTasks={orderedTasks}
-            today={today}
-            onEdit={setEditing}
-            onMove={move}
-            manualOrder={brief?.manual_order !== null && brief?.manual_order !== undefined}
-            categoryOf={cardProps.categoryOf}
-            headerExtra={
-              <span
-                role="button"
-                tabIndex={0}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  void regenerate();
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" || e.key === " ") {
-                    e.stopPropagation();
-                    void regenerate();
-                  }
-                }}
-                className="hud-chip hud-chip-signal cursor-pointer focus-visible:outline-2 focus-visible:outline-signal"
-                aria-label="Regenerate brief"
-              >
-                {briefLoading ? "…" : generatedAt ? `⟳ ${generatedAt}` : "⟳ generate"}
-              </span>
-            }
-          />
+        {/* CUSTOMIZABLE GRID: default = the two-column split; customize mode
+            makes every section drag-repositionable + horizontally resizable,
+            persisted per-user in dashboard_layouts */}
+        <div ref={gridRef} className="px-10 pt-5 pb-10">
+          {layoutLoaded && (
+            <GridLayout
+              width={gridWidth - 0}
+              layout={rglLayout}
+              gridConfig={{ cols: GRID_COLS, rowHeight: ROW_H, margin: [MARGIN, MARGIN], containerPadding: [0, 0] }}
+              dragConfig={{
+                enabled: customize,
+                // Keep buttons/fields/dnd-kit item rows interactive while ON —
+                // .touch-manipulation is the DraggableRow marker class
+                cancel: "button, input, textarea, select, a, .touch-manipulation",
+                threshold: 6,
+              }}
+              resizeConfig={{ enabled: customize, handles: ["e", "w"] }}
+              onDragStop={(l: readonly LayoutItem[]) => onLayoutCommit(l)}
+              onResizeStop={(l: readonly LayoutItem[]) => onLayoutCommit(l)}
+            >
+              {sectionKeys.map((key) => (
+                <div key={key}>
+                  <DashSection
+                    sectionKey={key}
+                    title={labelFor(key)}
+                    customize={customize}
+                    onRename={(label) =>
+                      saveLabel(
+                        key,
+                        label,
+                        key.startsWith("cat:")
+                          ? categoryStore.byId.get(key.slice(4))?.name ?? ""
+                          : DEFAULT_LABELS[key] ?? "",
+                      )
+                    }
+                    onAdd={onAddFor(key)}
+                    hint={hintFor(key)}
+                    onMeasure={onMeasure}
+                  >
+                    {sectionContent(key)}
+                  </DashSection>
+                </div>
+              ))}
+            </GridLayout>
+          )}
         </div>
 
         {editing && (
@@ -311,6 +417,25 @@ export function DesktopDashboard({
             }}
             onDelete={async () => {
               await taskStore.deleteTask(editing.id);
+            }}
+          />
+        )}
+
+        {addWeekly && (
+          <WeeklyTaskForm
+            onClose={() => setAddWeekly(false)}
+            onSubmit={async (input) => {
+              await weeklyStore.addWeeklyTask(input);
+            }}
+          />
+        )}
+        {addTaskCat && (
+          <TaskForm
+            categories={categoryStore.categories}
+            defaults={{ category_id: addTaskCat }}
+            onClose={() => setAddTaskCat(null)}
+            onSubmit={async (input) => {
+              await taskStore.addTask(input);
             }}
           />
         )}

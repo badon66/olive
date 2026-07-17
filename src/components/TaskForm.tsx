@@ -11,12 +11,14 @@ type Props = {
   onClose: () => void;
   // Deleting lives inside the item's edit modal (revised editing pattern)
   onDelete?: () => Promise<void>;
+  // Presets for section-scoped adds (customize-mode "+" on a category panel)
+  defaults?: { category_id?: string; due_date?: string };
 };
 
-export function TaskForm({ initial, categories, onSubmit, onClose, onDelete }: Props) {
+export function TaskForm({ initial, categories, onSubmit, onClose, onDelete, defaults }: Props) {
   const [title, setTitle] = useState(initial?.title ?? "");
-  const [categoryId, setCategoryId] = useState(initial?.category_id ?? categories[0]?.id ?? "");
-  const [dueDate, setDueDate] = useState(initial?.due_date ?? "");
+  const [categoryId, setCategoryId] = useState(initial?.category_id ?? defaults?.category_id ?? categories[0]?.id ?? "");
+  const [dueDate, setDueDate] = useState(initial?.due_date ?? defaults?.due_date ?? "");
   const [priority, setPriority] = useState(initial?.priority_weight ?? 3);
   const [scheduledTime, setScheduledTime] = useState(initial?.scheduled_time?.slice(0, 5) ?? "");
   const [timeSection, setTimeSection] = useState<TimeSection | "">(initial?.time_section ?? "");

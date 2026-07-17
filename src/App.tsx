@@ -1,14 +1,14 @@
 import { useState } from "react";
-import { AddMenu, type AddKind } from "./components/AddMenu";
 import { AuthGate } from "./components/AuthGate";
 import { BriefView } from "./components/BriefView";
 import { ChatBar } from "./components/ChatBar";
+import { CustomizeToggle } from "./components/CustomizeToggle";
 import { DesktopDashboard } from "./components/DesktopDashboard";
 import { JournalView } from "./components/JournalView";
 import { NAV_LABELS, Sidebar, type NavKey } from "./components/Sidebar";
-import { CategoryForm, TaskList } from "./components/TaskList";
 import { TaskForm } from "./components/TaskForm";
-import { WeeklyTaskForm, WeeklyTasksView } from "./components/WeeklyTasksView";
+import { TaskList } from "./components/TaskList";
+import { WeeklyTasksView } from "./components/WeeklyTasksView";
 import { useCategories } from "./hooks/useCategories";
 import { useMediaQuery } from "./hooks/useMediaQuery";
 import { useTasks, type Task } from "./hooks/useTasks";
@@ -36,14 +36,20 @@ function Shell() {
   const [nav, setNav] = useState<NavKey>("dashboard");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [editTask, setEditTask] = useState<Task | null>(null);
-  const [addKind, setAddKind] = useState<AddKind | null>(null);
+  // The top-corner pencil: single ON/OFF customize-mode toggle (global)
+  const [customize, setCustomize] = useState(false);
   const isDesktop = useMediaQuery("(min-width: 1024px)");
   const taskStore = useTasks();
   const weeklyStore = useWeeklyTasks();
   const categoryStore = useCategories();
 
   const dashboard = isDesktop ? (
-    <DesktopDashboard taskStore={taskStore} weeklyStore={weeklyStore} categoryStore={categoryStore} />
+    <DesktopDashboard
+      taskStore={taskStore}
+      weeklyStore={weeklyStore}
+      categoryStore={categoryStore}
+      customize={customize}
+    />
   ) : (
     <div className="px-4 py-4 pb-32 max-w-2xl w-full mx-auto">
       <BriefView
@@ -55,6 +61,7 @@ function Shell() {
         onEdit={setEditTask}
         categoryStore={categoryStore}
         weeklyStore={weeklyStore}
+        customize={customize}
       />
     </div>
   );
@@ -64,7 +71,9 @@ function Shell() {
       dashboard
     ) : (
       <div className={`px-4 lg:px-10 py-5 pb-32 w-full ${nav === "journal" ? "max-w-3xl" : "max-w-5xl"}`}>
-        {nav === "tasks" && <TaskList {...taskStore} categoryStore={categoryStore} />}
+        {nav === "tasks" && (
+          <TaskList {...taskStore} categoryStore={categoryStore} customize={customize} />
+        )}
         {nav === "weekly" && <WeeklyTasksView {...weeklyStore} />}
         {nav === "journal" && <JournalView />}
         {(nav === "jobs" || nav === "finance" || nav === "groceries" || nav === "settings") && (
@@ -78,7 +87,7 @@ function Shell() {
       <Sidebar active={nav} onNavigate={setNav} open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
 
       <div className="flex-1 min-w-0 flex flex-col">
-        {/* mobile top bar: hamburger + wordmark (sidebar is the only nav) */}
+        {/* mobile top bar: hamburger + wordmark + customize pencil */}
         {!isDesktop && (
           <header className="sticky top-0 z-30 px-4 pt-[env(safe-area-inset-top)] bg-void/80 backdrop-blur-md">
             <div className="flex items-center justify-between py-2.5 border-b border-panel-border">
@@ -94,16 +103,16 @@ function Shell() {
               <h1 className="font-display text-signal text-base tracking-[0.25em] text-glow">
                 {nav === "dashboard" ? "OLIVE" : NAV_LABELS[nav].toUpperCase()}
               </h1>
-              <AddMenu onSelect={setAddKind} />
+              <CustomizeToggle on={customize} onToggle={() => setCustomize(!customize)} />
             </div>
           </header>
         )}
 
         <main className="flex-1 relative">
-          {/* ONE pencil, top corner of the main content (desktop) — opens the add-new menu */}
+          {/* ONE pencil, top corner of the main content (desktop): customize ON/OFF */}
           {isDesktop && (
             <div className="absolute top-4 right-10 z-30">
-              <AddMenu onSelect={setAddKind} />
+              <CustomizeToggle on={customize} onToggle={() => setCustomize(!customize)} />
             </div>
           )}
           {inner}
@@ -130,33 +139,6 @@ function Shell() {
           }}
           onDelete={async () => {
             await taskStore.deleteTask(editTask.id);
-          }}
-        />
-      )}
-
-      {/* Add-new modals, launched from the pencil menu */}
-      {addKind === "task" && (
-        <TaskForm
-          categories={categoryStore.categories}
-          onClose={() => setAddKind(null)}
-          onSubmit={async (input) => {
-            await taskStore.addTask(input);
-          }}
-        />
-      )}
-      {addKind === "weekly" && (
-        <WeeklyTaskForm
-          onClose={() => setAddKind(null)}
-          onSubmit={async (input) => {
-            await weeklyStore.addWeeklyTask(input);
-          }}
-        />
-      )}
-      {addKind === "category" && (
-        <CategoryForm
-          onClose={() => setAddKind(null)}
-          onSubmit={async (name, color) => {
-            await categoryStore.addCategory(name, color);
           }}
         />
       )}
