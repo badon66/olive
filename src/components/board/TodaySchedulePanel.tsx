@@ -27,8 +27,9 @@ type CardProps = {
 type WeeklyBits = {
   weeklyTasks: WeeklyTask[];
   checkins: WeeklyCheckin[];
-  completeDay: (id: string, date: string) => Promise<void>;
+  completeDay: (id: string, date: string) => Promise<WeeklyCheckin | null>;
   uncompleteDay: (task: WeeklyTask, date: string) => Promise<void>;
+  saveDetail: (checkinId: string, detail: { note: string | null; duration_minutes: number | null }) => Promise<void>;
 };
 
 // Tasks due today grouped by time_section, plus weekly tasks that belong today
@@ -48,6 +49,10 @@ export function TodaySchedulePanel({
 }) {
   const today = cardProps.today;
   const [setup, setSetup] = useState<{ wake_time: string; blocked_windows: BlockedWindow[] } | null>(null);
+  // Every check-in offers an optional note/duration — one tap to skip (spec)
+  const [detailFor, setDetailFor] = useState<WeeklyCheckin | null>(null);
+  const [note, setNote] = useState("");
+  const [duration, setDuration] = useState("");
 
   useEffect(() => {
     let alive = true;
@@ -103,13 +108,22 @@ export function TodaySchedulePanel({
                 <div className="divide-y divide-signal-dim/15">
                   {sectionWeekly.map((t) => {
                     const checked = checkinsFor(t.id).some((c) => c.date === today && c.status === "completed");
+                    const showDetail = detailFor !== null && detailFor.weekly_task_id === t.id;
                     return (
                       <DraggableWeekly key={t.id} zone="schedweekly" weekly={t}>
                         <div className="flex items-center gap-3 py-1.5">
                           <button
-                            onClick={() =>
-                              checked ? void weeklyBits!.uncompleteDay(t, today) : void weeklyBits!.completeDay(t.id, today)
-                            }
+                            onClick={async () => {
+                              if (checked) {
+                                setDetailFor(null);
+                                await weeklyBits!.uncompleteDay(t, today);
+                              } else {
+                                const fresh = await weeklyBits!.completeDay(t.id, today);
+                                setNote("");
+                                setDuration("");
+                                if (fresh) setDetailFor(fresh);
+                              }
+                            }}
                             aria-label={checked ? `Uncheck ${t.name}` : `Check off ${t.name}`}
                             className="shrink-0 w-9 h-9 grid place-items-center cursor-pointer focus-visible:outline-2 focus-visible:outline-signal rounded-full"
                           >
@@ -130,6 +144,44 @@ export function TodaySchedulePanel({
                           </span>
                           <span className="hud-chip shrink-0">weekly</span>
                         </div>
+                        {showDetail && (
+                          <div className="flex items-center gap-2 mb-1.5 ml-12">
+                            <input
+                              className="hud-input flex-1 !min-h-[36px] text-sm"
+                              placeholder="note — optional"
+                              value={note}
+                              onChange={(e) => setNote(e.target.value)}
+                              autoFocus
+                            />
+                            <input
+                              className="hud-input w-18 !min-h-[36px] text-sm"
+                              type="number"
+                              min="1"
+                              placeholder="min"
+                              value={duration}
+                              onChange={(e) => setDuration(e.target.value)}
+                              aria-label="Duration in minutes — optional"
+                            />
+                            <button
+                              className="hud-button !min-h-[36px] px-3"
+                              onClick={async () => {
+                                await weeklyBits!.saveDetail(detailFor!.id, {
+                                  note: note.trim() || null,
+                                  duration_minutes: duration.trim() ? Math.max(1, Number(duration)) : null,
+                                });
+                                setDetailFor(null);
+                              }}
+                            >
+                              Save
+                            </button>
+                            <button
+                              className="hud-button !min-h-[36px] px-3 !border-signal-dim/40 !text-dim"
+                              onClick={() => setDetailFor(null)}
+                            >
+                              Skip
+                            </button>
+                          </div>
+                        )}
                       </DraggableWeekly>
                     );
                   })}

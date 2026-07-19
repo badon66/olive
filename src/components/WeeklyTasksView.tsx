@@ -65,8 +65,9 @@ export function WeeklyTasksView({
         setDetailFor(null);
         await uncompleteDay(t, date);
       } else {
-        await completeDay(t.id, date);
-        const fresh = (checkinsByTask.get(t.id) ?? []).find((c) => c.date === date);
+        // completeDay returns the written row — the render-time checkin list is
+        // stale here and would miss a brand-new checkin
+        const fresh = await completeDay(t.id, date);
         setNote("");
         setDuration("");
         if (fresh) setDetailFor(fresh); // offer detail — one tap to skip

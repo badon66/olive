@@ -14,8 +14,8 @@ export default defineConfig({
         name: "Olive",
         short_name: "Olive",
         description: "Personal assistant — tasks, daily brief",
-        theme_color: "#050B0A",
-        background_color: "#050B0A",
+        theme_color: "#070D0A",
+        background_color: "#070D0A",
         display: "standalone",
         icons: [
           { src: "pwa-192x192.png", sizes: "192x192", type: "image/png" },

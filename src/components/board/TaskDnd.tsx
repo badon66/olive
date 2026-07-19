@@ -37,7 +37,7 @@ export type DndDeps = {
   // Weekly task drops: into a schedule section, or onto a day block (plans just
   // that day — a `planned` checkin, not the recurring pattern)
   setWeeklySection?: (id: string, section: TimeSection | null) => Promise<void>;
-  planWeeklyDay?: (id: string, date: string) => Promise<void>;
+  planWeeklyDay?: (id: string, date: string) => Promise<unknown>;
   // Two-way conversion (BUILD_PLAN): each returns an undo closure for the toast
   convertTaskToWeekly?: (task: Task) => Promise<() => Promise<void>>;
   convertWeeklyToTask?: (weekly: WeeklyTask, categoryId: string) => Promise<() => Promise<void>>;

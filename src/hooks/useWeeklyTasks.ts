@@ -37,13 +37,16 @@ export function useWeeklyTasks() {
   const userId = async () => (await supabase.auth.getUser()).data.user!.id;
 
   const upsertStatus = async (weeklyTaskId: string, date: string, status: "planned" | "completed") => {
-    await supabase
+    const { data } = await supabase
       .from("weekly_task_checkins")
       .upsert(
         { weekly_task_id: weeklyTaskId, date, status, user_id: await userId() },
         { onConflict: "weekly_task_id,date" },
-      );
+      )
+      .select("*")
+      .single();
     await refresh();
+    return data ?? null;
   };
 
   return {
