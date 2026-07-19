@@ -105,7 +105,10 @@ export function DesktopDashboard({
   const categoryIds = useMemo(() => categoryStore.categories.map((c) => c.id), [categoryStore.categories]);
   const { layout: savedLayout, loaded: layoutLoaded, savePositions, saveLabel } = useDashboardLayout(categoryIds);
   const [heights, setHeights] = useState<Record<string, number>>({});
+  // Frozen mid-gesture: a relayout from remeasurement would cancel the drag
+  const sectionDragging = useRef(false);
   const onMeasure = useCallback((key: string, px: number) => {
+    if (sectionDragging.current) return;
     setHeights((prev) => (Math.abs((prev[key] ?? 0) - px) < 4 ? prev : { ...prev, [key]: px }));
   }, []);
 
@@ -322,6 +325,7 @@ export function DesktopDashboard({
         convertTaskToWeekly,
         convertWeeklyToTask,
       }}
+      itemDragDisabled={customize}
     >
       <div className="min-h-dvh flex flex-col">
         {/* top bar — wordmark lives in the sidebar; pr clears the global pencil */}
@@ -371,13 +375,20 @@ export function DesktopDashboard({
               gridConfig={{ cols: GRID_COLS, rowHeight: ROW_H, margin: [MARGIN, MARGIN], containerPadding: [0, 0] }}
               dragConfig={{
                 enabled: customize,
-                // Keep buttons/fields/dnd-kit item rows interactive while ON —
-                // .touch-manipulation is the DraggableRow marker class
-                cancel: "button, input, textarea, select, a, .touch-manipulation",
+                // The WHOLE section box is the drag surface (spec). Only truly
+                // interactive controls cancel a section drag — item rows must
+                // NOT: their own dragging is suspended while customize is ON.
+                cancel: "button, input, textarea, select, a",
                 threshold: 6,
               }}
               resizeConfig={{ enabled: customize, handles: ["e", "w"] }}
-              onDragStop={(l: readonly LayoutItem[]) => onLayoutCommit(l)}
+              onDragStart={() => {
+                sectionDragging.current = true;
+              }}
+              onDragStop={(l: readonly LayoutItem[]) => {
+                sectionDragging.current = false;
+                onLayoutCommit(l);
+              }}
               onResizeStop={(l: readonly LayoutItem[]) => onLayoutCommit(l)}
             >
               {sectionKeys.map((key) => (

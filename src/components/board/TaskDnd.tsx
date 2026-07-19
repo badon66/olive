@@ -46,6 +46,10 @@ export type DndDeps = {
 const ActiveDragContext = createContext<ActiveDrag | null>(null);
 export const useActiveDrag = () => useContext(ActiveDragContext);
 
+// While customize mode is ON, item-level dragging (tasks/weeklies between
+// panels) is suspended so react-grid-layout owns the pointer for SECTION drags.
+const ItemDragDisabledContext = createContext(false);
+
 // Pointer-precise across panels, rectangle fallback while sorting long lists
 const collision: CollisionDetection = (args) => {
   const precise = pointerWithin(args);
@@ -58,11 +62,13 @@ export function TaskDndProvider({
   deps,
   tasks,
   weeklyTasks = [],
+  itemDragDisabled = false,
   children,
 }: {
   deps: DndDeps;
   tasks: Task[];
   weeklyTasks?: WeeklyTask[];
+  itemDragDisabled?: boolean;
   children: ReactNode;
 }) {
   const [active, setActive] = useState<ActiveDrag | null>(null);
@@ -140,6 +146,7 @@ export function TaskDndProvider({
 
   return (
     <ActiveDragContext.Provider value={active}>
+      <ItemDragDisabledContext.Provider value={itemDragDisabled}>
       <DndContext
         sensors={sensors}
         collisionDetection={collision}
@@ -174,6 +181,7 @@ export function TaskDndProvider({
           </button>
         </div>
       )}
+      </ItemDragDisabledContext.Provider>
     </ActiveDragContext.Provider>
   );
 }
@@ -191,8 +199,12 @@ function DraggableRow({
   children: ReactNode;
   className?: string;
 }) {
-  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id, data });
+  // Suspended while customize mode is ON — the section (react-grid-layout)
+  // owns the pointer then, so rows must not swallow the drag.
+  const disabled = useContext(ItemDragDisabledContext);
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id, data, disabled });
   const style: CSSProperties = isDragging ? { opacity: 0.35 } : {};
+  if (disabled) return <div className={className}>{children}</div>;
   return (
     <div
       ref={setNodeRef}
