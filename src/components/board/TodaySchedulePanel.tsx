@@ -4,6 +4,7 @@ import type { Task } from "../../hooks/useTasks";
 import type { WeeklyCheckin, WeeklyTask } from "../../hooks/useWeeklyTasks";
 import type { BlockedWindow } from "../../lib/api";
 import { SECTION_ORDER, scheduleSort, type TimeSection } from "../../lib/sections";
+import { pullForward } from "../../lib/suggest";
 import { appearsToday } from "../../lib/weekly";
 import { TaskCard } from "../TaskCard";
 import { DraggableTask, DraggableWeekly, DropZone } from "./TaskDnd";
@@ -37,11 +38,14 @@ type WeeklyBits = {
 // Shows today's wake time + blocked windows when a schedule setup exists.
 export function TodaySchedulePanel({
   dueToday,
+  openTasks,
   cardProps,
   weeklyBits,
   bare = false,
 }: {
   dueToday: Task[];
+  // All open tasks — needed to find unscheduled pull-forward candidates
+  openTasks: Task[];
   cardProps: CardProps;
   weeklyBits?: WeeklyBits;
   // bare: content only — the dashboard's DashSection provides panel + title
@@ -76,6 +80,14 @@ export function TodaySchedulePanel({
   const checkinsFor = (id: string) => (weeklyBits?.checkins ?? []).filter((c) => c.weekly_task_id === id);
   const weeklyToday = (weeklyBits?.weeklyTasks ?? []).filter((t) => appearsToday(t, checkinsFor(t.id), today));
 
+  // Pull-forward suggestions: unscheduled tasks filling sparse, unblocked
+  // sections. Recomputes when tasks or blocked windows change; the result is a
+  // pure function so no memo needed for correctness.
+  const pulled = pullForward(openTasks, today, setup?.blocked_windows ?? []);
+  const byId = new Map(openTasks.map((t) => [t.id, t]));
+  const pulledFor = (section: TimeSection): Task[] =>
+    pulled[section].map((id) => byId.get(id)).filter((t): t is Task => !!t);
+
   const body = (
     <>
       {setup && (
@@ -97,12 +109,13 @@ export function TodaySchedulePanel({
         {SECTION_ORDER.map((section) => {
           const items = dueToday.filter((t) => (t.time_section ?? "anytime") === section).sort(scheduleSort);
           const sectionWeekly = weeklyToday.filter((t) => (t.time_section ?? "anytime") === section);
+          const suggestions = pulledFor(section);
           return (
             <DropZone key={section} id={`section:${section}`} className="border border-signal-dim/15 rounded p-2">
               <p className="font-data text-[11px] text-dim uppercase tracking-widest mb-0.5">
                 {SECTION_LABELS[section]}
               </p>
-              {items.length === 0 && sectionWeekly.length === 0 ? (
+              {items.length === 0 && sectionWeekly.length === 0 && suggestions.length === 0 ? (
                 <p className="text-dim/50 text-xs py-1">—</p>
               ) : (
                 <div className="divide-y divide-signal-dim/15">
@@ -188,6 +201,18 @@ export function TodaySchedulePanel({
                   {items.map((t) => (
                     <DraggableTask key={t.id} zone="sched" task={t}>
                       <TaskCard task={t} {...cardProps} category={cardProps.categoryOf?.(t)} />
+                    </DraggableTask>
+                  ))}
+                  {/* Pull-forward suggestions — visually distinct, never blended
+                      with due-today items; dragging one commits it to this section */}
+                  {suggestions.map((t) => (
+                    <DraggableTask key={`pf-${t.id}`} zone="sched" task={t}>
+                      <div className="relative opacity-70">
+                        <span className="absolute right-0 top-2 hud-chip !border-signal-dim/40 !text-signal-dim z-10">
+                          pulled forward
+                        </span>
+                        <TaskCard task={t} {...cardProps} category={cardProps.categoryOf?.(t)} />
+                      </div>
                     </DraggableTask>
                   ))}
                 </div>

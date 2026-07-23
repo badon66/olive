@@ -252,7 +252,7 @@ export function DesktopDashboard({
     }
     if (key === "finance") return <p className="text-dim text-sm py-1.5">Balance and spending land here in Phase 6.</p>;
     if (key === "jobs") return <p className="text-dim text-sm py-1.5">The jobs log lands here in Phase 3.</p>;
-    if (key === "schedule") return <TodaySchedulePanel bare dueToday={dueToday} cardProps={cardProps} weeklyBits={weeklyStore} />;
+    if (key === "schedule") return <TodaySchedulePanel bare dueToday={dueToday} openTasks={open} cardProps={cardProps} weeklyBits={weeklyStore} />;
     if (key === "upcoming") return <UpcomingDaysPanel bare openTasks={open} today={today} onEdit={setEditing} />;
     if (key === "journal") return <JournalView compact />;
     if (key === "priorities") {

@@ -169,7 +169,7 @@ export function BriefView({ tasks, loading, completeTask, reopenTask, updateTask
           />
         )}
 
-        <TodaySchedulePanel dueToday={dueToday} cardProps={cardProps} weeklyBits={weeklyStore} />
+        <TodaySchedulePanel dueToday={dueToday} openTasks={open} cardProps={cardProps} weeklyBits={weeklyStore} />
 
         <UpcomingDaysPanel openTasks={open} today={today} onEdit={onEdit} />
 

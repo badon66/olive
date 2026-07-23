@@ -72,7 +72,7 @@ function Shell() {
     ) : (
       <div className={`px-4 lg:px-10 py-5 pb-32 w-full ${nav === "journal" ? "max-w-3xl" : "max-w-5xl"}`}>
         {nav === "tasks" && (
-          <TaskList {...taskStore} categoryStore={categoryStore} customize={customize} />
+          <TaskList {...taskStore} categoryStore={categoryStore} customize={customize} filterable />
         )}
         {nav === "weekly" && <WeeklyTasksView {...weeklyStore} />}
         {nav === "journal" && <JournalView />}

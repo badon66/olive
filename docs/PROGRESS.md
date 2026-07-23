@@ -18,10 +18,12 @@ This file tracks what's actually built, what's verified, and known gaps.
 
 **Blocked, not code**: live NL capture + journal cleaning need Anthropic API credits (key is valid, in Vault; account balance is $0 — console.anthropic.com → Plans & Billing).
 
+**Recently closed**:
+- ✅ Suggested-schedule pull-forward (`src/lib/suggest.ts`, 8 tests): unscheduled tasks fill sparse, unblocked time sections in Today's Schedule using `duration_minutes` (120-min soft cap, 30-min default). Rendered dimmed with a "pulled forward" chip — never blended with due-today items; dragging one commits it. Blocked windows (from `daily_schedule_setup`) are skipped via fixed section clock ranges.
+- ✅ Tasks-tab filters: category / status (open·completed·all) / scheduled·not-scheduled, with a reset + count. Dashboard TaskList unaffected (`filterable` only on the Tasks sidebar tab).
+
 **Known gaps (deliberately not built yet)**:
-- Suggested-schedule pull-forward (fill quiet sections using duration_minutes) and blocked-window avoidance — windows are parsed/stored/shown, nothing avoids them yet.
-- Tasks-tab filters (category/status/scheduled).
-- Wake-time-shifted section boundaries (sections are labeled buckets, not clock-anchored).
+- Wake-time-shifted section boundaries (sections are labeled buckets, not clock-anchored). Pull-forward's blocked-window detection uses fixed clock ranges (morning 5–11, midday 11–14, afternoon 14–17, evening 17–23) as a stand-in until this lands.
 - "Hold-and-drag" for sections = 6px movement threshold, not a timed hold (react-grid-layout has no hold delay).
 - Customize drag/resize is desktop-only; mobile pencil reveals "+" adds only.
 

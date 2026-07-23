@@ -22,20 +22,43 @@ type Props = {
   // Customize mode ON: section headers show "+" adds (tasks into a category,
   // new categories). OFF: clean view — adds via voice or the dashboard.
   customize?: boolean;
+  // Tasks sidebar tab: full management view with category/status/scheduled
+  // filters over all tasks all-time (not the dashboard's glanceable today).
+  filterable?: boolean;
 };
+
+type StatusFilter = "open" | "completed" | "all";
+type SchedFilter = "all" | "scheduled" | "unscheduled";
 
 // Editing pattern: clicking a task opens its edit modal; clicking a category
 // chip opens that category's edit modal — always, no toggle needed.
-export function TaskList({ tasks, loading, categoryStore, addTask, updateTask, completeTask, reopenTask, deleteTask, droppableCategories = false, customize = false }: Props) {
+export function TaskList({ tasks, loading, categoryStore, addTask, updateTask, completeTask, reopenTask, deleteTask, droppableCategories = false, customize = false, filterable = false }: Props) {
   const { categories } = categoryStore;
   const [editing, setEditing] = useState<Task | null>(null);
   const [showCompleted, setShowCompleted] = useState(false);
   const [editCategory, setEditCategory] = useState<CategoryRow | null>(null);
   const [addTaskCat, setAddTaskCat] = useState<string | null>(null);
   const [addingCategory, setAddingCategory] = useState(false);
+  // Tasks-tab filters (ignored unless `filterable`)
+  const [catFilter, setCatFilter] = useState<string>("all");
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("open");
+  const [schedFilter, setSchedFilter] = useState<SchedFilter>("all");
   const today = edmontonToday();
 
   const open = useMemo(() => tasks.filter((t) => t.status === "open"), [tasks]);
+
+  // Filterable view: the set shown in the category panels honours all filters
+  const filtered = useMemo(() => {
+    if (!filterable) return open;
+    return tasks
+      .filter((t) => (statusFilter === "all" ? true : t.status === statusFilter))
+      .filter((t) =>
+        schedFilter === "all" ? true : schedFilter === "scheduled" ? t.due_date !== null : t.due_date === null,
+      );
+  }, [filterable, tasks, open, statusFilter, schedFilter]);
+
+  const shownCategories = filterable && catFilter !== "all" ? categories.filter((c) => c.id === catFilter) : categories;
+  const displaySet = filterable ? filtered : open;
   const completed = useMemo(
     () =>
       tasks
@@ -54,11 +77,49 @@ export function TaskList({ tasks, loading, categoryStore, addTask, updateTask, c
 
   if (loading || categoryStore.loading) return <p className="text-dim pulse-live">Loading tasks…</p>;
 
+  const selectCls =
+    "hud-input !min-h-[38px] !w-auto text-sm cursor-pointer py-1 pr-7";
+
   return (
     <div className="space-y-4">
+      {filterable && (
+        <section className="hud-panel p-3 flex flex-wrap items-center gap-2">
+          <span className="font-data text-[11px] text-dim uppercase tracking-wider mr-1">Filter</span>
+          <select className={selectCls} value={catFilter} onChange={(e) => setCatFilter(e.target.value)} aria-label="Filter by category">
+            <option value="all" className="bg-void">All categories</option>
+            {categories.map((c) => (
+              <option key={c.id} value={c.id} className="bg-void">{c.name}</option>
+            ))}
+          </select>
+          <select className={selectCls} value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as StatusFilter)} aria-label="Filter by status">
+            <option value="open" className="bg-void">Open</option>
+            <option value="completed" className="bg-void">Completed</option>
+            <option value="all" className="bg-void">All statuses</option>
+          </select>
+          <select className={selectCls} value={schedFilter} onChange={(e) => setSchedFilter(e.target.value as SchedFilter)} aria-label="Filter by scheduled">
+            <option value="all" className="bg-void">Scheduled &amp; not</option>
+            <option value="scheduled" className="bg-void">Scheduled</option>
+            <option value="unscheduled" className="bg-void">Not scheduled</option>
+          </select>
+          {(catFilter !== "all" || statusFilter !== "open" || schedFilter !== "all") && (
+            <button
+              onClick={() => {
+                setCatFilter("all");
+                setStatusFilter("open");
+                setSchedFilter("all");
+              }}
+              className="hud-chip cursor-pointer hover:text-signal"
+            >
+              reset
+            </button>
+          )}
+          <span className="hud-chip ml-auto">{displaySet.length} shown</span>
+        </section>
+      )}
+
       <div className="space-y-4 lg:grid lg:grid-cols-[repeat(auto-fit,minmax(320px,1fr))] lg:gap-6 lg:space-y-0 lg:items-start">
-        {categories.map((cat) => {
-          const group = open.filter((t) => t.category_id === cat.id);
+        {shownCategories.map((cat) => {
+          const group = displaySet.filter((t) => t.category_id === cat.id);
           const panel = (
             <section className="hud-panel p-4 lg:p-5" style={{ borderLeft: `3px solid ${cat.color}` }}>
               <header className="flex items-center justify-between mb-1 gap-2">
@@ -131,7 +192,9 @@ export function TaskList({ tasks, loading, categoryStore, addTask, updateTask, c
         </div>
       </section>
 
-      {completed.length > 0 && (
+      {/* In filterable mode the status filter governs completed visibility, so
+          the standalone Completed collapsible is hidden to avoid duplication */}
+      {!filterable && completed.length > 0 && (
         <section className="pt-2">
           <button
             onClick={() => setShowCompleted(!showCompleted)}
