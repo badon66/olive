@@ -46,35 +46,6 @@ export type Database = {
           },
         ]
       }
-      dashboard_layouts: {
-        Row: {
-          id: string
-          layout: Json
-          updated_at: string
-          user_id: string
-        }
-        Insert: {
-          id?: string
-          layout?: Json
-          updated_at?: string
-          user_id: string
-        }
-        Update: {
-          id?: string
-          layout?: Json
-          updated_at?: string
-          user_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "dashboard_layouts_user_id_fkey"
-            columns: ["user_id"]
-            isOneToOne: true
-            referencedRelation: "app_user"
-            referencedColumns: ["user_id"]
-          },
-        ]
-      }
       daily_briefs: {
         Row: {
           brief_date: string

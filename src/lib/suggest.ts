@@ -33,6 +33,22 @@ function toHours(hhmm: string): number {
   return h + (m || 0) / 60;
 }
 
+// Which part of the day it is right now in Edmonton — drives the Active Tasks
+// panel (a live snapshot of only the current section). Hours outside every
+// range (late night) fall back to "anytime".
+export function currentSection(now: Date = new Date()): TimeSection {
+  const hour = Number(
+    new Intl.DateTimeFormat("en-US", { timeZone: "America/Edmonton", hour: "numeric", hour12: false }).format(now),
+  );
+  for (const [section, [s, e]] of Object.entries(SECTION_CLOCK) as [
+    Exclude<TimeSection, "anytime">,
+    [number, number],
+  ][]) {
+    if (hour >= s && hour < e) return section;
+  }
+  return "anytime";
+}
+
 export function sectionBlocked(section: TimeSection, windows: BlockedWindow[]): boolean {
   if (section === "anytime") return false; // no clock range → never blocked
   const [s, e] = SECTION_CLOCK[section];

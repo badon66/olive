@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { pullForward, sectionBlocked, type SuggestTask } from "./suggest";
+import { currentSection, pullForward, sectionBlocked, type SuggestTask } from "./suggest";
 
 const TODAY = "2026-07-07";
 
@@ -23,6 +23,20 @@ describe("sectionBlocked", () => {
   });
   it("anytime is never blocked", () => {
     expect(sectionBlocked("anytime", [{ start: "00:00", end: "23:59", label: "x" }])).toBe(false);
+  });
+});
+
+describe("currentSection", () => {
+  // Edmonton is UTC-6 in July (MDT), so 16:00Z = 10:00 local
+  const at = (utcHour: number) => new Date(Date.UTC(2026, 6, 7, utcHour, 0, 0));
+  it("maps the local clock to the right part of day", () => {
+    expect(currentSection(at(16))).toBe("morning"); // 10:00 local
+    expect(currentSection(at(19))).toBe("midday"); // 13:00 local
+    expect(currentSection(at(21))).toBe("afternoon"); // 15:00 local
+    expect(currentSection(at(1))).toBe("evening"); // 19:00 local (prev day UTC+1)
+  });
+  it("falls back to anytime in the small hours", () => {
+    expect(currentSection(at(9))).toBe("anytime"); // 03:00 local
   });
 });
 
