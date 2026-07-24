@@ -1,7 +1,7 @@
 import { z } from "npm:zod@3";
 
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
-const timeSection = z.enum(["morning", "midday", "afternoon", "evening", "anytime"]);
+const timeSection = z.enum(["morning", "midday", "afternoon", "evening", "night", "anytime"]);
 
 // Tasks reference user-defined categories by NAME here; the server resolves
 // (or creates) the category_id at execution time.
@@ -76,7 +76,7 @@ export const APPLY_ACTIONS_TOOL = {
             priority_weight: { type: "integer", minimum: 1, maximum: 5 },
             time_section: {
               type: ["string", "null"],
-              enum: ["morning", "midday", "afternoon", "evening", "anytime", null],
+              enum: ["morning", "midday", "afternoon", "evening", "night", "anytime", null],
             },
             duration_minutes: { type: ["integer", "null"], minimum: 1 },
             scheduled_time: { type: ["string", "null"], description: "HH:MM, only for fixed appointments/bookings" },

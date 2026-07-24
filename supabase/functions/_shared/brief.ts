@@ -1,14 +1,27 @@
 // Pure brief builder. Scoring constants deliberately mirror src/lib/ranking.ts —
 // keep the two in sync (no cross-runtime shared package in v1).
 
-export function edmontonToday(now: Date = new Date()): string {
-  return new Intl.DateTimeFormat("en-CA", { timeZone: "America/Edmonton" }).format(now);
-}
+// The day flips at 07:00 America/Edmonton, not midnight — must match
+// src/lib/dates.ts so client and server agree on what "today" means.
+export const DAY_START_HOUR = 7;
 
 export function edmontonHour(now: Date = new Date()): number {
-  return Number(
-    new Intl.DateTimeFormat("en-US", { timeZone: "America/Edmonton", hour: "numeric", hour12: false }).format(now),
+  return (
+    Number(
+      new Intl.DateTimeFormat("en-US", {
+        timeZone: "America/Edmonton",
+        hour: "2-digit",
+        hourCycle: "h23",
+      }).format(now),
+    ) % 24
   );
+}
+
+export function edmontonToday(now: Date = new Date()): string {
+  const date = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Edmonton" }).format(now);
+  if (edmontonHour(now) >= DAY_START_HOUR) return date;
+  const [y, m, d] = date.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d - 1)).toISOString().slice(0, 10);
 }
 
 function daysBetween(fromISO: string, toISO: string): number {

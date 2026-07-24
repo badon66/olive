@@ -4,7 +4,8 @@ import type { CategoryStore } from "../hooks/useCategories";
 import type { Task, TaskStore } from "../hooks/useTasks";
 import type { WeeklyStore, WeeklyTask } from "../hooks/useWeeklyTasks";
 import { useBrief, type BriefContent } from "../hooks/useBrief";
-import { edmontonToday } from "../lib/dates";
+import { edmontonHour, edmontonToday } from "../lib/dates";
+import { buildInsight } from "../lib/insight";
 import { computeSections, doneTodayCount, effectiveOrder } from "../lib/sections";
 import { currentSection } from "../lib/suggest";
 import { CategoryPanelBody } from "./CategoryPanel";
@@ -25,17 +26,6 @@ function greeting(hour: number): string {
   if (hour < 12) return "Good morning, Keenan";
   if (hour < 17) return "Good afternoon, Keenan";
   return "Good evening, Keenan";
-}
-
-function summarize(overdue: number, due: number, upcoming: number, done: number): string {
-  const parts: string[] = [];
-  if (overdue > 0) parts.push(`${overdue} overdue`);
-  if (due > 0) parts.push(`${due} due today`);
-  if (upcoming > 0) parts.push(`${upcoming} this week`);
-  if (parts.length === 0) parts.push("nothing on the schedule");
-  const done_ = done > 0 ? ` ${done} done.` : "";
-  const s = parts.join(", ") + "." + done_;
-  return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
 // Weekly panel hint while dragging a task over it (conversion, with undo)
@@ -106,8 +96,26 @@ export function DesktopDashboard({
     month: "short",
     day: "numeric",
   }).format(now);
-  const edmontonHour = Number(
-    new Intl.DateTimeFormat("en-US", { timeZone: "America/Edmonton", hour: "numeric", hour12: false }).format(now),
+  const edmontonHourNow = edmontonHour(now);
+  const nowTime = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "America/Edmonton",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).format(now);
+
+  const insight = useMemo(
+    () =>
+      buildInsight({
+        open,
+        today,
+        nowSection,
+        nowTime,
+        doneToday,
+        overdue: sections.overdue.length,
+        dueToday: sections.today.length,
+      }),
+    [open, today, nowSection, nowTime, doneToday, sections.overdue.length, sections.today.length],
   );
 
   const status =
@@ -193,8 +201,8 @@ export function DesktopDashboard({
       }}
     >
       <div className="min-h-dvh flex flex-col text-[13px]">
-        {/* top bar — pr clears the fixed pencil in the corner */}
-        <header className="flex items-center justify-between px-6 pr-20 py-2.5 gap-4 shrink-0">
+        {/* Sticky top bar — stays in view while the page scrolls underneath */}
+        <header className="sticky top-0 z-30 flex items-center justify-between px-6 pr-20 py-2.5 gap-4 shrink-0 bg-void/85 backdrop-blur-md border-b border-panel-border">
           <span className={`text-[13px] ${sections.overdue.length > 0 ? "text-amber" : "text-dim"}`}>{status}</span>
           <div className="flex items-center gap-3">
             <ScheduleSetupButton />
@@ -212,7 +220,7 @@ export function DesktopDashboard({
           {/* Row height is pinned to the centre unit (orb 380 + capture box) so the
               flanks match IT and scroll internally, rather than a long schedule
               stretching the whole row. */}
-          <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(420px,520px)_minmax(0,1fr)] gap-3 items-stretch lg:h-[532px]">
+          <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(420px,520px)_minmax(0,1fr)] gap-3 items-stretch lg:h-[640px]">
             {/* LEFT flank — Active Tasks, with Active Jobs closing any height gap */}
             <div className="flex flex-col gap-3 h-full min-h-0">
               <DashSection title="Active Tasks" customize={customize} className="shrink-0 max-h-[55%]">
@@ -238,13 +246,16 @@ export function DesktopDashboard({
             {/* CENTRE unit — orb at full size, capture box directly beneath it */}
             <div className="flex flex-col items-center justify-center gap-2 h-full">
               <Orb size={380} />
-              <p className="font-display text-[18px] font-medium tracking-wide text-hud -mt-3 text-center">
-                {greeting(edmontonHour)}
+              <p className="font-display text-[26px] font-medium tracking-wide text-hud -mt-3 text-center">
+                {greeting(edmontonHourNow)}
               </p>
-              <p className="text-[13px] text-dim leading-snug text-center max-w-[420px]">
-                {loading || briefLoading
-                  ? "Pulling up your day…"
-                  : summarize(sections.overdue.length, sections.today.length, sections.upcoming.length, doneToday)}
+              {/* What actually matters right now: next booking, else the top
+                  item in this part of day, with a real progress stat */}
+              <p className="text-[15px] text-hud/90 leading-snug text-center max-w-[460px]">
+                {loading || briefLoading ? "Pulling up your day…" : insight.headline}
+              </p>
+              <p className="font-data text-[11px] text-dim tracking-wide text-center">
+                {loading || briefLoading ? "" : insight.stat}
               </p>
               {error && <p className="text-amber text-xs">{error} — showing live data.</p>}
               <div className="w-full max-w-[520px] mt-1">

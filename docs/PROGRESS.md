@@ -39,6 +39,12 @@ This file tracks what's actually built, what's verified, and known gaps.
 - Check-off offers optional note/duration, one tap to skip.
 - Journal: one log per day with entry_time per capture; raw→cleaned via `journal-clean` edge fn (coherence-only), both stored, save-raw fallback when API unavailable, re-clean later, editable (raw never editable).
 
+## Day model (2026-07-24)
+
+- **The day runs 07:00 → 07:00 America/Edmonton, not midnight.** `DAY_START_HOUR = 7` in `src/lib/dates.ts`; `edmontonToday()` subtracts a day before 7 AM, so anything captured/completed at 2 AM belongs to the previous day. Mirrored in the edge functions (`_shared/brief.ts`, `assistant`, `schedule-setup`) so client and server agree. Separate from `wake_time`.
+- **`night` time section** (23:00 → 07:00, wraps midnight) added to the enum, after evening and before `anytime` in `SECTION_ORDER`. Section clock ranges now cover the full day: morning 7–11, midday 11–14, afternoon 14–17, evening 17–23, night 23–7. Morning now starts at the 7 AM boundary (was 5).
+- Greeting subtext is a real insight (`src/lib/insight.ts`): next booked appointment → else top-priority item in the current part of day → else due/overdue state, plus a done/total stat.
+
 ## Operational facts
 
 - Secrets: `anthropic_api_key`, `cron_secret`, `project_url` in Supabase Vault via service-role-only RPCs; local copies in gitignored `.env`/`.env.local`.

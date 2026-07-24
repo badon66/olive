@@ -9,8 +9,18 @@ const CORS = {
 
 const PALETTE = ["#4a9eff", "#f5c518", "#52c41a", "#ff8a5b", "#c084fc", "#38bdf8", "#fb7185", "#facc15"];
 
+// The day flips at 07:00 Edmonton, not midnight (matches src/lib/dates.ts):
+// a task captured at 2 AM still belongs to the previous day.
 function edmontonToday(): string {
-  return new Intl.DateTimeFormat("en-CA", { timeZone: "America/Edmonton" }).format(new Date());
+  const now = new Date();
+  const date = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Edmonton" }).format(now);
+  const hour =
+    Number(
+      new Intl.DateTimeFormat("en-US", { timeZone: "America/Edmonton", hour: "2-digit", hourCycle: "h23" }).format(now),
+    ) % 24;
+  if (hour >= 7) return date;
+  const [y, m, d] = date.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d - 1)).toISOString().slice(0, 10);
 }
 
 function edmontonWeekday(): string {

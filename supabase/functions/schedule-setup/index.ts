@@ -42,10 +42,18 @@ const SETUP_TOOL = {
   },
 } as const;
 
+// Relative to the 7 AM day boundary (matches src/lib/dates.ts): setting up
+// "tomorrow" at 1 AM means the day that starts in a few hours.
 function edmontonTomorrow(): string {
-  const today = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Edmonton" }).format(new Date());
-  const [y, m, d] = today.split("-").map(Number);
-  return new Date(Date.UTC(y, m - 1, d + 1)).toISOString().slice(0, 10);
+  const now = new Date();
+  const date = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Edmonton" }).format(now);
+  const hour =
+    Number(
+      new Intl.DateTimeFormat("en-US", { timeZone: "America/Edmonton", hour: "2-digit", hourCycle: "h23" }).format(now),
+    ) % 24;
+  const [y, m, d] = date.split("-").map(Number);
+  const offset = hour >= 7 ? 1 : 0; // before 7 AM, "today" is still yesterday
+  return new Date(Date.UTC(y, m - 1, d + offset)).toISOString().slice(0, 10);
 }
 
 Deno.serve(async (req) => {

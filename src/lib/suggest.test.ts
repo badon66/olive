@@ -35,8 +35,32 @@ describe("currentSection", () => {
     expect(currentSection(at(21))).toBe("afternoon"); // 15:00 local
     expect(currentSection(at(1))).toBe("evening"); // 19:00 local (prev day UTC+1)
   });
-  it("falls back to anytime in the small hours", () => {
-    expect(currentSection(at(9))).toBe("anytime"); // 03:00 local
+  it("the small hours are Night, not anytime", () => {
+    expect(currentSection(at(9))).toBe("night"); // 03:00 local
+    expect(currentSection(at(6))).toBe("night"); // 00:00 local
+    expect(currentSection(at(12))).toBe("night"); // 06:00 local — still before the 7 AM flip
+  });
+  it("7 AM local is Morning — the start of the new day", () => {
+    expect(currentSection(at(13))).toBe("morning"); // 07:00 local
+  });
+  it("late evening rolls into Night at 23:00", () => {
+    expect(currentSection(at(5))).toBe("night"); // 23:00 local
+  });
+});
+
+describe("sectionBlocked — Night wraps midnight", () => {
+  it("a 01:00–03:00 window blocks Night", () => {
+    expect(sectionBlocked("night", [{ start: "01:00", end: "03:00", label: "x" }])).toBe(true);
+  });
+  it("a 23:30–23:50 window also blocks Night", () => {
+    expect(sectionBlocked("night", [{ start: "23:30", end: "23:50", label: "x" }])).toBe(true);
+  });
+  it("an afternoon window does not block Night", () => {
+    expect(sectionBlocked("night", [{ start: "14:00", end: "15:00", label: "x" }])).toBe(false);
+  });
+  it("morning now starts at the 7 AM day boundary", () => {
+    expect(sectionBlocked("morning", [{ start: "06:00", end: "06:30", label: "x" }])).toBe(false);
+    expect(sectionBlocked("morning", [{ start: "07:30", end: "08:00", label: "x" }])).toBe(true);
   });
 });
 

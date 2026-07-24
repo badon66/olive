@@ -1,7 +1,9 @@
 import { addDays, daysBetween, edmontonToday } from "./dates";
 import { scoreTask } from "./ranking";
 
-export const SECTION_ORDER = ["morning", "midday", "afternoon", "evening", "anytime"] as const;
+// Chronological within the 7 AM → 7 AM day: morning starts at the day boundary
+// and night (post-midnight) is still the SAME day. "anytime" is the catch-all.
+export const SECTION_ORDER = ["morning", "midday", "afternoon", "evening", "night", "anytime"] as const;
 export type TimeSection = (typeof SECTION_ORDER)[number];
 
 // Upcoming day blocks: today plus `daysAhead` more, chronological. The panel

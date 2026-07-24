@@ -361,7 +361,7 @@ export type Database = {
       checkin_status: "planned" | "completed"
       recurrence_mode: "count" | "fixed_days"
       task_status: "open" | "completed"
-      time_section: "morning" | "midday" | "afternoon" | "evening" | "anytime"
+      time_section: "morning" | "midday" | "afternoon" | "evening" | "anytime" | "night"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -492,7 +492,7 @@ export const Constants = {
       checkin_status: ["planned", "completed"],
       recurrence_mode: ["count", "fixed_days"],
       task_status: ["open", "completed"],
-      time_section: ["morning", "midday", "afternoon", "evening", "anytime"],
+      time_section: ["morning", "midday", "afternoon", "evening", "anytime", "night"],
     },
   },
 } as const

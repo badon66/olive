@@ -14,6 +14,7 @@ const SECTION_LABELS: Record<TimeSection, string> = {
   midday: "Midday",
   afternoon: "Afternoon",
   evening: "Evening",
+  night: "Night",
   anytime: "Anytime",
 };
 
