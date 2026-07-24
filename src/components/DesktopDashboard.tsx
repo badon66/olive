@@ -205,72 +205,81 @@ export function DesktopDashboard({
           </div>
         </header>
 
-        {/* FIXED LAYOUT (BUILD_PLAN): rows 1–6, not user-rearrangeable */}
+        {/* FIXED LAYOUT (BUILD_PLAN) — not user-rearrangeable */}
         <div className="px-6 pb-6 flex flex-col gap-3">
-          {/* Row 1 — Active Tasks | ORB | Today's Schedule, flanking at equal height */}
-          <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(340px,420px)_minmax(0,1fr)] gap-3 items-stretch">
-            <DashSection
-              title="Active Tasks"
-              customize={customize}
-              bodyClassName="max-h-[320px]"
-              className="lg:h-[340px]"
-            >
-              <ActiveTasksPanel
-                section={nowSection}
-                dueToday={dueToday}
-                cardProps={cardProps}
-                weeklyBits={weeklyStore}
-              />
-            </DashSection>
+          {/* Flanking row: the left and right columns run the FULL height of the
+              centre unit (orb + capture box together), not just the orb. */}
+          {/* Row height is pinned to the centre unit (orb 380 + capture box) so the
+              flanks match IT and scroll internally, rather than a long schedule
+              stretching the whole row. */}
+          <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(420px,520px)_minmax(0,1fr)] gap-3 items-stretch lg:h-[532px]">
+            {/* LEFT flank — Active Tasks, with Active Jobs closing any height gap */}
+            <div className="flex flex-col gap-3 h-full min-h-0">
+              <DashSection title="Active Tasks" customize={customize} className="shrink-0 max-h-[55%]">
+                <ActiveTasksPanel
+                  section={nowSection}
+                  dueToday={dueToday}
+                  cardProps={cardProps}
+                  weeklyBits={weeklyStore}
+                />
+              </DashSection>
+              {/* flex-1: absorbs whatever height Active Tasks doesn't use, so the
+                  left flank always matches Today's Schedule on the right */}
+              <DashSection
+                title="Active Jobs"
+                customize={customize}
+                hint={<span className="hud-chip">soon</span>}
+                className="flex-1 min-h-[90px]"
+              >
+                <p className="text-dim text-xs py-1">The jobs log lands here in Phase 3.</p>
+              </DashSection>
+            </div>
 
-            {/* The orb sits between them, vertically centred — no panel chrome */}
-            <div className="flex flex-col items-center justify-center lg:h-[340px]">
-              <Orb size={230} />
-              <p className="font-display text-[16px] font-medium tracking-wide text-hud -mt-2 text-center">
+            {/* CENTRE unit — orb at full size, capture box directly beneath it */}
+            <div className="flex flex-col items-center justify-center gap-2 h-full">
+              <Orb size={380} />
+              <p className="font-display text-[18px] font-medium tracking-wide text-hud -mt-3 text-center">
                 {greeting(edmontonHour)}
               </p>
-              <p className="text-[13px] text-dim mt-1 leading-snug text-center max-w-[360px]">
+              <p className="text-[13px] text-dim leading-snug text-center max-w-[420px]">
                 {loading || briefLoading
                   ? "Pulling up your day…"
                   : summarize(sections.overdue.length, sections.today.length, sections.upcoming.length, doneToday)}
               </p>
-              {error && <p className="text-amber text-xs mt-1">{error} — showing live data.</p>}
+              {error && <p className="text-amber text-xs">{error} — showing live data.</p>}
+              <div className="w-full max-w-[520px] mt-1">
+                <ChatBar
+                  onActionDone={async () => {
+                    await Promise.all([taskStore.refresh(), categoryStore.refresh()]);
+                  }}
+                  inline
+                  taskTitleById={(id) => tasks.find((t) => t.id === id)?.title}
+                />
+              </div>
             </div>
 
+            {/* RIGHT flank — Today's Schedule, full height of the centre unit */}
             <DashSection
               title="Today's Schedule"
               customize={customize}
               hint={<span className="hud-chip">{dueToday.length}</span>}
-              bodyClassName="max-h-[320px]"
-              className="lg:h-[340px]"
+              className="h-full min-h-0"
             >
               <TodaySchedulePanel bare dueToday={dueToday} openTasks={open} cardProps={cardProps} weeklyBits={weeklyStore} />
             </DashSection>
           </div>
 
-          {/* Row 2 — capture box, centred under the orb */}
-          <div className="flex justify-center">
-            <div className="w-full max-w-[560px]">
-              <ChatBar
-                onActionDone={async () => {
-                  await Promise.all([taskStore.refresh(), categoryStore.refresh()]);
-                }}
-                inline
-                taskTitleById={(id) => tasks.find((t) => t.id === id)?.title}
-              />
-            </div>
-          </div>
+          {/* Finance — full width edge to edge, deliberately taller than a normal panel */}
+          <DashSection
+            title="Finance"
+            customize={customize}
+            hint={<span className="hud-chip">soon</span>}
+            className="min-h-[150px]"
+          >
+            <p className="text-dim text-xs py-1">Balance and spending land here in Phase 6.</p>
+          </DashSection>
 
-          {/* Row 3 — Finance, centred directly under the capture box */}
-          <div className="flex justify-center">
-            <div className="w-full max-w-[560px]">
-              <DashSection title="Finance" customize={customize} hint={<span className="hud-chip">soon</span>}>
-                <p className="text-dim text-xs py-1">Balance and spending land here in Phase 6.</p>
-              </DashSection>
-            </div>
-          </div>
-
-          {/* Row 4 — Weekly Tasks (left) | Active Jobs → Upcoming Days → Journal (right, stacked) */}
+          {/* Below Finance — Weekly Tasks (left) | Upcoming Days → Journal (right) */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 items-start">
             <DropZone id="weekly">
               <DashSection
@@ -285,9 +294,6 @@ export function DesktopDashboard({
             </DropZone>
 
             <div className="flex flex-col gap-3">
-              <DashSection title="Active Jobs" customize={customize} hint={<span className="hud-chip">soon</span>}>
-                <p className="text-dim text-xs py-1">The jobs log lands here in Phase 3.</p>
-              </DashSection>
               <DashSection title="Upcoming Days" customize={customize}>
                 <UpcomingDaysPanel bare openTasks={open} today={today} onEdit={setEditing} />
               </DashSection>

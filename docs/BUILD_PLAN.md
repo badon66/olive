@@ -23,15 +23,16 @@ The core loop, using only Supabase and the Anthropic API.
   - **Editing an existing item** (click a task, weekly task, or category directly) is NOT gated behind this toggle — always available either way, opens a full edit modal for every real field on it.
   - **Do not build or leave in place any drag-to-reposition-sections or horizontal-resize-sections logic.** If it exists from a prior attempt, remove it rather than leaving dead/broken code.
 - **Customize layout mode (new, substantial feature — treat as its own build effort, not a quick add-on):** every dashboard section gets a drag handle sized exactly to its real visual bounding box (no oversized/undersized hitbox). Sections can be dragged to reposition them, and can shrink horizontally to fit into a narrower slot if dropped somewhere tighter than their default width. Each section's title becomes an editable text field while in this mode, so any section — including built-in ones like "Weekly Tasks" or "Today's Schedule" — can be renamed, not just user-created categories. The resulting arrangement must persist per-user (a `dashboard_layout` table or JSON column storing each section's position/size/label), not just live in local component state — it should look the same next time the app opens. Recommend a dedicated grid-layout library built for exactly this (e.g. react-grid-layout) rather than hand-rolling drag+resize+reflow from scratch.
-- **Dashboard layout — fixed arrangement, NOT user-rearrangeable (customize/drag mode removed, see below). Supersedes the earlier two-column version entirely:**
-  - **Row 1, flanking the orb at the same height:** Active Tasks on the left (shows ONLY tasks relevant to the current part of day — e.g. midday tasks display at midday, afternoon tasks in the afternoon; this is a live/context-aware snapshot, distinct from the fuller Today's Schedule) — orb centered — Today's Schedule on the right (the full day, all time sections).
-  - **Row 2, centered under the orb:** the capture/talk box.
-  - **Row 3, centered, directly under the capture box:** Finance.
-  - **Row 4, left side:** Weekly Tasks.
-  - **Row 4 (same row start), right side, stacked top to bottom:** Active Jobs → Upcoming Days → Journal.
-  - **Row 5, full width, compact/thin:** Priorities — deliberately deprioritized and visually slim, not removed.
-  - **Row 6, full width, bottom of page:** the three category panels (Personal, PowerPlay Customs, Alberta Premium Coatings).
-  - On mobile: single column, same top-to-bottom row order; category panels move to their own Tasks-tab view to keep the scroll manageable (not inline on the mobile dashboard).
+- **Dashboard layout — fixed arrangement, NOT user-rearrangeable. Supersedes all earlier layout versions:**
+  - **Center unit:** the orb (full size — no need to shrink it) directly above the capture/talk box, stacked as one vertical unit.
+  - **Left flank, running alongside the full height of the center unit:** Active Tasks (shows ONLY tasks relevant to the current part of day — e.g. midday tasks display at midday). If Active Tasks doesn't reach the same height as Today's Schedule on the right, Active Jobs fills the remaining space directly below it, so the left flank's total height matches the right flank's.
+  - **Right flank, same height as the left, spanning the full height of the center unit:** Today's Schedule — full length, the full day, all time sections.
+  - **Below the entire flanking row, edge to edge (full width, not just centered):** Finance — slightly thicker/taller than a standard panel.
+  - **Below Finance, left side:** Weekly Tasks.
+  - **Below Finance, right side, stacked top to bottom:** Upcoming Days → Journal (Active Jobs is NOT here — it moved to the left flank above).
+  - **Below that, full width, compact/thin:** Priorities — deliberately deprioritized and visually slim, not removed.
+  - **Bottom of the page, full width:** the three category panels (Personal, PowerPlay Customs, Alberta Premium Coatings).
+  - On mobile: single column, same top-to-bottom order; category panels move to their own Tasks-tab view to keep the scroll manageable.
 - **Sidebar navigation:** Dashboard, Tasks, Weekly Tasks, Active Jobs, Journal, Finance, Groceries (reserved nav slot only — no feature behind it, do not build), Settings.
 - **Scheduled / Not scheduled indicator** on every task regardless of category: "Scheduled" if `due_date` is set, "Not scheduled" if not.
 - Due date picker: proper popup mini calendar — already built, no further work needed.

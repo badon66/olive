@@ -40,7 +40,7 @@ export function DashSection({
           )}
         </span>
       </header>
-      <div className={`px-3 pb-3 min-h-0 overflow-y-auto ${bodyClassName}`}>{children}</div>
+      <div className={`px-3 pb-3 flex-1 min-h-0 overflow-y-auto ${bodyClassName}`}>{children}</div>
     </section>
   );
 }
