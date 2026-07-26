@@ -39,11 +39,15 @@ This file tracks what's actually built, what's verified, and known gaps.
 - Check-off offers optional note/duration, one tap to skip.
 - Journal: one log per day with entry_time per capture; raw→cleaned via `journal-clean` edge fn (coherence-only), both stored, save-raw fallback when API unavailable, re-clean later, editable (raw never editable).
 
-## Day model (2026-07-24)
+## Day model (updated 2026-07-26 — supersedes the earlier 7 AM version)
 
-- **The day runs 07:00 → 07:00 America/Edmonton, not midnight.** `DAY_START_HOUR = 7` in `src/lib/dates.ts`; `edmontonToday()` subtracts a day before 7 AM, so anything captured/completed at 2 AM belongs to the previous day. Mirrored in the edge functions (`_shared/brief.ts`, `assistant`, `schedule-setup`) so client and server agree. Separate from `wake_time`.
-- **`night` time section** (23:00 → 07:00, wraps midnight) added to the enum, after evening and before `anytime` in `SECTION_ORDER`. Section clock ranges now cover the full day: morning 7–11, midday 11–14, afternoon 14–17, evening 17–23, night 23–7. Morning now starts at the 7 AM boundary (was 5).
+- **The day rolls over at 01:30 America/Edmonton, not midnight (and not 7 AM — that earlier prompt was wrong and is fully replaced).** `DAY_START_MINUTES = 90` in `src/lib/dates.ts`; `edmontonMinutes()` gives minutes since local midnight and `edmontonToday()` subtracts a day when it's < 90, so anything captured/completed between midnight and 1:30 AM still belongs to the previous day. Mirrored minute-for-minute in the edge functions (`_shared/brief.ts` `edmontonToday`, `assistant` `edmontonToday`, `schedule-setup` `edmontonTomorrow`) so client and server agree — deployed assistant v5 / daily-brief v4 / schedule-setup v3. Separate from `wake_time`. Tested in `dates.test.ts` (1:00/1:29 = previous day, 1:30 flips, midnight = previous day, month boundary). The assistant system prompt now tells Claude "the day rolls over at 1:30am."
+- **Today's Schedule is a fixed 6-part Night-bookended ribbon.** `SCHEDULE_SLOTS` in `src/lib/sections.ts` renders, in order: **Night · earlier** → Morning → Midday → Afternoon → Evening → **Night · tonight**, plus an **Anytime** row appended only when it holds something. `partitionSchedule(dueToday, today)` (unit-tested) routes night-section tasks by due date — anything due before today falls into the leading "earlier" slot (read-only context: dashed border, dimmed, *not* a drop target; no weekly/pull-forward there), today's night tasks into "tonight". Every other task drops into its own `time_section`; a null section is Anytime. Overdue daytime tasks still surface in their own section (e.g. a 3-day-overdue morning task stays under Morning), never in the leading Night. The whole ribbon advances to the next day automatically because it's fed `today` (which flips at 1:30 AM) — no per-slot clock. Verified in a running browser via a throwaway harness (now deleted); accessibility tree confirmed the exact order and routing.
 - Greeting subtext is a real insight (`src/lib/insight.ts`): next booked appointment → else top-priority item in the current part of day → else due/overdue state, plus a done/total stat.
+
+## Drag/resize/rename audit (2026-07-26)
+
+- Confirmed **no** section drag/resize/rename code exists anywhere. `react-grid-layout` is uninstalled, the `dashboard_layouts` table is dropped, and only historical migration references remain (correct). BUILD_PLAN.md's leftover "Customize layout mode" bullet was stale spec, not an implemented feature. Item-level task drag (dnd-kit, tasks between panels) is intentionally kept and is unrelated.
 
 ## Operational facts
 

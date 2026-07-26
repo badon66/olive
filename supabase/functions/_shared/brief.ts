@@ -1,10 +1,12 @@
 // Pure brief builder. Scoring constants deliberately mirror src/lib/ranking.ts —
 // keep the two in sync (no cross-runtime shared package in v1).
 
-// The day flips at 07:00 America/Edmonton, not midnight — must match
+// The day flips at 01:30 America/Edmonton, not midnight — must match
 // src/lib/dates.ts so client and server agree on what "today" means.
-export const DAY_START_HOUR = 7;
+export const DAY_START_MINUTES = 90; // 01:30 local
 
+// edmontonHour stays for the cron's "is it 7am?" brief-generation check —
+// that's the delivery time, unrelated to the day boundary.
 export function edmontonHour(now: Date = new Date()): number {
   return (
     Number(
@@ -17,9 +19,21 @@ export function edmontonHour(now: Date = new Date()): number {
   );
 }
 
+function edmontonMinutes(now: Date): number {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "America/Edmonton",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(now);
+  const h = Number(parts.find((p) => p.type === "hour")!.value) % 24;
+  const m = Number(parts.find((p) => p.type === "minute")!.value);
+  return h * 60 + m;
+}
+
 export function edmontonToday(now: Date = new Date()): string {
   const date = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Edmonton" }).format(now);
-  if (edmontonHour(now) >= DAY_START_HOUR) return date;
+  if (edmontonMinutes(now) >= DAY_START_MINUTES) return date;
   const [y, m, d] = date.split("-").map(Number);
   return new Date(Date.UTC(y, m - 1, d - 1)).toISOString().slice(0, 10);
 }

@@ -9,16 +9,19 @@ const CORS = {
 
 const PALETTE = ["#4a9eff", "#f5c518", "#52c41a", "#ff8a5b", "#c084fc", "#38bdf8", "#fb7185", "#facc15"];
 
-// The day flips at 07:00 Edmonton, not midnight (matches src/lib/dates.ts):
-// a task captured at 2 AM still belongs to the previous day.
+// The day flips at 01:30 Edmonton, not midnight (matches src/lib/dates.ts):
+// a task captured at 1 AM still belongs to the previous day.
 function edmontonToday(): string {
   const now = new Date();
   const date = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Edmonton" }).format(now);
-  const hour =
-    Number(
-      new Intl.DateTimeFormat("en-US", { timeZone: "America/Edmonton", hour: "2-digit", hourCycle: "h23" }).format(now),
-    ) % 24;
-  if (hour >= 7) return date;
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "America/Edmonton",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(now);
+  const mins = (Number(parts.find((p) => p.type === "hour")!.value) % 24) * 60 + Number(parts.find((p) => p.type === "minute")!.value);
+  if (mins >= 90) return date;
   const [y, m, d] = date.split("-").map(Number);
   return new Date(Date.UTC(y, m - 1, d - 1)).toISOString().slice(0, 10);
 }
@@ -57,6 +60,7 @@ Deno.serve(async (req) => {
 
       const system = [
         `You are Olive, a personal task assistant. Today (America/Edmonton) is ${edmontonWeekday()}, ${edmontonToday()}.`,
+        "The day rolls over at 1:30am: anything captured before 1:30am still belongs to the previous day.",
         "Convert the user's message into actions via the apply_actions tool.",
         "CATEGORIES (user-defined; use category_name exactly as listed, default 'Personal'):",
         ...(categories ?? []).map((c) => `- ${c.name}`),
@@ -66,6 +70,7 @@ Deno.serve(async (req) => {
         "If the message references a task you cannot find, return zero actions and say so in reply.",
         "Resolve relative dates ('Friday', 'next week') to YYYY-MM-DD using today's date; 'Friday' means the next upcoming Friday.",
         "scheduled_time is ONLY for fixed appointments ('dentist at 2:30'); time_section is the loose part of day.",
+        "time_section values: morning, midday, afternoon, evening, night (late evening through the small hours), anytime.",
         "Use add_memory only when the user asks to remember/note something that is not a task.",
         "OPEN TASKS:",
         ...(openTasks ?? []).map(

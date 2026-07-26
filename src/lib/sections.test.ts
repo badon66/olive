@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { scheduleSort, upcomingDates } from "./sections";
+import { partitionSchedule, scheduleSort, upcomingDates } from "./sections";
 
 describe("upcomingDates", () => {
   it("returns today plus the requested days ahead, chronological", () => {
@@ -39,5 +39,45 @@ describe("scheduleSort", () => {
     const b = t(null, 5, "2026-07-02T00:00:00Z");
     const c = t(null, 5, "2026-07-01T00:00:00Z");
     expect([a, b, c].sort(scheduleSort)).toEqual([c, b, a]);
+  });
+});
+
+describe("partitionSchedule — Night bookends the ribbon", () => {
+  const task = (id: string, due_date: string | null, time_section: string | null) =>
+    ({ id, due_date, time_section }) as { id: string; due_date: string | null; time_section: never };
+
+  it("routes a night task due before today to the leading (earlier) slot", () => {
+    const out = partitionSchedule([task("a", "2026-07-06", "night")], "2026-07-07");
+    expect(out["night-earlier"].map((t) => t.id)).toEqual(["a"]);
+    expect(out["night-ahead"]).toEqual([]);
+  });
+
+  it("routes a night task due today to the trailing (tonight) slot", () => {
+    const out = partitionSchedule([task("b", "2026-07-07", "night")], "2026-07-07");
+    expect(out["night-ahead"].map((t) => t.id)).toEqual(["b"]);
+    expect(out["night-earlier"]).toEqual([]);
+  });
+
+  it("keeps the same night task out of both ends — never duplicated", () => {
+    const out = partitionSchedule(
+      [task("a", "2026-07-06", "night"), task("b", "2026-07-07", "night")],
+      "2026-07-07",
+    );
+    expect(out["night-earlier"].map((t) => t.id)).toEqual(["a"]);
+    expect(out["night-ahead"].map((t) => t.id)).toEqual(["b"]);
+  });
+
+  it("drops each daytime task into its own section, overdue included", () => {
+    const out = partitionSchedule(
+      [task("m", "2026-07-04", "morning"), task("e", "2026-07-07", "evening")],
+      "2026-07-07",
+    );
+    expect(out.morning.map((t) => t.id)).toEqual(["m"]);
+    expect(out.evening.map((t) => t.id)).toEqual(["e"]);
+  });
+
+  it("treats a null time_section as anytime", () => {
+    const out = partitionSchedule([task("x", "2026-07-07", null)], "2026-07-07");
+    expect(out.anytime.map((t) => t.id)).toEqual(["x"]);
   });
 });

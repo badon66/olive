@@ -2,10 +2,10 @@
 // YYYY-MM-DD strings; never construct `new Date("YYYY-MM-DD")` for display
 // math (it parses as UTC midnight) — compare strings or use Date.UTC.
 
-// The day flips at 07:00 America/Edmonton, NOT midnight — staying up late
-// still counts as the previous day. Distinct from wake_time, which only
-// shifts where the time-of-day sections sit.
-export const DAY_START_HOUR = 7;
+// The day flips at 01:30 America/Edmonton, NOT midnight — staying up past
+// midnight still counts as the previous day until 1:30 AM. Distinct from
+// wake_time, which only shifts where the daytime sections sit within a day.
+export const DAY_START_MINUTES = 90; // 01:30 local
 
 export function edmontonHour(now: Date = new Date()): number {
   return (
@@ -19,10 +19,24 @@ export function edmontonHour(now: Date = new Date()): number {
   );
 }
 
+// Minutes since local midnight in Edmonton.
+export function edmontonMinutes(now: Date = new Date()): number {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "America/Edmonton",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(now);
+  const h = Number(parts.find((p) => p.type === "hour")!.value) % 24;
+  const m = Number(parts.find((p) => p.type === "minute")!.value);
+  return h * 60 + m;
+}
+
 // "Today" for every date column in the app (due dates, check-ins, briefs).
+// Before 1:30 AM, it's still the previous calendar day.
 export function edmontonToday(now: Date = new Date()): string {
   const date = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Edmonton" }).format(now); // YYYY-MM-DD
-  return edmontonHour(now) < DAY_START_HOUR ? addDays(date, -1) : date;
+  return edmontonMinutes(now) < DAY_START_MINUTES ? addDays(date, -1) : date;
 }
 
 export function addDays(iso: string, n: number): string {

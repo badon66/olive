@@ -33,6 +33,7 @@ The phased spec is in `docs/BUILD_PLAN.md`. Build ONE phase at a time, then stop
 - LLM: Anthropic API from Edge Functions; `claude-sonnet-4-6` for parsing/routing unless quality demands escalation.
 - Single user: Supabase email auth, one account, RLS on all tables.
 - Timezone: America/Edmonton for ALL scheduling logic. Cron runs in UTC — convert explicitly.
+- **The day boundary/rollover is 1:30 AM, not midnight.** Each day's schedule view is a 6-part sequence, in order: Night (the tail end of the previous night) → Morning → Midday → Afternoon → Evening → Night (that day's own upcoming night). Night appears at BOTH ends — once as trailing context from before, once as what's still ahead. The whole view flips forward to the next day's equivalent sequence exactly at 1:30 AM, and this repeats daily. This is separate from `wake_time` (which anchors morning/midday/afternoon/evening within a day once it's underway) — 1:30 AM decides which day's 6-part sequence is currently showing at all.
 
 ## Conventions
 

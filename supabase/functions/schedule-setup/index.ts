@@ -42,17 +42,20 @@ const SETUP_TOOL = {
   },
 } as const;
 
-// Relative to the 7 AM day boundary (matches src/lib/dates.ts): setting up
-// "tomorrow" at 1 AM means the day that starts in a few hours.
+// Relative to the 1:30 AM day boundary (matches src/lib/dates.ts): before 1:30
+// "today" is still yesterday, so "tomorrow" is only +0 from the calendar date.
 function edmontonTomorrow(): string {
   const now = new Date();
   const date = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Edmonton" }).format(now);
-  const hour =
-    Number(
-      new Intl.DateTimeFormat("en-US", { timeZone: "America/Edmonton", hour: "2-digit", hourCycle: "h23" }).format(now),
-    ) % 24;
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "America/Edmonton",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(now);
+  const mins = (Number(parts.find((p) => p.type === "hour")!.value) % 24) * 60 + Number(parts.find((p) => p.type === "minute")!.value);
   const [y, m, d] = date.split("-").map(Number);
-  const offset = hour >= 7 ? 1 : 0; // before 7 AM, "today" is still yesterday
+  const offset = mins >= 90 ? 1 : 0; // before 1:30 AM, "today" is still yesterday
   return new Date(Date.UTC(y, m - 1, d + offset)).toISOString().slice(0, 10);
 }
 

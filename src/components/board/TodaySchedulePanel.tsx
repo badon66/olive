@@ -3,20 +3,11 @@ import { supabase } from "../../lib/supabase";
 import type { Task } from "../../hooks/useTasks";
 import type { WeeklyCheckin, WeeklyTask } from "../../hooks/useWeeklyTasks";
 import type { BlockedWindow } from "../../lib/api";
-import { SECTION_ORDER, scheduleSort, type TimeSection } from "../../lib/sections";
+import { partitionSchedule, SCHEDULE_SLOTS, scheduleSort, type TimeSection } from "../../lib/sections";
 import { pullForward } from "../../lib/suggest";
 import { appearsToday } from "../../lib/weekly";
 import { TaskCard } from "../TaskCard";
 import { DraggableTask, DraggableWeekly, DropZone } from "./TaskDnd";
-
-const SECTION_LABELS: Record<TimeSection, string> = {
-  morning: "Morning",
-  midday: "Midday",
-  afternoon: "Afternoon",
-  evening: "Evening",
-  night: "Night",
-  anytime: "Anytime",
-};
 
 type CardProps = {
   today: string;
@@ -89,6 +80,10 @@ export function TodaySchedulePanel({
   const pulledFor = (section: TimeSection): Task[] =>
     pulled[section].map((id) => byId.get(id)).filter((t): t is Task => !!t);
 
+  // Split due-today into the Night-bookended ribbon (see SCHEDULE_SLOTS). Feeding
+  // it `today` (which flips at 1:30 AM) is what advances the whole view daily.
+  const partition = partitionSchedule(dueToday, today);
+
   const body = (
     <>
       {setup && (
@@ -107,16 +102,26 @@ export function TodaySchedulePanel({
       )}
 
       <div className="space-y-2">
-        {SECTION_ORDER.map((section) => {
-          const items = dueToday.filter((t) => (t.time_section ?? "anytime") === section).sort(scheduleSort);
-          const sectionWeekly = weeklyToday.filter((t) => (t.time_section ?? "anytime") === section);
-          const suggestions = pulledFor(section);
-          return (
-            <DropZone key={section} id={`section:${section}`} className="border border-signal-dim/15 rounded p-2">
+        {SCHEDULE_SLOTS.map((slot) => {
+          const items = (partition[slot.key] ?? []).sort(scheduleSort);
+          // The leading "earlier" Night is passed context: no weekly check-ins
+          // or pull-forward suggestions belong there, and it isn't a drop target.
+          const isEarlier = slot.role === "earlier-night";
+          const sectionWeekly = isEarlier
+            ? []
+            : weeklyToday.filter((t) => (t.time_section ?? "anytime") === slot.section);
+          const suggestions = isEarlier ? [] : pulledFor(slot.section);
+          const empty = items.length === 0 && sectionWeekly.length === 0 && suggestions.length === 0;
+          // Keep the fixed six-part ribbon clean — only surface Anytime when it
+          // actually holds something.
+          if (slot.role === "anytime" && empty) return null;
+
+          const content = (
+            <>
               <p className="font-data text-[11px] text-dim uppercase tracking-widest mb-0.5">
-                {SECTION_LABELS[section]}
+                {slot.label}
               </p>
-              {items.length === 0 && sectionWeekly.length === 0 && suggestions.length === 0 ? (
+              {empty ? (
                 <p className="text-dim/50 text-xs py-1">—</p>
               ) : (
                 <div className="divide-y divide-signal-dim/15">
@@ -218,7 +223,19 @@ export function TodaySchedulePanel({
                   ))}
                 </div>
               )}
+            </>
+          );
+
+          // Droppable slots register a DnD zone; the passed "earlier" Night is a
+          // read-only context row (dashed, dimmed), never a drop target.
+          return slot.droppable ? (
+            <DropZone key={slot.key} id={`section:${slot.section}`} className="border border-signal-dim/15 rounded p-2">
+              {content}
             </DropZone>
+          ) : (
+            <div key={slot.key} className="border border-dashed border-signal-dim/15 rounded p-2 opacity-80">
+              {content}
+            </div>
           );
         })}
       </div>

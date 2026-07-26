@@ -1,10 +1,63 @@
 import { addDays, daysBetween, edmontonToday } from "./dates";
 import { scoreTask } from "./ranking";
 
-// Chronological within the 7 AM → 7 AM day: morning starts at the day boundary
-// and night (post-midnight) is still the SAME day. "anytime" is the catch-all.
+// Chronological within a day (the day flips at 1:30 AM — see dates.ts): morning
+// through night, with the small hours before 1:30 still belonging to the night
+// that started the evening before. "anytime" is the catch-all.
 export const SECTION_ORDER = ["morning", "midday", "afternoon", "evening", "night", "anytime"] as const;
 export type TimeSection = (typeof SECTION_ORDER)[number];
+
+// Today's Schedule ribbon. Night bookends the day: it leads as the tail of the
+// nights already passed (context — not a drop target) and closes as this day's
+// own upcoming night. "Anytime" is appended so those tasks aren't hidden. The
+// whole ribbon advances at the 1:30 AM boundary because `today` (edmontonToday)
+// is what feeds it — no per-slot clock logic needed.
+export type ScheduleSlot = {
+  key: string;
+  label: string;
+  section: TimeSection;
+  role: "earlier-night" | "section" | "upcoming-night" | "anytime";
+  droppable: boolean;
+};
+
+export const SCHEDULE_SLOTS: ScheduleSlot[] = [
+  { key: "night-earlier", label: "Night · earlier", section: "night", role: "earlier-night", droppable: false },
+  { key: "morning", label: "Morning", section: "morning", role: "section", droppable: true },
+  { key: "midday", label: "Midday", section: "midday", role: "section", droppable: true },
+  { key: "afternoon", label: "Afternoon", section: "afternoon", role: "section", droppable: true },
+  { key: "evening", label: "Evening", section: "evening", role: "section", droppable: true },
+  { key: "night-ahead", label: "Night · tonight", section: "night", role: "upcoming-night", droppable: true },
+  { key: "anytime", label: "Anytime", section: "anytime", role: "anytime", droppable: true },
+];
+
+// Split the due-today set (overdue + today) into the ribbon's slots. Night tasks
+// route by due date: anything from before today is "earlier" (a night already
+// passed), today's night tasks are "tonight". Every other task falls into its
+// own time_section; a null section is "anytime". No task appears twice.
+export function partitionSchedule<T extends { due_date: string | null; time_section: TimeSection | null }>(
+  dueToday: T[],
+  today: string,
+): Record<string, T[]> {
+  const out: Record<string, T[]> = {
+    "night-earlier": [],
+    morning: [],
+    midday: [],
+    afternoon: [],
+    evening: [],
+    "night-ahead": [],
+    anytime: [],
+  };
+  for (const t of dueToday) {
+    const section = t.time_section ?? "anytime";
+    if (section === "night") {
+      const past = t.due_date !== null && t.due_date < today;
+      out[past ? "night-earlier" : "night-ahead"].push(t);
+    } else {
+      out[section].push(t);
+    }
+  }
+  return out;
+}
 
 // Upcoming day blocks: today plus `daysAhead` more, chronological. The panel
 // shows 3 ahead collapsed and a full week (7) expanded.

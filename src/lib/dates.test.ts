@@ -1,22 +1,28 @@
 import { describe, expect, it } from "vitest";
 import { daysBetween, edmontonToday, formatDue } from "./dates";
 
-describe("edmontonToday — 7 AM day boundary", () => {
+describe("edmontonToday — 1:30 AM day boundary", () => {
   // July → MDT (UTC-6)
-  it("2 AM local still counts as the previous day", () => {
-    expect(edmontonToday(new Date("2026-07-08T08:00:00Z"))).toBe("2026-07-07"); // 02:00 local Jul 8
+  it("1:00 AM local still counts as the previous day", () => {
+    expect(edmontonToday(new Date("2026-07-08T07:00:00Z"))).toBe("2026-07-07"); // 01:00 local Jul 8
   });
-  it("6:59 AM local is still the previous day", () => {
-    expect(edmontonToday(new Date("2026-07-08T12:59:00Z"))).toBe("2026-07-07");
+  it("1:29 AM local is still the previous day", () => {
+    expect(edmontonToday(new Date("2026-07-08T07:29:00Z"))).toBe("2026-07-07");
   });
-  it("7:00 AM local flips to the new day", () => {
-    expect(edmontonToday(new Date("2026-07-08T13:00:00Z"))).toBe("2026-07-08");
+  it("1:30 AM local flips to the new day", () => {
+    expect(edmontonToday(new Date("2026-07-08T07:30:00Z"))).toBe("2026-07-08");
+  });
+  it("2 AM local is the new day", () => {
+    expect(edmontonToday(new Date("2026-07-08T08:00:00Z"))).toBe("2026-07-08");
+  });
+  it("midnight is still the previous day", () => {
+    expect(edmontonToday(new Date("2026-07-08T06:00:00Z"))).toBe("2026-07-07"); // 00:00 local Jul 8
   });
   it("late evening is the same calendar day", () => {
     expect(edmontonToday(new Date("2026-07-08T05:00:00Z"))).toBe("2026-07-07"); // 23:00 local Jul 7
   });
-  it("holds across a month boundary at 3 AM", () => {
-    expect(edmontonToday(new Date("2026-08-01T09:00:00Z"))).toBe("2026-07-31"); // 03:00 local Aug 1
+  it("holds across a month boundary at 1 AM", () => {
+    expect(edmontonToday(new Date("2026-08-01T07:00:00Z"))).toBe("2026-07-31"); // 01:00 local Aug 1
   });
 });
 
