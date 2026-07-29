@@ -22,8 +22,16 @@ type CardProps = {
   categoryOf?: (task: Task) => { name: string; color: string } | undefined;
 };
 
+type WeeklyBits = {
+  weeklyTasks: WeeklyTask[];
+  checkins: WeeklyCheckin[];
+  completeDay?: (id: string, date: string) => Promise<WeeklyCheckin | null>;
+  uncompleteDay?: (task: WeeklyTask, date: string) => Promise<void>;
+};
+
 // Live snapshot of ONLY the current part of the day (midday tasks at midday,
 // afternoon tasks in the afternoon) — distinct from the fuller Today's Schedule.
+// Glanceable: descriptions always visible, generous spacing, complete inline.
 export function ActiveTasksPanel({
   section,
   dueToday,
@@ -33,7 +41,7 @@ export function ActiveTasksPanel({
   section: TimeSection;
   dueToday: Task[];
   cardProps: CardProps;
-  weeklyBits?: { weeklyTasks: WeeklyTask[]; checkins: WeeklyCheckin[] };
+  weeklyBits?: WeeklyBits;
 }) {
   const today = cardProps.today;
   const items = dueToday.filter((t) => (t.time_section ?? "anytime") === section).sort(scheduleSort);
@@ -55,8 +63,27 @@ export function ActiveTasksPanel({
           {weeklyNow.map((t) => {
             const done = checkinsFor(t.id).some((c) => c.date === today && c.status === "completed");
             return (
-              <div key={t.id} className="flex items-center gap-2 py-1.5">
-                <span className={`flex-1 min-w-0 truncate font-body text-sm ${done ? "opacity-50 line-through" : ""}`}>
+              <div key={t.id} className="flex items-center gap-3 py-3">
+                <button
+                  onClick={() =>
+                    done ? void weeklyBits?.uncompleteDay?.(t, today) : void weeklyBits?.completeDay?.(t.id, today)
+                  }
+                  aria-label={done ? `Uncheck ${t.name}` : `Check off ${t.name}`}
+                  className="shrink-0 w-11 h-11 grid place-items-center cursor-pointer focus-visible:outline-2 focus-visible:outline-signal rounded-full"
+                >
+                  <span
+                    className={`w-5 h-5 rounded-full border grid place-items-center transition-colors duration-200 ${
+                      done ? "border-signal bg-signal/20" : "border-signal-dim hover:border-signal hover:shadow-[0_0_8px_rgba(63,169,104,0.4)]"
+                    }`}
+                  >
+                    {done && (
+                      <svg viewBox="0 0 24 24" className="w-3 h-3 text-signal" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                        <path d="M20 6 9 17l-5-5" />
+                      </svg>
+                    )}
+                  </span>
+                </button>
+                <span className={`flex-1 min-w-0 truncate font-body text-base ${done ? "opacity-50 line-through" : ""}`}>
                   {t.name}
                 </span>
                 <span className="hud-chip shrink-0">weekly</span>
@@ -64,8 +91,8 @@ export function ActiveTasksPanel({
             );
           })}
           {items.map((t) => (
-            <DraggableTask key={t.id} zone="active" task={t}>
-              <TaskCard task={t} {...cardProps} category={cardProps.categoryOf?.(t)} />
+            <DraggableTask key={t.id} zone="active" task={t} className="py-1">
+              <TaskCard task={t} {...cardProps} category={cardProps.categoryOf?.(t)} descriptionMode="always" />
             </DraggableTask>
           ))}
         </div>
