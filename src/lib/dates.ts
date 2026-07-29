@@ -50,6 +50,46 @@ export function daysBetween(fromISO: string, toISO: string): number {
   return Math.round((Date.UTC(ty, tm - 1, td) - Date.UTC(fy, fm - 1, fd)) / 86_400_000);
 }
 
+// Seconds remaining until the next 1:30 AM Edmonton rollover — drives the
+// live top-corner countdown. DST-simplified (ignores the rare same-day shift).
+export function secondsUntilRollover(now: Date = new Date()): number {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "America/Edmonton",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(now);
+  const get = (t: string) => Number(parts.find((p) => p.type === t)!.value);
+  const sec = (get("hour") % 24) * 3600 + get("minute") * 60 + get("second");
+  const rollover = DAY_START_MINUTES * 60; // 01:30 in seconds since local midnight
+  return sec < rollover ? rollover - sec : 86_400 + rollover - sec;
+}
+
+export function formatCountdown(totalSeconds: number): string {
+  const h = Math.floor(totalSeconds / 3600);
+  const m = Math.floor((totalSeconds % 3600) / 60);
+  const s = totalSeconds % 60;
+  return `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+}
+
+function longMonth(iso: string): string {
+  const [y, m, d] = iso.split("-").map(Number);
+  return new Intl.DateTimeFormat("en-US", { month: "long", timeZone: "UTC" }).format(new Date(Date.UTC(y, m - 1, d)));
+}
+
+// Weekly Tasks header, e.g. "Week of July 21–27" (same month) or
+// "Week of July 28 – August 3" (crossing a month boundary).
+export function weekRangeLabel(mondayISO: string, sundayISO: string): string {
+  const monDay = Number(mondayISO.split("-")[2]);
+  const sunDay = Number(sundayISO.split("-")[2]);
+  const monMonth = longMonth(mondayISO);
+  const sunMonth = longMonth(sundayISO);
+  return monMonth === sunMonth
+    ? `Week of ${monMonth} ${monDay}–${sunDay}`
+    : `Week of ${monMonth} ${monDay} – ${sunMonth} ${sunDay}`;
+}
+
 export function formatDue(dateISO: string, todayISO: string): string {
   const d = daysBetween(todayISO, dateISO);
   if (d === 0) return "Today";

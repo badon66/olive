@@ -1,11 +1,18 @@
 import { useMemo, useState, type FormEvent, type ReactNode } from "react";
 import type { WeeklyCheckin, WeeklyStore, WeeklyTask } from "../hooks/useWeeklyTasks";
-import { edmontonToday } from "../lib/dates";
+import { edmontonToday, weekRangeLabel } from "../lib/dates";
 import { SECTION_ORDER } from "../lib/sections";
 import { cubeStates, progress, weekDates, type CubeState } from "../lib/weekly";
 import { DraggableWeekly } from "./board/TaskDnd";
 
 const DAY_LETTERS = ["M", "T", "W", "T", "F", "S", "S"];
+const DAY_ABBRS = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"];
+
+// Short M/D for a cube's date label, e.g. "7/21".
+function cubeDate(iso: string): string {
+  const [, m, d] = iso.split("-").map(Number);
+  return `${m}/${d}`;
+}
 
 export function recurrenceLabel(t: WeeklyTask): string {
   if (t.recurrence_mode === "count") return `${t.target_per_week ?? 0}×/week`;
@@ -24,7 +31,7 @@ function progressNote(t: WeeklyTask, states: CubeState[]): string {
   return parts.join(" · ");
 }
 
-type Props = WeeklyStore & { bare?: boolean; draggable?: boolean };
+type Props = WeeklyStore & { bare?: boolean; draggable?: boolean; customize?: boolean };
 
 export function WeeklyTasksView({
   weeklyTasks,
@@ -39,6 +46,7 @@ export function WeeklyTasksView({
   saveDetail,
   bare = false,
   draggable = false,
+  customize = false,
 }: Props) {
   const [detailFor, setDetailFor] = useState<WeeklyCheckin | null>(null);
   const [note, setNote] = useState("");
@@ -58,26 +66,37 @@ export function WeeklyTasksView({
     return m;
   }, [checkins]);
 
-  // Cube tap: today toggles completed; other days toggle planned; past days read-only
-  const onCube = async (t: WeeklyTask, date: string, state: CubeState) => {
-    if (date === today) {
-      if (state === "completed") {
-        setDetailFor(null);
-        await uncompleteDay(t, date);
+  // Cube tap, gated by the top-corner pencil (BUILD_PLAN):
+  //  • pencil OFF (default): click marks that day complete (toggle).
+  //  • pencil ON (add/edit mode): click edits/moves — fixed-days toggles that
+  //    weekday in/out of scheduled_days; count-mode plans/unplans that day.
+  const onCube = async (t: WeeklyTask, date: string, state: CubeState, weekday: number) => {
+    if (customize) {
+      if (t.recurrence_mode === "fixed_days") {
+        const cur = t.scheduled_days ?? [];
+        const next = cur.includes(weekday) ? cur.filter((d) => d !== weekday) : [...cur, weekday].sort((a, b) => a - b);
+        await updateWeeklyTask(t.id, { scheduled_days: next });
       } else {
-        // completeDay returns the written row — the render-time checkin list is
-        // stale here and would miss a brand-new checkin
-        const fresh = await completeDay(t.id, date);
-        setNote("");
-        setDuration("");
-        if (fresh) setDetailFor(fresh); // offer detail — one tap to skip
+        const hasRow = (checkinsByTask.get(t.id) ?? []).some((c) => c.date === date);
+        if (hasRow) await unplanDay(t.id, date);
+        else await planDay(t.id, date);
       }
       return;
     }
-    if (date < today) return; // history is what it was
-    const hasRow = (checkinsByTask.get(t.id) ?? []).some((c) => c.date === date);
-    if (state === "empty" || (!hasRow && state === "planned")) await planDay(t.id, date);
-    else if (hasRow) await unplanDay(t.id, date);
+    // Pencil OFF: mark this day complete (or undo it).
+    if (state === "completed") {
+      setDetailFor(null);
+      await uncompleteDay(t, date);
+    } else {
+      // completeDay returns the written row — the render-time checkin list is
+      // stale here and would miss a brand-new checkin
+      const fresh = await completeDay(t.id, date);
+      if (date === today) {
+        setNote("");
+        setDuration("");
+        if (fresh) setDetailFor(fresh); // offer detail on today's completion — one tap to skip
+      }
+    }
   };
 
   const saveDetailNow = async () => {
@@ -93,6 +112,8 @@ export function WeeklyTasksView({
 
   const rows = (
     <>
+      {/* Fixed Monday–Sunday week; header shows the calendar range (BUILD_PLAN) */}
+      <p className="font-data text-[11px] text-dim uppercase tracking-widest mb-2">{weekRangeLabel(week[0], week[6])}</p>
       {weeklyTasks.length === 0 ? (
         <p className="text-dim text-sm py-2">No weekly tasks yet. Use the pencil menu to add one.</p>
       ) : (
@@ -104,40 +125,50 @@ export function WeeklyTasksView({
             const showDetail = detailFor !== null && todayCheckin?.id === detailFor.id;
             const body = (
               <div className="py-2.5">
-                <div className="flex items-center gap-3 flex-wrap">
-                  <button
-                    onClick={() => setEditing(t)}
-                    className="min-w-0 text-left rounded cursor-pointer focus-visible:outline-2 focus-visible:outline-signal"
-                    aria-label={`Edit ${t.name}`}
-                  >
-                    <p className="font-body font-semibold text-base leading-snug truncate">{t.name}</p>
-                  </button>
-                  <span className="hud-chip shrink-0">{recurrenceLabel(t)}</span>
-                  {t.time_section && <span className="hud-chip hud-chip-signal shrink-0">{t.time_section}</span>}
+                {/* Single row: name (+ chips) on the left, the 7 square cubes on
+                    the right. Cubes stay large but genuinely square (w-14 h-14). */}
+                <div className="flex items-center gap-3">
+                  <div className="min-w-0 flex-1 flex items-center gap-2 flex-wrap">
+                    <button
+                      onClick={() => setEditing(t)}
+                      className="min-w-0 text-left rounded cursor-pointer focus-visible:outline-2 focus-visible:outline-signal"
+                      aria-label={`Edit ${t.name}`}
+                    >
+                      <p className="font-body font-semibold text-base leading-snug truncate">{t.name}</p>
+                    </button>
+                    <span className="hud-chip shrink-0">{recurrenceLabel(t)}</span>
+                    {t.time_section && <span className="hud-chip hud-chip-signal shrink-0">{t.time_section}</span>}
+                  </div>
 
-                  {/* 7 cubes, Monday-first; empty / planned (light) / completed (solid) */}
-                  <span className="flex gap-1 ml-auto shrink-0" role="group" aria-label={`${t.name} week`}>
+                  <div className="flex gap-1.5 shrink-0" role="group" aria-label={`${t.name} week`}>
                     {week.map((date, i) => {
                       const state = states[i];
                       return (
                         <button
                           key={date}
-                          onClick={() => void onCube(t, date, state)}
-                          aria-label={`${t.name} ${date}: ${state}`}
-                          title={`${DAY_LETTERS[i]} — ${state}`}
-                          className={`w-6 h-6 rounded-[4px] grid place-items-center font-data text-[9px] cursor-pointer transition-all duration-150 border ${
+                          onClick={() => void onCube(t, date, state, i)}
+                          aria-label={`${t.name} ${DAY_ABBRS[i]} ${cubeDate(date)}: ${state}`}
+                          title={
+                            customize
+                              ? t.recurrence_mode === "fixed_days"
+                                ? `${DAY_ABBRS[i]} — click to ${(t.scheduled_days ?? []).includes(i) ? "remove from" : "add to"} schedule`
+                                : `${DAY_ABBRS[i]} — click to plan / unplan`
+                              : `${DAY_ABBRS[i]} — click to mark ${state === "completed" ? "not done" : "done"}`
+                          }
+                          className={`w-14 h-14 shrink-0 rounded-md flex flex-col items-center justify-center gap-0.5 font-data cursor-pointer transition-all duration-150 border ${
                             state === "completed"
-                              ? "bg-signal-dim border-signal text-hud shadow-[0_0_8px_rgba(63,169,104,0.45)]"
+                              ? "bg-signal-dim border-signal text-hud shadow-[0_0_10px_rgba(63,169,104,0.45)]"
                               : state === "planned"
                                 ? "bg-signal/15 border-signal/45 text-signal"
                                 : "bg-transparent border-panel-border text-dim/60 hover:border-signal/40"
-                          } ${date === today ? "ring-1 ring-hud/40" : ""}`}
+                          } ${date === today ? "ring-1 ring-hud/50" : ""}`}
                         >
-                          {DAY_LETTERS[i]}
+                          <span className="text-[10px] tracking-wide leading-none">{DAY_ABBRS[i]}</span>
+                          <span className="text-[11px] leading-none mt-0.5">{cubeDate(date)}</span>
                         </button>
                       );
                     })}
-                  </span>
+                  </div>
                 </div>
 
                 {/* Progress note: numbers always add up (planned + completed + to-plan = target) */}
