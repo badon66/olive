@@ -3,8 +3,17 @@ import { supabase } from "./supabase";
 // One parsed assistant action, as returned by preview mode and accepted by
 // commit mode. Field names mirror supabase/functions/_shared/actions.ts.
 export type AssistantAction = {
-  type: "create_task" | "update_task" | "complete_task" | "delete_task" | "create_category" | "add_memory";
+  type:
+    | "create_task"
+    | "update_task"
+    | "complete_task"
+    | "delete_task"
+    | "create_category"
+    | "create_job"
+    | "update_job"
+    | "add_memory";
   title?: string;
+  description?: string | null;
   category_name?: string;
   due_date?: string | null;
   priority_weight?: number;
@@ -12,6 +21,9 @@ export type AssistantAction = {
   duration_minutes?: number | null;
   scheduled_time?: string | null;
   task_id?: string;
+  job_id?: string | null;
+  status?: string;
+  notes?: string | null;
   name?: string;
   color?: string | null;
   content?: string;
@@ -19,16 +31,31 @@ export type AssistantAction = {
   tags?: string[];
 };
 
+// Scopes a capture to a job: the assistant links created tasks to it and polishes
+// their wording. category_name lets the task inherit the job's header.
+export type JobContext = { id: string; name: string; category_name?: string | null };
+
+// Extra capture context: scope to a job, and/or default undated tasks to a date
+// (the schedule-setup popup adds tasks "for tomorrow").
+export type CaptureContext = { job?: JobContext; forDate?: string };
+
 // Typed text: parse + execute in one step
-export async function sendToAssistant(message: string): Promise<string> {
-  const { data, error } = await supabase.functions.invoke("assistant", { body: { message } });
+export async function sendToAssistant(message: string, ctx?: CaptureContext): Promise<string> {
+  const { data, error } = await supabase.functions.invoke("assistant", {
+    body: { message, job: ctx?.job, for_date: ctx?.forDate },
+  });
   if (error) throw new Error(error.message);
   return data.reply as string;
 }
 
-// Voice: parse only — nothing is saved until commitAssistant
-export async function previewAssistant(message: string): Promise<{ actions: AssistantAction[]; reply: string }> {
-  const { data, error } = await supabase.functions.invoke("assistant", { body: { message, mode: "preview" } });
+// Voice (or a job's capture box): parse only — nothing is saved until commitAssistant
+export async function previewAssistant(
+  message: string,
+  ctx?: CaptureContext,
+): Promise<{ actions: AssistantAction[]; reply: string }> {
+  const { data, error } = await supabase.functions.invoke("assistant", {
+    body: { message, mode: "preview", job: ctx?.job, for_date: ctx?.forDate },
+  });
   if (error) throw new Error(error.message);
   return { actions: data.actions as AssistantAction[], reply: data.reply as string };
 }
@@ -52,13 +79,23 @@ export async function cleanJournal(raw: string): Promise<{ cleaned_text: string;
 
 export type BlockedWindow = { start: string; end: string; label: string };
 
-export async function submitScheduleSetup(blurb: string): Promise<{
+export type ScheduleSetupInput = {
+  date?: string;
+  wake_time: string | null;
+  bedtime: string | null;
+  going_selling: boolean;
+  // Natural-language blocked windows ("dentist 2 to 3:30") — parsed server-side.
+  blocked_windows_blurb: string;
+};
+
+export async function submitScheduleSetup(input: ScheduleSetupInput): Promise<{
   date: string;
   wake_time: string;
+  bedtime: string | null;
+  going_selling: boolean;
   blocked_windows: BlockedWindow[];
-  reply: string;
 }> {
-  const { data, error } = await supabase.functions.invoke("schedule-setup", { body: { blurb } });
+  const { data, error } = await supabase.functions.invoke("schedule-setup", { body: input });
   if (error) throw new Error(error.message);
   return data;
 }

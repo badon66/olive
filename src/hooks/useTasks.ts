@@ -6,12 +6,14 @@ import type { TimeSection } from "../lib/sections";
 export type Task = Database["public"]["Tables"]["tasks"]["Row"];
 export type TaskInput = {
   title: string;
+  description?: string | null;
   category_id: string;
   due_date: string | null;
   priority_weight: number;
   scheduled_time?: string | null;
   time_section?: TimeSection | null;
   duration_minutes?: number | null;
+  auto_carry_forward?: boolean;
 };
 
 export type TaskStore = ReturnType<typeof useTasks>;

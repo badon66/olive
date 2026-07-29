@@ -17,12 +17,14 @@ type Props = {
 
 export function TaskForm({ initial, categories, onSubmit, onClose, onDelete, defaults }: Props) {
   const [title, setTitle] = useState(initial?.title ?? "");
+  const [description, setDescription] = useState(initial?.description ?? "");
   const [categoryId, setCategoryId] = useState(initial?.category_id ?? defaults?.category_id ?? categories[0]?.id ?? "");
   const [dueDate, setDueDate] = useState(initial?.due_date ?? defaults?.due_date ?? "");
   const [priority, setPriority] = useState(initial?.priority_weight ?? 3);
   const [scheduledTime, setScheduledTime] = useState(initial?.scheduled_time?.slice(0, 5) ?? "");
   const [timeSection, setTimeSection] = useState<TimeSection | "">(initial?.time_section ?? "");
   const [duration, setDuration] = useState(initial?.duration_minutes ? String(initial.duration_minutes) : "");
+  const [carryForward, setCarryForward] = useState(initial?.auto_carry_forward ?? false);
   const [busy, setBusy] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
 
@@ -32,12 +34,14 @@ export function TaskForm({ initial, categories, onSubmit, onClose, onDelete, def
     setBusy(true);
     await onSubmit({
       title: title.trim(),
+      description: description.trim() || null,
       category_id: categoryId,
       due_date: dueDate || null,
       priority_weight: priority,
       scheduled_time: scheduledTime || null,
       time_section: timeSection || null,
       duration_minutes: duration.trim() ? Math.max(1, Number(duration)) : null,
+      auto_carry_forward: carryForward,
     });
     setBusy(false);
     onClose();
@@ -70,6 +74,16 @@ export function TaskForm({ initial, categories, onSubmit, onClose, onDelete, def
         <label className="block space-y-1">
           <span className="font-data text-xs text-dim uppercase tracking-wider">Title *</span>
           <input className="hud-input" value={title} onChange={(e) => setTitle(e.target.value)} required autoFocus />
+        </label>
+
+        <label className="block space-y-1">
+          <span className="font-data text-xs text-dim uppercase tracking-wider">Description</span>
+          <textarea
+            className="hud-input min-h-[64px] resize-y"
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            placeholder="optional — extra detail, shown on the task"
+          />
         </label>
 
         <label className="block space-y-1">
@@ -148,6 +162,18 @@ export function TaskForm({ initial, categories, onSubmit, onClose, onDelete, def
             ))}
           </div>
         </fieldset>
+
+        {/* Opt-in carry-forward: if not done by its day, surfaces under Today's
+            Schedule's "Carryover Tasks" (not a general unfinished-task reminder). */}
+        <label className="flex items-center gap-2.5 cursor-pointer select-none">
+          <input
+            type="checkbox"
+            checked={carryForward}
+            onChange={(e) => setCarryForward(e.target.checked)}
+            className="w-5 h-5 accent-signal cursor-pointer"
+          />
+          <span className="font-body text-sm text-hud">Carry forward if not done</span>
+        </label>
 
         <div className="flex gap-3">
           {initial && onDelete && (

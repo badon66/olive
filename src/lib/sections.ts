@@ -7,6 +7,31 @@ import { scoreTask } from "./ranking";
 export const SECTION_ORDER = ["morning", "midday", "afternoon", "evening", "night", "anytime"] as const;
 export type TimeSection = (typeof SECTION_ORDER)[number];
 
+// Resolved time-section clock boundaries (BUILD_PLAN, 2026-07-27). Only Morning is
+// wake-relative; the rest are fixed. Night wraps midnight (11 PM–5 AM). "anytime"
+// has no window. Used for the informational clock-range label on section headers.
+const SECTION_CLOCK: Partial<Record<TimeSection, [string, string]>> = {
+  midday: ["12:00", "16:00"],
+  afternoon: ["16:00", "18:00"],
+  evening: ["18:00", "23:00"],
+  night: ["23:00", "05:00"],
+};
+
+function to12h(hhmm: string): string {
+  const [h, m] = hhmm.split(":").map(Number);
+  const ampm = h < 12 ? "AM" : "PM";
+  const h12 = h % 12 === 0 ? 12 : h % 12;
+  return m === 0 ? `${h12}:00 ${ampm}` : `${h12}:${String(m).padStart(2, "0")} ${ampm}`;
+}
+
+// Human clock-range label for a section, e.g. "9:00 AM – 12:00 PM". Morning runs
+// from wake_time (default 11:00) to noon; the rest are fixed. null for anytime.
+export function sectionClockLabel(section: TimeSection, wakeTime = "11:00"): string | null {
+  if (section === "morning") return `${to12h(wakeTime)} – 12:00 PM`;
+  const r = SECTION_CLOCK[section];
+  return r ? `${to12h(r[0])} – ${to12h(r[1])}` : null;
+}
+
 // Today's Schedule ribbon. Night bookends the day: it leads as the tail of the
 // nights already passed (context — not a drop target) and closes as this day's
 // own upcoming night. "Anytime" is appended so those tasks aren't hidden. The

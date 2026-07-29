@@ -8,23 +8,22 @@ const CORS = {
 };
 
 const hhmm = z.string().regex(/^\d{2}:\d{2}$/);
-const SetupSchema = z.object({
-  wake_time: hhmm.nullable().default(null), // null = keep the 11:00 default
+// The form supplies wake/bedtime/going_selling directly; only the blocked-windows
+// blurb needs the LLM. This schema validates that parse.
+const ParseSchema = z.object({
   blocked_windows: z
     .array(z.object({ start: hhmm, end: hhmm, label: z.string().min(1).max(60) }))
     .max(8)
     .default([]),
-  reply: z.string().min(1),
 });
 
-const SETUP_TOOL = {
-  name: "return_setup",
-  description: "Return tomorrow's wake time and any blocked windows parsed from the user's blurb.",
+const PARSE_TOOL = {
+  name: "return_blocked_windows",
+  description: "Extract blocked time windows from the blurb.",
   input_schema: {
     type: "object",
-    required: ["wake_time", "blocked_windows", "reply"],
+    required: ["blocked_windows"],
     properties: {
-      wake_time: { type: ["string", "null"], description: "HH:MM 24h, or null if the user didn't mention waking" },
       blocked_windows: {
         type: "array",
         items: {
@@ -37,7 +36,6 @@ const SETUP_TOOL = {
           },
         },
       },
-      reply: { type: "string", description: "One-line confirmation of what was understood" },
     },
   },
 } as const;
@@ -55,7 +53,7 @@ function edmontonTomorrow(): string {
   }).formatToParts(now);
   const mins = (Number(parts.find((p) => p.type === "hour")!.value) % 24) * 60 + Number(parts.find((p) => p.type === "minute")!.value);
   const [y, m, d] = date.split("-").map(Number);
-  const offset = mins >= 90 ? 1 : 0; // before 1:30 AM, "today" is still yesterday
+  const offset = mins >= 90 ? 1 : 0;
   return new Date(Date.UTC(y, m - 1, d + offset)).toISOString().slice(0, 10);
 }
 
@@ -66,37 +64,50 @@ Deno.serve(async (req) => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return Response.json({ error: "unauthorized" }, { status: 401, headers: CORS });
 
-    const { blurb, date } = await req.json();
-    if (typeof blurb !== "string" || !blurb.trim()) {
-      return Response.json({ error: "empty blurb" }, { status: 400, headers: CORS });
+    const body = await req.json();
+    const targetDate =
+      typeof body.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(body.date) ? body.date : edmontonTomorrow();
+    const wake_time = typeof body.wake_time === "string" && /^\d{2}:\d{2}$/.test(body.wake_time) ? body.wake_time : null;
+    const bedtime = typeof body.bedtime === "string" && /^\d{2}:\d{2}$/.test(body.bedtime) ? body.bedtime : null;
+    const going_selling = body.going_selling === true;
+    const blurb = typeof body.blocked_windows_blurb === "string" ? body.blocked_windows_blurb.trim() : "";
+
+    let blocked_windows: unknown[] = [];
+    if (blurb) {
+      const system = [
+        "Extract blocked time windows from the blurb into HH:MM 24h start/end plus a short label.",
+        "'dentist 2 to 3:30' -> 14:00-15:30 labeled 'dentist'. Assume afternoon for ambiguous small hours unless clearly morning.",
+        "If nothing is actually blocked, return an empty array. Return via return_blocked_windows.",
+      ].join("\n");
+      const raw = await callClaude({ system, user: blurb, tool: PARSE_TOOL, toolName: "return_blocked_windows" });
+      blocked_windows = ParseSchema.parse(raw).blocked_windows;
+    } else {
+      // No new blurb — preserve any blocked windows already set for that day so an
+      // update to wake/bedtime/selling doesn't silently wipe them.
+      const { data: existing } = await supabase
+        .from("daily_schedule_setup")
+        .select("blocked_windows")
+        .eq("date", targetDate)
+        .maybeSingle();
+      blocked_windows = (existing?.blocked_windows ?? []) as unknown[];
     }
-    const targetDate = typeof date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : edmontonTomorrow();
-
-    const system = [
-      "You parse a short blurb about tomorrow's schedule into a wake time and blocked windows.",
-      "Times are 24h HH:MM. 'up around 9' → wake_time 09:00. 'dentist 2 to 3:30' → 14:00–15:30 labeled 'dentist'.",
-      "Assume afternoon for ambiguous small hours in appointments (2 → 14:00) unless clearly morning.",
-      "If no wake time is mentioned, wake_time is null (the app keeps its 11:00 default).",
-      "Return via the return_setup tool.",
-    ].join("\n");
-
-    const raw = await callClaude({ system, user: blurb, tool: SETUP_TOOL, toolName: "return_setup" });
-    const setup = SetupSchema.parse(raw);
 
     const { error } = await supabase.from("daily_schedule_setup").upsert(
       {
         user_id: user.id,
         date: targetDate,
-        wake_time: setup.wake_time ?? "11:00",
-        blocked_windows: setup.blocked_windows,
-        raw_blurb: blurb,
+        wake_time: wake_time ?? "11:00",
+        bedtime,
+        going_selling,
+        blocked_windows,
+        raw_blurb: blurb || null,
       },
       { onConflict: "user_id,date" },
     );
     if (error) throw error;
 
     return Response.json(
-      { date: targetDate, wake_time: setup.wake_time ?? "11:00", blocked_windows: setup.blocked_windows, reply: setup.reply },
+      { date: targetDate, wake_time: wake_time ?? "11:00", bedtime, going_selling, blocked_windows },
       { headers: CORS },
     );
   } catch (e) {

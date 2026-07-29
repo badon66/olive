@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { partitionSchedule, scheduleSort, upcomingDates } from "./sections";
+import { partitionSchedule, scheduleSort, sectionClockLabel, upcomingDates } from "./sections";
 
 describe("upcomingDates", () => {
   it("returns today plus the requested days ahead, chronological", () => {
@@ -21,6 +21,27 @@ describe("upcomingDates", () => {
       "2026-08-04",
       "2026-08-05",
     ]);
+  });
+});
+
+describe("sectionClockLabel — resolved boundaries", () => {
+  it("Morning is wake-relative to noon", () => {
+    expect(sectionClockLabel("morning", "09:00")).toBe("9:00 AM – 12:00 PM");
+    expect(sectionClockLabel("morning", "11:00")).toBe("11:00 AM – 12:00 PM");
+    expect(sectionClockLabel("morning", "07:30")).toBe("7:30 AM – 12:00 PM");
+  });
+  it("defaults Morning wake to 11:00 and ignores seconds", () => {
+    expect(sectionClockLabel("morning")).toBe("11:00 AM – 12:00 PM");
+    expect(sectionClockLabel("morning", "09:00:00")).toBe("9:00 AM – 12:00 PM");
+  });
+  it("fixed windows for the rest, Night wraps midnight", () => {
+    expect(sectionClockLabel("midday")).toBe("12:00 PM – 4:00 PM");
+    expect(sectionClockLabel("afternoon")).toBe("4:00 PM – 6:00 PM");
+    expect(sectionClockLabel("evening")).toBe("6:00 PM – 11:00 PM");
+    expect(sectionClockLabel("night")).toBe("11:00 PM – 5:00 AM");
+  });
+  it("anytime has no window", () => {
+    expect(sectionClockLabel("anytime")).toBeNull();
   });
 });
 

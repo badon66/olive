@@ -1,26 +1,42 @@
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "../lib/supabase";
 import type { CategoryStore } from "../hooks/useCategories";
+import type { JobStore } from "../hooks/useJobs";
 import type { Task, TaskStore } from "../hooks/useTasks";
 import type { WeeklyStore, WeeklyTask } from "../hooks/useWeeklyTasks";
+import { activeCount } from "../lib/jobs";
 import { useBrief, type BriefContent } from "../hooks/useBrief";
-import { edmontonHour, edmontonToday } from "../lib/dates";
+import { addDays, edmontonHour, edmontonToday } from "../lib/dates";
 import { buildInsight } from "../lib/insight";
 import { computeSections, doneTodayCount, effectiveOrder } from "../lib/sections";
 import { currentSection } from "../lib/suggest";
 import { CategoryPanelBody } from "./CategoryPanel";
 import { ChatBar } from "./ChatBar";
+import { CustomizeToggle } from "./CustomizeToggle";
 import { DashSection } from "./DashSection";
 import { JournalView } from "./JournalView";
 import { Orb } from "./Orb";
+import { RolloverCountdown } from "./RolloverCountdown";
 import { ScheduleSetupButton } from "./ScheduleSetup";
 import { TaskForm } from "./TaskForm";
 import { WeeklyTaskForm, WeeklyTasksView } from "./WeeklyTasksView";
+import { ActiveJobsPanel } from "./board/ActiveJobsPanel";
 import { ActiveTasksPanel } from "./board/ActiveTasksPanel";
 import { UpcomingDaysPanel } from "./board/DayBlocksPanel";
 import { PrioritiesPanel } from "./board/PrioritiesPanel";
 import { DropZone, TaskDndProvider, useActiveDrag } from "./board/TaskDnd";
 import { TodaySchedulePanel } from "./board/TodaySchedulePanel";
+
+const OFFSET_WORDS = ["", "one", "two", "three", "four", "five", "six", "seven"];
+// Dynamic label for the schedule day-stepper, both directions.
+function dayOffsetLabel(o: number): string {
+  if (o === 0) return "Today";
+  if (o === -1) return "Previous day";
+  if (o === 1) return "Next day";
+  const w = OFFSET_WORDS[Math.abs(o)] ?? String(Math.abs(o));
+  const word = w.charAt(0).toUpperCase() + w.slice(1);
+  return o < 0 ? `${word} days ago` : `In ${w} days`;
+}
 
 function greeting(hour: number): string {
   if (hour < 12) return "Good morning, Keenan";
@@ -45,12 +61,18 @@ export function DesktopDashboard({
   taskStore,
   weeklyStore,
   categoryStore,
+  jobStore,
+  onOpenJobs,
   customize,
+  onToggleCustomize,
 }: {
   taskStore: TaskStore;
   weeklyStore: WeeklyStore;
   categoryStore: CategoryStore;
+  jobStore: JobStore;
+  onOpenJobs: () => void;
   customize: boolean;
+  onToggleCustomize: () => void;
 }) {
   const { tasks, loading } = taskStore;
   const { brief, loading: briefLoading, error, regenerate, saveManualOrder } = useBrief();
@@ -58,6 +80,8 @@ export function DesktopDashboard({
   const [addWeekly, setAddWeekly] = useState(false);
   const [addTaskCat, setAddTaskCat] = useState<string | null>(null);
   const [now, setNow] = useState(() => new Date());
+  // Previous-day navigation for Today's Schedule: 0 = today, down to -3.
+  const [scheduleOffset, setScheduleOffset] = useState(0);
 
   useEffect(() => {
     const iv = setInterval(() => setNow(new Date()), 30_000);
@@ -139,6 +163,31 @@ export function DesktopDashboard({
 
   const dueToday = [...sections.overdue, ...sections.today];
 
+  // Carryover: one-off tasks that opted into auto_carry_forward and went overdue
+  // (weren't done by their day). Surfaced in its own nudge button — never blended
+  // with generic overdue or with weekly-task planning.
+  const carryover = useMemo(
+    () => open.filter((t) => t.auto_carry_forward && t.due_date !== null && t.due_date < today),
+    [open, today],
+  );
+
+  // Which day the detailed Today's Schedule panel is showing. Bidirectional:
+  // back up to 3 days, forward up to a week. Any non-today day shows its real
+  // due tasks (a read-back grouping, no pull-forward/weekly).
+  const MAX_BACK = -3;
+  const MAX_FWD = 7;
+  const scheduleDate = addDays(today, scheduleOffset);
+  const otherDay = scheduleOffset !== 0;
+  const scheduleDue = otherDay ? open.filter((t) => t.due_date === scheduleDate) : dueToday;
+  const dayNav = {
+    label: dayOffsetLabel(scheduleOffset),
+    canBack: scheduleOffset > MAX_BACK,
+    canForward: scheduleOffset < MAX_FWD,
+    onBack: () => setScheduleOffset((o) => Math.max(MAX_BACK, o - 1)),
+    onForward: () => setScheduleOffset((o) => Math.min(MAX_FWD, o + 1)),
+    historical: otherDay,
+  };
+
   // Two-way task ↔ weekly conversion, each returning an undo closure
   const convertTaskToWeekly = async (task: Task) => {
     const { data: wt, error: werr } = await supabase
@@ -201,20 +250,25 @@ export function DesktopDashboard({
       }}
     >
       <div className="min-h-dvh flex flex-col text-[13px]">
-        {/* Sticky top bar — stays in view while the page scrolls underneath */}
-        <header className="sticky top-0 z-30 flex items-center justify-between px-6 pr-20 py-2.5 gap-4 shrink-0 bg-void/85 backdrop-blur-md border-b border-panel-border">
+        {/* Sticky top bar — stays in view while the page scrolls underneath. The
+            customize pencil lives HERE (a real header child) so the sticky bar
+            can't paint over it — the earlier absolute pencil sat behind it. */}
+        <header className="sticky top-0 z-30 flex items-center justify-between px-6 py-2.5 gap-4 shrink-0 bg-void/85 backdrop-blur-md border-b border-panel-border">
           <span className={`text-[13px] ${sections.overdue.length > 0 ? "text-amber" : "text-dim"}`}>{status}</span>
           <div className="flex items-center gap-3">
-            <ScheduleSetupButton />
+            <RolloverCountdown />
+            <ScheduleSetupButton onTasksChanged={taskStore.refresh} />
             <div className="flex items-center gap-3 font-data text-[11px]">
               <span className="text-dim">{dateStr}</span>
               <span className="text-signal">{timeStr}</span>
             </div>
+            <CustomizeToggle on={customize} onToggle={onToggleCustomize} />
           </div>
         </header>
 
-        {/* FIXED LAYOUT (BUILD_PLAN) — not user-rearrangeable */}
-        <div className="px-6 pb-6 flex flex-col gap-3">
+        {/* FIXED LAYOUT (BUILD_PLAN) — not user-rearrangeable. pt-5 gives the first
+            row clear breathing room below the sticky header. */}
+        <div className="px-6 pt-5 pb-6 flex flex-col gap-3">
           {/* Flanking row: the left and right columns run the FULL height of the
               centre unit (orb + capture box together), not just the orb. */}
           {/* Row height is pinned to the centre unit (orb 380 + capture box) so the
@@ -236,10 +290,10 @@ export function DesktopDashboard({
               <DashSection
                 title="Active Jobs"
                 customize={customize}
-                hint={<span className="hud-chip">soon</span>}
+                hint={<span className="hud-chip">{activeCount(jobStore.jobs)}</span>}
                 className="flex-1 min-h-[90px]"
               >
-                <p className="text-dim text-xs py-1">The jobs log lands here in Phase 3.</p>
+                <ActiveJobsPanel jobs={jobStore.jobs} categoryStore={categoryStore} onOpen={onOpenJobs} />
               </DashSection>
             </div>
 
@@ -261,7 +315,7 @@ export function DesktopDashboard({
               <div className="w-full max-w-[520px] mt-1">
                 <ChatBar
                   onActionDone={async () => {
-                    await Promise.all([taskStore.refresh(), categoryStore.refresh()]);
+                    await Promise.all([taskStore.refresh(), categoryStore.refresh(), jobStore.refresh()]);
                   }}
                   inline
                   taskTitleById={(id) => tasks.find((t) => t.id === id)?.title}
@@ -273,10 +327,18 @@ export function DesktopDashboard({
             <DashSection
               title="Today's Schedule"
               customize={customize}
-              hint={<span className="hud-chip">{dueToday.length}</span>}
+              hint={<span className="hud-chip">{scheduleDue.length}</span>}
               className="h-full min-h-0"
             >
-              <TodaySchedulePanel bare dueToday={dueToday} openTasks={open} cardProps={cardProps} weeklyBits={weeklyStore} />
+              <TodaySchedulePanel
+                bare
+                dueToday={scheduleDue}
+                openTasks={otherDay ? [] : open}
+                cardProps={cardProps}
+                weeklyBits={otherDay ? undefined : weeklyStore}
+                carryover={otherDay ? [] : carryover}
+                dayNav={dayNav}
+              />
             </DashSection>
           </div>
 
@@ -300,7 +362,7 @@ export function DesktopDashboard({
                 hint={<span className="hud-chip">{weeklyStore.weeklyTasks.length}</span>}
               >
                 <WeeklyDropHint />
-                <WeeklyTasksView {...weeklyStore} bare />
+                <WeeklyTasksView {...weeklyStore} bare customize={customize} />
               </DashSection>
             </DropZone>
 

@@ -3,11 +3,52 @@ import { supabase } from "../../lib/supabase";
 import type { Task } from "../../hooks/useTasks";
 import type { WeeklyCheckin, WeeklyTask } from "../../hooks/useWeeklyTasks";
 import type { BlockedWindow } from "../../lib/api";
-import { partitionSchedule, SCHEDULE_SLOTS, scheduleSort, type TimeSection } from "../../lib/sections";
+import { formatDue } from "../../lib/dates";
+import { partitionSchedule, SCHEDULE_SLOTS, SECTION_ORDER, scheduleSort, sectionClockLabel, type TimeSection } from "../../lib/sections";
 import { pullForward } from "../../lib/suggest";
-import { appearsToday } from "../../lib/weekly";
+import { appearsToday, cubeStates, progress } from "../../lib/weekly";
 import { TaskCard } from "../TaskCard";
 import { DraggableTask, DraggableWeekly, DropZone } from "./TaskDnd";
+
+const SECTION_LABELS: Record<TimeSection, string> = {
+  morning: "Morning",
+  midday: "Midday",
+  afternoon: "Afternoon",
+  evening: "Evening",
+  night: "Night",
+  anytime: "Anytime",
+};
+
+// Previous-day navigation (BUILD_PLAN): step the detailed schedule back up to 3
+// days. Supplied by the dashboard; `historical` flips the panel to a read-back
+// view of that past day (no pull-forward, weekly, or nudges).
+export type DayNav = {
+  label: string;
+  canBack: boolean;
+  canForward: boolean;
+  onBack: () => void;
+  onForward: () => void;
+  historical: boolean;
+};
+
+// A single expandable nudge button (Unplanned Weekly Tasks / Carryover Tasks).
+function NudgeButton({ label, count, open, onClick }: { label: string; count: number; open: boolean; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      aria-expanded={open}
+      className={`inline-flex items-center gap-1.5 pl-2 pr-1.5 h-7 rounded-md border font-data text-[11px] cursor-pointer transition-colors duration-150 focus-visible:outline-2 focus-visible:outline-signal ${
+        open ? "border-amber/60 bg-amber/10 text-amber" : "border-amber/40 text-amber hover:bg-amber/10"
+      }`}
+    >
+      <svg viewBox="0 0 24 24" className={`w-3 h-3 transition-transform duration-200 ${open ? "rotate-180" : ""}`} fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <path d="m6 9 6 6 6-6" />
+      </svg>
+      {label}
+      <span className="px-1.5 rounded bg-amber/20 text-amber">{count}</span>
+    </button>
+  );
+}
 
 type CardProps = {
   today: string;
@@ -33,22 +74,31 @@ export function TodaySchedulePanel({
   openTasks,
   cardProps,
   weeklyBits,
+  carryover = [],
   bare = false,
+  dayNav,
 }: {
   dueToday: Task[];
   // All open tasks — needed to find unscheduled pull-forward candidates
   openTasks: Task[];
   cardProps: CardProps;
   weeklyBits?: WeeklyBits;
+  // One-off tasks that opted into auto_carry_forward and went overdue
+  carryover?: Task[];
   // bare: content only — the dashboard's DashSection provides panel + title
   bare?: boolean;
+  // Previous-day stepper (dashboard only); absent = plain today-only panel
+  dayNav?: DayNav;
 }) {
   const today = cardProps.today;
+  const historical = dayNav?.historical ?? false;
   const [setup, setSetup] = useState<{ wake_time: string; blocked_windows: BlockedWindow[] } | null>(null);
   // Every check-in offers an optional note/duration — one tap to skip (spec)
   const [detailFor, setDetailFor] = useState<WeeklyCheckin | null>(null);
   const [note, setNote] = useState("");
   const [duration, setDuration] = useState("");
+  // Which nudge button is expanded ("weekly" = unplanned weekly, "carryover")
+  const [openNudge, setOpenNudge] = useState<"weekly" | "carryover" | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -72,6 +122,14 @@ export function TodaySchedulePanel({
   const checkinsFor = (id: string) => (weeklyBits?.checkins ?? []).filter((c) => c.weekly_task_id === id);
   const weeklyToday = (weeklyBits?.weeklyTasks ?? []).filter((t) => appearsToday(t, checkinsFor(t.id), today));
 
+  // Count-mode weekly tasks still needing days planned this week — surfaced as a
+  // nudge here too (BUILD_PLAN Phase 2), disappearing once fully planned.
+  const countNudges = historical
+    ? []
+    : (weeklyBits?.weeklyTasks ?? []).filter(
+        (t) => t.recurrence_mode === "count" && progress(t, cubeStates(t, checkinsFor(t.id), today)).toPlan > 0,
+      );
+
   // Pull-forward suggestions: unscheduled tasks filling sparse, unblocked
   // sections. Recomputes when tasks or blocked windows change; the result is a
   // pure function so no memo needed for correctness.
@@ -84,9 +142,62 @@ export function TodaySchedulePanel({
   // it `today` (which flips at 1:30 AM) is what advances the whole view daily.
   const partition = partitionSchedule(dueToday, today);
 
+  const dayNavBar = dayNav && (
+    <div className="flex items-center justify-between gap-2 mb-2">
+      <button
+        onClick={dayNav.onBack}
+        disabled={!dayNav.canBack}
+        aria-label="Step back a day"
+        className="w-8 h-8 grid place-items-center rounded border border-signal-dim/30 text-dim enabled:hover:text-signal enabled:hover:border-signal/40 disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer focus-visible:outline-2 focus-visible:outline-signal"
+      >
+        <svg viewBox="0 0 24 24" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6" /></svg>
+      </button>
+      <span className={`font-data text-[11px] tracking-wide ${historical ? "text-amber" : "text-dim"}`}>{dayNav.label}</span>
+      <button
+        onClick={dayNav.onForward}
+        disabled={!dayNav.canForward}
+        aria-label="Step forward a day"
+        className="w-8 h-8 grid place-items-center rounded border border-signal-dim/30 text-dim enabled:hover:text-signal enabled:hover:border-signal/40 disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer focus-visible:outline-2 focus-visible:outline-signal"
+      >
+        <svg viewBox="0 0 24 24" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6" /></svg>
+      </button>
+    </div>
+  );
+
+  // Read-back view of a past day: plain per-section grouping, no pull-forward /
+  // weekly / drag (those are "today" concepts).
+  const historicalBody = (
+    <div className="space-y-2">
+      {dueToday.length === 0 ? (
+        <p className="text-dim text-sm py-1.5">Nothing scheduled for this day.</p>
+      ) : (
+        SECTION_ORDER.map((section) => {
+          const items = dueToday.filter((t) => (t.time_section ?? "anytime") === section).sort(scheduleSort);
+          if (items.length === 0) return null;
+          const clock = sectionClockLabel(section, setup?.wake_time);
+          return (
+            <div key={section} className="border border-signal-dim/15 rounded p-2">
+              <p className="font-data text-[11px] uppercase tracking-widest mb-0.5 flex items-baseline gap-2">
+                <span className="text-dim">{SECTION_LABELS[section]}</span>
+                {clock && <span className="text-dim/45 tracking-normal normal-case text-[10px]">{clock}</span>}
+              </p>
+              <div className="divide-y divide-signal-dim/15">
+                {items.map((t) => (
+                  <TaskCard key={t.id} task={t} {...cardProps} category={cardProps.categoryOf?.(t)} descriptionMode="chevron" />
+                ))}
+              </div>
+            </div>
+          );
+        })
+      )}
+    </div>
+  );
+
   const body = (
     <>
-      {setup && (
+      {dayNavBar}
+
+      {!historical && setup && (
         <p className="flex flex-wrap gap-1.5 mb-2">
           <span className="hud-chip hud-chip-signal">wake {setup.wake_time.slice(0, 5)}</span>
           {setup.blocked_windows.map((w, i) => (
@@ -97,10 +208,65 @@ export function TodaySchedulePanel({
         </p>
       )}
 
-      {dueToday.length === 0 && weeklyToday.length === 0 && (
+      {/* Two DISTINCT nudge buttons — weekly-task planning vs one-off carryover,
+          never conflated (BUILD_PLAN). Each expands its own list. */}
+      {!historical && (countNudges.length > 0 || carryover.length > 0) && (
+        <div className="mb-2 space-y-1.5">
+          <div className="flex flex-wrap gap-1.5">
+            {countNudges.length > 0 && (
+              <NudgeButton
+                label="Unplanned Weekly Tasks"
+                count={countNudges.length}
+                open={openNudge === "weekly"}
+                onClick={() => setOpenNudge((n) => (n === "weekly" ? null : "weekly"))}
+              />
+            )}
+            {carryover.length > 0 && (
+              <NudgeButton
+                label="Carryover Tasks"
+                count={carryover.length}
+                open={openNudge === "carryover"}
+                onClick={() => setOpenNudge((n) => (n === "carryover" ? null : "carryover"))}
+              />
+            )}
+          </div>
+          {openNudge === "weekly" && (
+            <ul className="border border-amber/25 rounded p-2 space-y-1">
+              {countNudges.map((t) => (
+                <li key={t.id} className="flex items-center gap-2 text-[13px] text-hud">
+                  <span className="w-1.5 h-1.5 rounded-full bg-amber shrink-0" aria-hidden="true" />
+                  <span className="min-w-0 truncate">{t.name} — needs a day this week</span>
+                </li>
+              ))}
+            </ul>
+          )}
+          {openNudge === "carryover" && (
+            <ul className="border border-amber/25 rounded p-2 divide-y divide-signal-dim/15">
+              {carryover.map((t) => (
+                <li key={t.id}>
+                  <button
+                    onClick={() => cardProps.onEdit(t)}
+                    className="w-full text-left flex items-center gap-2 py-1 text-[13px] text-hud cursor-pointer hover:text-signal focus-visible:outline-2 focus-visible:outline-signal rounded"
+                    aria-label={`Reschedule ${t.title}`}
+                  >
+                    <span className="w-1.5 h-1.5 rounded-full bg-amber shrink-0" aria-hidden="true" />
+                    <span className="flex-1 min-w-0 truncate">{t.title}</span>
+                    {t.due_date && <span className="hud-chip hud-chip-amber shrink-0">{formatDue(t.due_date, today)}</span>}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+
+      {historical && historicalBody}
+
+      {!historical && dueToday.length === 0 && weeklyToday.length === 0 && (
         <p className="text-dim text-sm py-1.5 mb-1">Clear for today — drag something in.</p>
       )}
 
+      {!historical && (
       <div className="space-y-2">
         {SCHEDULE_SLOTS.map((slot) => {
           const items = (partition[slot.key] ?? []).sort(scheduleSort);
@@ -116,10 +282,12 @@ export function TodaySchedulePanel({
           // actually holds something.
           if (slot.role === "anytime" && empty) return null;
 
+          const clock = sectionClockLabel(slot.section, setup?.wake_time);
           const content = (
             <>
-              <p className="font-data text-[11px] text-dim uppercase tracking-widest mb-0.5">
-                {slot.label}
+              <p className="font-data text-[11px] uppercase tracking-widest mb-0.5 flex items-baseline gap-2">
+                <span className="text-dim">{slot.label}</span>
+                {clock && <span className="text-dim/45 tracking-normal normal-case text-[10px]">{clock}</span>}
               </p>
               {empty ? (
                 <p className="text-dim/50 text-xs py-1">—</p>
@@ -206,7 +374,7 @@ export function TodaySchedulePanel({
                   })}
                   {items.map((t) => (
                     <DraggableTask key={t.id} zone="sched" task={t}>
-                      <TaskCard task={t} {...cardProps} category={cardProps.categoryOf?.(t)} />
+                      <TaskCard task={t} {...cardProps} category={cardProps.categoryOf?.(t)} descriptionMode="chevron" />
                     </DraggableTask>
                   ))}
                   {/* Pull-forward suggestions — visually distinct, never blended
@@ -217,7 +385,7 @@ export function TodaySchedulePanel({
                         <span className="absolute right-0 top-2 hud-chip !border-signal-dim/40 !text-signal-dim z-10">
                           pulled forward
                         </span>
-                        <TaskCard task={t} {...cardProps} category={cardProps.categoryOf?.(t)} />
+                        <TaskCard task={t} {...cardProps} category={cardProps.categoryOf?.(t)} descriptionMode="chevron" />
                       </div>
                     </DraggableTask>
                   ))}
@@ -239,6 +407,7 @@ export function TodaySchedulePanel({
           );
         })}
       </div>
+      )}
     </>
   );
 
