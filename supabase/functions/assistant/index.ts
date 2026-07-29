@@ -52,9 +52,26 @@ Deno.serve(async (req) => {
         return Response.json({ error: "empty message" }, { status: 400, headers: CORS });
       }
 
-      const [{ data: openTasks }, { data: categories }] = await Promise.all([
+      // Optional job-scoping context (from a job's own capture box): every task
+      // parsed gets stamped onto this job and its wording polished.
+      const jobCtx =
+        body.job && typeof body.job.id === "string"
+          ? {
+              id: body.job.id as string,
+              name: typeof body.job.name === "string" ? body.job.name : "this job",
+              category_name: typeof body.job.category_name === "string" ? body.job.category_name : null,
+            }
+          : null;
+
+      // Optional default date (schedule-setup "add tasks for tomorrow"): undated
+      // new tasks land on this date unless the user names another.
+      const forDate =
+        typeof body.for_date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(body.for_date) ? body.for_date : null;
+
+      const [{ data: openTasks }, { data: categories }, { data: jobs }] = await Promise.all([
         supabase.from("tasks").select("id,title,due_date,priority_weight,category_id").eq("status", "open"),
         supabase.from("categories").select("id,name"),
+        supabase.from("active_jobs").select("id,name,status,category_id"),
       ]);
       const catName = new Map((categories ?? []).map((c) => [c.id, c.name]));
 
@@ -71,15 +88,38 @@ Deno.serve(async (req) => {
         "Resolve relative dates ('Friday', 'next week') to YYYY-MM-DD using today's date; 'Friday' means the next upcoming Friday.",
         "scheduled_time is ONLY for fixed appointments ('dentist at 2:30'); time_section is the loose part of day.",
         "time_section values: morning, midday, afternoon, evening, night (late evening through the small hours), anytime.",
+        "JOBS: 'add a job, Dennis's driveway' -> create_job (name is the specific job; category_name is the company/header if named, else null).",
+        "'mark the Flames job paid' / 'the driveway is sold' -> update_job with job_id from ACTIVE JOBS and the new status (quoted/sold/in_progress/paid).",
         "Use add_memory only when the user asks to remember/note something that is not a task.",
+        forDate ? `These new tasks are for ${forDate} — set due_date to it unless the user clearly names a different day.` : "",
+        // Job-scoped capture: the whole message is one or more tasks for this job.
+        ...(jobCtx
+          ? [
+              `TASK-FOR-JOB MODE: everything the user says is a task (or tasks) for the job "${jobCtx.name}". Use create_task only.`,
+              "Rewrite each into a clear, concise, specific task title (imperative voice, no filler) — this is the point, polish their wording.",
+              jobCtx.category_name
+                ? `Set category_name to "${jobCtx.category_name}" unless the user clearly names a different one.`
+                : "",
+            ].filter(Boolean)
+          : []),
         "OPEN TASKS:",
         ...(openTasks ?? []).map(
           (t) => `${t.id} | ${t.title} | ${catName.get(t.category_id) ?? "?"} | due ${t.due_date ?? "none"} | p${t.priority_weight}`,
         ),
+        "ACTIVE JOBS:",
+        ...(jobs ?? []).map((j) => `${j.id} | ${j.name} | ${j.status} | ${catName.get(j.category_id ?? "") ?? "no header"}`),
       ].join("\n");
 
       const raw = await callClaude({ system, user: message, tool: APPLY_ACTIONS_TOOL, toolName: "apply_actions" });
       plan = PlanSchema.parse(raw); // zod gate — invalid LLM output stops here
+
+      // Stamp job link / default date server-side so they survive preview ->
+      // commit even if the model omits them (commit re-sends only the actions).
+      for (const a of plan.actions) {
+        if (a.type !== "create_task") continue;
+        if (jobCtx) a.job_id = jobCtx.id;
+        if (forDate && a.due_date === null) a.due_date = forDate;
+      }
 
       if (mode === "preview") {
         // Nothing saved yet — the client shows the breakdown for editing first
@@ -112,12 +152,15 @@ Deno.serve(async (req) => {
         const { error } = await supabase.from("tasks").insert({
           user_id: user.id,
           title: a.title,
+          description: a.description,
           category_id: cat.id,
           due_date: a.due_date,
           priority_weight: a.priority_weight,
           time_section: a.time_section,
           duration_minutes: a.duration_minutes,
           scheduled_time: a.scheduled_time,
+          job_id: a.job_id,
+          auto_carry_forward: a.auto_carry_forward,
         });
         if (error) throw error;
         confirmations.push(`Added task: ${a.title} (${cat.name}${a.due_date ? ", due " + a.due_date : ""})`);
@@ -155,6 +198,29 @@ Deno.serve(async (req) => {
           await resolveCategory(a.name);
         }
         confirmations.push(before ? `Section already exists: ${a.name}` : `New section: ${a.name}`);
+      } else if (a.type === "create_job") {
+        const cat = a.category_name ? await resolveCategory(a.category_name) : null;
+        const { error } = await supabase.from("active_jobs").insert({
+          user_id: user.id,
+          name: a.name,
+          status: a.status,
+          category_id: cat?.id ?? null,
+          notes: a.notes,
+        });
+        if (error) throw error;
+        confirmations.push(`Added job: ${a.name}${cat ? " (" + cat.name + ")" : ""}`);
+      } else if (a.type === "update_job") {
+        const { type: _t, job_id, category_name, ...rest } = a;
+        const patch: Record<string, unknown> = { ...rest };
+        if (category_name) patch.category_id = (await resolveCategory(category_name)).id;
+        const { data, error } = await supabase
+          .from("active_jobs")
+          .update(patch)
+          .eq("id", job_id)
+          .select("name,status")
+          .single();
+        if (error) throw error;
+        confirmations.push(`Updated job: ${data.name} → ${data.status}`);
       } else if (a.type === "add_memory") {
         const { error } = await supabase.from("memories").insert({
           user_id: user.id,

@@ -52,7 +52,7 @@ const NAV: NavItem[] = [
   {
     key: "jobs",
     label: "Active Jobs",
-    live: false,
+    live: true,
     icon: (
       <>
         <path d="M3 8a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8Z" />

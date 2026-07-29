@@ -14,6 +14,57 @@ export type Database = {
   }
   public: {
     Tables: {
+      active_jobs: {
+        Row: {
+          category_id: string | null
+          created_at: string
+          id: string
+          name: string
+          notes: string | null
+          sheet_row_ref: string | null
+          status: Database["public"]["Enums"]["job_status"]
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          category_id?: string | null
+          created_at?: string
+          id?: string
+          name: string
+          notes?: string | null
+          sheet_row_ref?: string | null
+          status?: Database["public"]["Enums"]["job_status"]
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          category_id?: string | null
+          created_at?: string
+          id?: string
+          name?: string
+          notes?: string | null
+          sheet_row_ref?: string | null
+          status?: Database["public"]["Enums"]["job_status"]
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "active_jobs_category_id_fkey"
+            columns: ["category_id"]
+            isOneToOne: false
+            referencedRelation: "categories"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "active_jobs_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "app_user"
+            referencedColumns: ["user_id"]
+          },
+        ]
+      }
       categories: {
         Row: {
           color: string
@@ -83,27 +134,33 @@ export type Database = {
       }
       daily_schedule_setup: {
         Row: {
+          bedtime: string | null
           blocked_windows: Json
           created_at: string
           date: string
+          going_selling: boolean
           id: string
           raw_blurb: string | null
           user_id: string
           wake_time: string
         }
         Insert: {
+          bedtime?: string | null
           blocked_windows?: Json
           created_at?: string
           date: string
+          going_selling?: boolean
           id?: string
           raw_blurb?: string | null
           user_id: string
           wake_time?: string
         }
         Update: {
+          bedtime?: string | null
           blocked_windows?: Json
           created_at?: string
           date?: string
+          going_selling?: boolean
           id?: string
           raw_blurb?: string | null
           user_id?: string
@@ -197,12 +254,15 @@ export type Database = {
       }
       tasks: {
         Row: {
+          auto_carry_forward: boolean
           category_id: string
           completed_at: string | null
           created_at: string
+          description: string | null
           due_date: string | null
           duration_minutes: number | null
           id: string
+          job_id: string | null
           priority_weight: number
           scheduled_time: string | null
           status: Database["public"]["Enums"]["task_status"]
@@ -211,12 +271,15 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          auto_carry_forward?: boolean
           category_id: string
           completed_at?: string | null
           created_at?: string
+          description?: string | null
           due_date?: string | null
           duration_minutes?: number | null
           id?: string
+          job_id?: string | null
           priority_weight?: number
           scheduled_time?: string | null
           status?: Database["public"]["Enums"]["task_status"]
@@ -225,12 +288,15 @@ export type Database = {
           user_id: string
         }
         Update: {
+          auto_carry_forward?: boolean
           category_id?: string
           completed_at?: string | null
           created_at?: string
+          description?: string | null
           due_date?: string | null
           duration_minutes?: number | null
           id?: string
+          job_id?: string | null
           priority_weight?: number
           scheduled_time?: string | null
           status?: Database["public"]["Enums"]["task_status"]
@@ -244,6 +310,13 @@ export type Database = {
             columns: ["category_id"]
             isOneToOne: false
             referencedRelation: "categories"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tasks_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "active_jobs"
             referencedColumns: ["id"]
           },
           {
@@ -359,9 +432,16 @@ export type Database = {
     }
     Enums: {
       checkin_status: "planned" | "completed"
+      job_status: "quoted" | "sold" | "in_progress" | "paid"
       recurrence_mode: "count" | "fixed_days"
       task_status: "open" | "completed"
-      time_section: "morning" | "midday" | "afternoon" | "evening" | "anytime" | "night"
+      time_section:
+        | "morning"
+        | "midday"
+        | "afternoon"
+        | "evening"
+        | "anytime"
+        | "night"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -490,9 +570,17 @@ export const Constants = {
   public: {
     Enums: {
       checkin_status: ["planned", "completed"],
+      job_status: ["quoted", "sold", "in_progress", "paid"],
       recurrence_mode: ["count", "fixed_days"],
       task_status: ["open", "completed"],
-      time_section: ["morning", "midday", "afternoon", "evening", "anytime", "night"],
+      time_section: [
+        "morning",
+        "midday",
+        "afternoon",
+        "evening",
+        "anytime",
+        "night",
+      ],
     },
   },
 } as const

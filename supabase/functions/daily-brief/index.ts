@@ -1,5 +1,5 @@
 import { serviceClient, userClient } from "../_shared/supabase.ts";
-import { buildBrief, edmontonHour, edmontonToday } from "../_shared/brief.ts";
+import { buildBrief, buildJobsBrief, edmontonHour, edmontonToday } from "../_shared/brief.ts";
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -37,14 +37,14 @@ Deno.serve(async (req) => {
     }
 
     const today = edmontonToday();
-    const { data: tasks, error: terr } = await db
-      .from("tasks")
-      .select("id,due_date,priority_weight,created_at")
-      .eq("user_id", userId)
-      .eq("status", "open");
+    const [{ data: tasks, error: terr }, { data: jobs, error: jerr }] = await Promise.all([
+      db.from("tasks").select("id,due_date,priority_weight,created_at").eq("user_id", userId).eq("status", "open"),
+      db.from("active_jobs").select("name,status,updated_at").eq("user_id", userId),
+    ]);
     if (terr) throw terr;
+    if (jerr) throw jerr;
 
-    const content = buildBrief(tasks ?? [], today);
+    const content = { ...buildBrief(tasks ?? [], today), jobs: buildJobsBrief(jobs ?? [], today) };
     // upsert deliberately does NOT touch manual_order — regeneration never clobbers the user's reorder
     const { error } = await db.from("daily_briefs").upsert(
       { user_id: userId, brief_date: today, content, generated_at: new Date().toISOString() },

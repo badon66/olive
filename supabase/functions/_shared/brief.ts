@@ -66,3 +66,19 @@ export function buildBrief(tasks: BriefTask[], today: string) {
       .map((t) => t.id),
   };
 }
+
+type BriefJob = { name: string; status: string; updated_at: string };
+
+// Jobs slice of the brief: how many are still active, and which ones changed
+// yesterday (updated_at on the previous Edmonton day — proxy for a status change,
+// since there is no status-history table in v1).
+export function buildJobsBrief(jobs: BriefJob[], today: string) {
+  const [y, m, d] = today.split("-").map(Number);
+  const yesterday = new Date(Date.UTC(y, m - 1, d - 1)).toISOString().slice(0, 10);
+  return {
+    active: jobs.filter((j) => j.status !== "paid").length,
+    changed: jobs
+      .filter((j) => edmontonToday(new Date(j.updated_at)) === yesterday)
+      .map((j) => ({ name: j.name, status: j.status })),
+  };
+}

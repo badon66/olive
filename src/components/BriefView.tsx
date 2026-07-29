@@ -22,6 +22,7 @@ type Props = {
   categoryStore: CategoryStore;
   weeklyStore?: WeeklyStore;
   customize?: boolean;
+  refresh?: () => Promise<void>;
 };
 
 function RingGauge({ done, total }: { done: number; total: number }) {
@@ -58,7 +59,7 @@ function RingGauge({ done, total }: { done: number; total: number }) {
   );
 }
 
-export function BriefView({ tasks, loading, completeTask, reopenTask, updateTask, onEdit, categoryStore, weeklyStore, customize = false }: Props) {
+export function BriefView({ tasks, loading, completeTask, reopenTask, updateTask, onEdit, categoryStore, weeklyStore, customize = false, refresh }: Props) {
   const { brief, loading: briefLoading, error, regenerate, saveManualOrder } = useBrief();
   const [addWeekly, setAddWeekly] = useState(false);
   const today = edmontonToday();
@@ -118,7 +119,7 @@ export function BriefView({ tasks, loading, completeTask, reopenTask, updateTask
         <div className="flex items-center justify-between gap-2 flex-wrap">
           <h2 className="font-display text-sm tracking-[0.25em] uppercase text-hud">Daily Brief</h2>
           <span className="flex items-center gap-2">
-            <ScheduleSetupButton />
+            <ScheduleSetupButton onTasksChanged={refresh} />
             <button
               onClick={() => void regenerate()}
               className="hud-chip hud-chip-signal cursor-pointer focus-visible:outline-2 focus-visible:outline-signal"
@@ -136,6 +137,27 @@ export function BriefView({ tasks, loading, completeTask, reopenTask, updateTask
         <section className="hud-panel p-5">
           <RingGauge done={doneToday} total={doneToday + sections.today.length + sections.overdue.length} />
         </section>
+
+        {/* Jobs slice of the brief: active count + anything that changed yesterday */}
+        {(() => {
+          const jobs = ((brief?.content ?? null) as BriefContent | null)?.jobs;
+          if (!jobs || (jobs.active === 0 && jobs.changed.length === 0)) return null;
+          return (
+            <section className="hud-panel p-4">
+              <div className="flex items-center justify-between mb-1">
+                <h3 className="font-display text-xs font-semibold tracking-[0.25em] uppercase text-signal">
+                  Active Jobs
+                </h3>
+                <span className="hud-chip">{jobs.active}</span>
+              </div>
+              <p className="text-dim text-sm">
+                {jobs.changed.length > 0
+                  ? `Changed yesterday: ${jobs.changed.map((j) => `${j.name} → ${j.status}`).join(", ")}`
+                  : `${jobs.active} active, nothing changed yesterday.`}
+              </p>
+            </section>
+          );
+        })()}
 
         {/* Section order per BUILD_PLAN: Weekly Tasks first, Priorities demoted to the bottom */}
         {weeklyStore && (
@@ -156,7 +178,7 @@ export function BriefView({ tasks, loading, completeTask, reopenTask, updateTask
                 </button>
               )}
             </div>
-            <WeeklyTasksView {...weeklyStore} bare />
+            <WeeklyTasksView {...weeklyStore} bare customize={customize} />
           </section>
         )}
 

@@ -1,5 +1,6 @@
 import { useRef, useState, type FormEvent } from "react";
-import { commitAssistant, previewAssistant, sendToAssistant, type AssistantAction } from "../lib/api";
+import { commitAssistant, previewAssistant, sendToAssistant, type AssistantAction, type JobContext } from "../lib/api";
+import { JOB_STATUSES, JOB_STATUS_LABELS } from "../lib/jobs";
 import { SECTION_ORDER } from "../lib/sections";
 import { SectionPencil } from "./SectionPencil";
 
@@ -16,6 +17,8 @@ const ACTION_LABELS: Record<AssistantAction["type"], string> = {
   complete_task: "Complete",
   delete_task: "Delete",
   create_category: "New section",
+  create_job: "New job",
+  update_job: "Update job",
   add_memory: "Note",
 };
 
@@ -23,10 +26,18 @@ export function ChatBar({
   onActionDone,
   inline = false,
   taskTitleById,
+  job,
+  forDate,
 }: {
   onActionDone: () => Promise<void>;
   inline?: boolean;
   taskTitleById?: (id: string) => string | undefined;
+  // When set, every capture is scoped to this job: the assistant links created
+  // tasks to it and polishes wording, and we ALWAYS preview so the user reviews
+  // the rewrite (spec: job task wording goes through the preview-before-send modal).
+  job?: JobContext;
+  // When set, undated tasks default to this date (schedule-setup "add for tomorrow").
+  forDate?: string;
 }) {
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
@@ -60,12 +71,13 @@ export function ChatBar({
     setBusy(true);
     setToast(null);
     try {
-      if (isVoiceCapture.current) {
-        // Parse only — the modal shows exactly what was understood before anything saves
-        setPreview(await previewAssistant(text));
+      if (isVoiceCapture.current || job) {
+        // Parse only — the modal shows exactly what was understood before anything
+        // saves. Job captures always preview so the polished wording is reviewable.
+        setPreview(await previewAssistant(text, { job, forDate }));
         setEditingIdx(null);
       } else {
-        await finish(await sendToAssistant(text));
+        await finish(await sendToAssistant(text, { job, forDate }));
       }
     } catch (err) {
       fail(err);
@@ -110,7 +122,7 @@ export function ChatBar({
       <form onSubmit={submit} className="flex gap-2">
         <input
           className={`hud-input flex-1 ${busy ? "pulse-live" : ""}`}
-          placeholder={busy ? "Olive is thinking…" : "Tell Olive…"}
+          placeholder={busy ? "Olive is thinking…" : job ? "Add a task to this job…" : "Tell Olive…"}
           value={message}
           onChange={(e) => onChange(e.target.value)}
           disabled={busy}
@@ -164,7 +176,7 @@ export function ChatBar({
                     <div className="flex items-center gap-2">
                       <span className="hud-chip hud-chip-signal">{ACTION_LABELS[a.type]}</span>
                       <span className="flex-1 min-w-0 truncate font-body font-semibold">
-                        {a.title ?? a.name ?? a.content ?? matched ?? "…"}
+                        {a.title ?? a.name ?? a.content ?? matched ?? (a.status ? `→ ${a.status}` : "…")}
                       </span>
                       <SectionPencil active={editing} onToggle={() => setEditingIdx(editing ? null : idx)} label="this item" />
                       <button
@@ -182,11 +194,14 @@ export function ChatBar({
                     {!editing && (
                       <p className="flex flex-wrap gap-1.5">
                         {a.category_name && <span className="hud-chip">{a.category_name}</span>}
+                        {a.description && <span className="hud-chip">desc</span>}
                         {a.due_date && <span className="hud-chip">due {a.due_date}</span>}
                         {a.scheduled_time && <span className="hud-chip">⏱ {a.scheduled_time}</span>}
                         {a.time_section && <span className="hud-chip">{a.time_section}</span>}
                         {typeof a.priority_weight === "number" && <span className="hud-chip">p{a.priority_weight}</span>}
                         {a.duration_minutes != null && <span className="hud-chip">{a.duration_minutes} min</span>}
+                        {a.status && <span className="hud-chip hud-chip-signal">{a.status}</span>}
+                        {a.notes && <span className="hud-chip">note</span>}
                         {matched && a.type !== "complete_task" && <span className="hud-chip">→ {matched}</span>}
                       </p>
                     )}
@@ -196,6 +211,7 @@ export function ChatBar({
                         {(a.type === "create_task" || a.type === "update_task") && (
                           <>
                             <input className="hud-input col-span-2 !min-h-[38px] text-sm" value={a.title ?? ""} placeholder="title" onChange={(e) => patchAction(idx, { title: e.target.value })} />
+                            <textarea className="hud-input col-span-2 text-sm min-h-[44px] resize-y" value={a.description ?? ""} placeholder="description — optional" onChange={(e) => patchAction(idx, { description: e.target.value || null })} />
                             <input className="hud-input !min-h-[38px] text-sm" value={a.category_name ?? ""} placeholder="category" onChange={(e) => patchAction(idx, { category_name: e.target.value })} />
                             <input className="hud-input !min-h-[38px] text-sm" type="date" value={a.due_date ?? ""} onChange={(e) => patchAction(idx, { due_date: e.target.value || null })} />
                             <input className="hud-input !min-h-[38px] text-sm" type="time" value={a.scheduled_time ?? ""} onChange={(e) => patchAction(idx, { scheduled_time: e.target.value || null })} />
@@ -215,6 +231,20 @@ export function ChatBar({
                         )}
                         {a.type === "create_category" && (
                           <input className="hud-input col-span-2 !min-h-[38px] text-sm" value={a.name ?? ""} placeholder="section name" onChange={(e) => patchAction(idx, { name: e.target.value })} />
+                        )}
+                        {(a.type === "create_job" || a.type === "update_job") && (
+                          <>
+                            {a.type === "create_job" && (
+                              <input className="hud-input col-span-2 !min-h-[38px] text-sm" value={a.name ?? ""} placeholder="job name" onChange={(e) => patchAction(idx, { name: e.target.value })} />
+                            )}
+                            <input className="hud-input !min-h-[38px] text-sm" value={a.category_name ?? ""} placeholder="header (company)" onChange={(e) => patchAction(idx, { category_name: e.target.value })} />
+                            <select className="hud-input !min-h-[38px] text-sm cursor-pointer" value={a.status ?? "quoted"} onChange={(e) => patchAction(idx, { status: e.target.value })}>
+                              {JOB_STATUSES.map((s) => (
+                                <option key={s} value={s} className="bg-void">{JOB_STATUS_LABELS[s]}</option>
+                              ))}
+                            </select>
+                            <input className="hud-input col-span-2 !min-h-[38px] text-sm" value={a.notes ?? ""} placeholder="notes — optional" onChange={(e) => patchAction(idx, { notes: e.target.value || null })} />
+                          </>
                         )}
                         {a.type === "add_memory" && (
                           <input className="hud-input col-span-2 !min-h-[38px] text-sm" value={a.content ?? ""} placeholder="what to remember" onChange={(e) => patchAction(idx, { content: e.target.value })} />

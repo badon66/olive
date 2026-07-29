@@ -10,6 +10,9 @@ export type BriefContent = {
   overdue: string[];
   upcoming: string[];
   suggested_order: string[];
+  // Phase 3: jobs slice — active count + jobs whose status changed yesterday.
+  // Optional because briefs generated before Phase 3 won't have it.
+  jobs?: { active: number; changed: { name: string; status: string }[] };
 };
 
 export function useBrief() {

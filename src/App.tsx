@@ -4,20 +4,21 @@ import { BriefView } from "./components/BriefView";
 import { ChatBar } from "./components/ChatBar";
 import { CustomizeToggle } from "./components/CustomizeToggle";
 import { DesktopDashboard } from "./components/DesktopDashboard";
+import { JobsView } from "./components/JobsView";
 import { JournalView } from "./components/JournalView";
 import { NAV_LABELS, Sidebar, type NavKey } from "./components/Sidebar";
 import { TaskForm } from "./components/TaskForm";
 import { TaskList } from "./components/TaskList";
 import { WeeklyTasksView } from "./components/WeeklyTasksView";
 import { useCategories } from "./hooks/useCategories";
+import { useJobs } from "./hooks/useJobs";
 import { useMediaQuery } from "./hooks/useMediaQuery";
 import { useTasks, type Task } from "./hooks/useTasks";
 import { useWeeklyTasks } from "./hooks/useWeeklyTasks";
 
-// Reserved nav slots (Active Jobs, Finance, Groceries, Settings) — real
-// features arrive in later phases; the sidebar entry exists per CLAUDE.md.
+// Reserved nav slots (Finance, Groceries, Settings) — real features arrive in
+// later phases; the sidebar entry exists per CLAUDE.md.
 const PLACEHOLDER_COPY: Partial<Record<NavKey, string>> = {
-  jobs: "Active Jobs arrives in Phase 3.",
   finance: "Finance arrives in Phase 6.",
   groceries: "Reserved — nothing here yet.",
   settings: "Settings arrive in a later phase.",
@@ -25,9 +26,11 @@ const PLACEHOLDER_COPY: Partial<Record<NavKey, string>> = {
 
 function Placeholder({ nav }: { nav: NavKey }) {
   return (
-    <div className="hud-panel p-8 text-center max-w-md mx-auto mt-12">
-      <p className="font-display text-signal text-sm tracking-[0.25em] uppercase mb-2">{NAV_LABELS[nav]}</p>
-      <p className="text-dim">{PLACEHOLDER_COPY[nav]}</p>
+    <div className="hud-panel p-12 text-center mt-10 grid place-items-center min-h-[40vh]">
+      <div>
+        <p className="font-display text-signal text-lg tracking-[0.25em] uppercase mb-3">{NAV_LABELS[nav]}</p>
+        <p className="text-dim text-base">{PLACEHOLDER_COPY[nav]}</p>
+      </div>
     </div>
   );
 }
@@ -42,13 +45,17 @@ function Shell() {
   const taskStore = useTasks();
   const weeklyStore = useWeeklyTasks();
   const categoryStore = useCategories();
+  const jobStore = useJobs();
 
   const dashboard = isDesktop ? (
     <DesktopDashboard
       taskStore={taskStore}
       weeklyStore={weeklyStore}
       categoryStore={categoryStore}
+      jobStore={jobStore}
+      onOpenJobs={() => setNav("jobs")}
       customize={customize}
+      onToggleCustomize={() => setCustomize(!customize)}
     />
   ) : (
     <div className="px-4 py-4 pb-32 max-w-2xl w-full mx-auto">
@@ -62,6 +69,7 @@ function Shell() {
         categoryStore={categoryStore}
         weeklyStore={weeklyStore}
         customize={customize}
+        refresh={taskStore.refresh}
       />
     </div>
   );
@@ -70,15 +78,14 @@ function Shell() {
     nav === "dashboard" ? (
       dashboard
     ) : (
-      <div className={`px-4 lg:px-10 py-5 pb-32 w-full ${nav === "journal" ? "max-w-3xl" : "max-w-5xl"}`}>
+      <div className="px-6 lg:px-10 py-5 pb-32 w-full">
         {nav === "tasks" && (
           <TaskList {...taskStore} categoryStore={categoryStore} customize={customize} filterable />
         )}
-        {nav === "weekly" && <WeeklyTasksView {...weeklyStore} />}
+        {nav === "weekly" && <WeeklyTasksView {...weeklyStore} customize={customize} />}
+        {nav === "jobs" && <JobsView jobStore={jobStore} taskStore={taskStore} categoryStore={categoryStore} />}
         {nav === "journal" && <JournalView />}
-        {(nav === "jobs" || nav === "finance" || nav === "groceries" || nav === "settings") && (
-          <Placeholder nav={nav} />
-        )}
+        {(nav === "finance" || nav === "groceries" || nav === "settings") && <Placeholder nav={nav} />}
       </div>
     );
 
@@ -109,8 +116,10 @@ function Shell() {
         )}
 
         <main className="flex-1 relative">
-          {/* ONE pencil, top corner of the main content (desktop): customize ON/OFF */}
-          {isDesktop && (
+          {/* Desktop pencil for the non-dashboard tabs (which have no sticky header
+              of their own). The Dashboard renders its own pencil inside its sticky
+              header, so exclude it here to avoid a duplicate / one hidden behind it. */}
+          {isDesktop && nav !== "dashboard" && (
             <div className="absolute top-4 right-10 z-30">
               <CustomizeToggle on={customize} onToggle={() => setCustomize(!customize)} />
             </div>
@@ -122,7 +131,7 @@ function Shell() {
         {!isDesktop && (
           <ChatBar
             onActionDone={async () => {
-              await Promise.all([taskStore.refresh(), categoryStore.refresh()]);
+              await Promise.all([taskStore.refresh(), categoryStore.refresh(), jobStore.refresh()]);
             }}
             taskTitleById={(id) => taskStore.tasks.find((t) => t.id === id)?.title}
           />
