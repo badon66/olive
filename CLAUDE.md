@@ -9,16 +9,17 @@ The phased spec is in `docs/BUILD_PLAN.md`. Build ONE phase at a time, then stop
 - Execution features (acting on the user's behalf) are planned for a LATER version, and only through a deliberate approval-queue design where every action waits for the user's explicit tap. Do not add execution ad hoc in v1, even if it seems helpful.
 - Two rules that stay firm in every version unless the user explicitly changes them:
   - The user's Google Sheet is read-only. Missing data = a reminder in the app, never a write to the sheet.
-  - Plaid stays read-only (Transactions/Balance products only). Never add transfer or payment products.
+  - Finance reads from the user's YNAB budget (Personal Access Token) and stays read-only, same as the Sheet — never write categories or anything else back to YNAB.
 
 ## Security (non-negotiable)
 
-- All secrets (Anthropic API key, Plaid keys, Google OAuth credentials, Telegram bot token) live in Supabase Edge Function secrets or a gitignored `.env`. Never in frontend code, never committed, never exposed to the browser.
+- All secrets (Anthropic API key, YNAB Personal Access Token, Google OAuth credentials, Telegram bot token) live in Supabase Edge Function secrets or a gitignored `.env`. Never in frontend code, never committed, never exposed to the browser.
 - All LLM calls happen server-side in Supabase Edge Functions. The React app never calls the Anthropic API directly.
 
 ## Working style
 
 - Implement only the current phase, then STOP and wait for the user to test it and explicitly approve moving on. Never start the next phase on your own.
+- **End of every session/prompt: confirm the environment is actually fresh before saying "done."** Restart the dev server rather than relying on hot-reload after a batch of changes. Confirm any new migrations were actually applied (not just written) and any changed Edge Functions were actually redeployed (not just edited locally). If a new npm package was added, say so explicitly, since the user needs to run `npm install` first. If anything might be served stale by the PWA's service worker, say so — the user may need to hard-refresh or unregister the service worker in DevTools, not just reload.
 - If the spec is ambiguous, ask — don't invent. Open questions are listed at the bottom of BUILD_PLAN.md; anything touching them is blocked until answered.
 - **File ownership:** `docs/BUILD_PLAN.md` is the spec — it comes from the user's planning sessions elsewhere and gets replaced wholesale when it changes. Don't restructure it, annotate it, or add your own status markers directly into it. Instead, track what's built, what's tested, and any implementation notes in `docs/PROGRESS.md` — a separate file you own and maintain freely. This keeps the spec and the build log from overwriting each other.
 - The user is not a professional developer: explain what you built and how to test it in plain language at the end of each phase.
@@ -40,7 +41,7 @@ The phased spec is in `docs/BUILD_PLAN.md`. Build ONE phase at a time, then stop
 - TypeScript everywhere, including Edge Functions.
 - Schema changes via Supabase CLI migration files only.
 - Natural-language capture pattern: user text → Edge Function → Claude with a JSON schema → validate with zod → write to Postgres. Every LLM-driven write returns a plain confirmation ("Added job: Dennis's driveway").
-- Graceful degradation: if an external source (Plaid, Sheets, weather) is stale or disconnected, show it in the UI with the last-synced time. Never present stale data as current.
+- Graceful degradation: if an external source (YNAB, Sheets, weather) is stale or disconnected, show it in the UI with the last-synced time. Never present stale data as current.
 - Keep components small; no state management library until genuinely needed.
 - Categories/sections are user-defined and extensible (a `categories` table), never a fixed enum. Default seeded set: Personal, PowerPlay Customs, Alberta Premium Coatings — but the user can create more anytime, by voice or in the UI (e.g. "Groceries"). Every table that groups by category (tasks, jobs, etc.) should reference this same table.
 - "Weekly tasks" (formerly "Habits") support two recurrence modes: a flexible weekly count ("4 times a week," any days) or specific fixed days ("Mon/Wed/Fri/Sun," or "every day"). Displayed as 7 cubes, Monday first through Sunday last. Fixed-days tasks also surface in the actual daily schedule on their scheduled days, not just their own tab.
@@ -60,6 +61,7 @@ Concrete tokens if not re-derived by the skill:
 - **Dedicated per-category sections on the Dashboard** — one panel per category (Personal, PowerPlay Customs, Alberta Premium Coatings, and any category the user adds later), each showing only that category's own tasks, with a colored left-edge accent matching the category's color. This must scale dynamically with however many categories actually exist — don't hardcode three panels.
 - **Editing pattern (no per-section pencils):** click an existing item directly to open a full edit modal, always available. Separately, the top-corner pencil is a single ON/OFF toggle for "add mode": while ON, section headers show a "+" add button; while OFF, they don't. Drag-to-reposition/resize sections was attempted and deliberately removed (too complex for the value) — the dashboard layout is fixed, not user-rearrangeable; see BUILD_PLAN.md for the exact arrangement. Anything not editable this way lives on its own dedicated sidebar tab instead (e.g. full task management, Finance detail).
 - **Voice-preview pop-up:** the preview-before-send breakdown (see BUILD_PLAN.md Phase 1) is a centered modal with a backdrop, not an inline element under the input box — and it only appears after a voice capture, not typed text.
+- **Every page other than the Dashboard also centers its content and uses the available space generously** — large, bold, easy to read at a glance, not a cramped list tucked to one side. Same ultrawide-first philosophy as the Dashboard, applied consistently across Tasks, Weekly Tasks, Active Jobs, Journal, Finance, and Settings.
 - Apply this direction from Phase 1 onward so components are styled correctly from the start rather than needing a redesign pass later
 
 **Reference designs:**
@@ -81,7 +83,6 @@ Concrete tokens if not re-derived by the skill:
 - `npm run build` — typecheck + production build (`npm run preview` to serve it)
 - `npm run test` — Vitest unit tests (`src/**/*.test.ts`)
 - `npm run lint` — oxlint
-- `npm run check` — run all: lint → test → build (typecheck) in one shot; the go-to after any change
 - Migrations: add a SQL file to `supabase/migrations/`, apply the identical SQL to project `dpkdsmvskryettdxcvpp` via Supabase MCP `apply_migration`
 - Edge functions: edit under `supabase/functions/`, deploy via Supabase MCP `deploy_edge_function` (include `_shared/*` files; `daily-brief` deploys with verify_jwt OFF, `assistant` and `journal-clean` with it ON)
 - Secrets: `anthropic_api_key`, `cron_secret`, `project_url` all live in Supabase Vault (read by edge functions via service-role-only RPCs `get_anthropic_key()`/`get_cron_secret()`); local copies in gitignored `.env`/`.env.local`

@@ -140,15 +140,27 @@ The pulled-forward-task logic avoids suggesting anything into blocked windows.
 **Done when:** pay figures from the sheet display against matched jobs; an unmatched job produces a reminder.
 **BLOCKED on Q1** (need the actual sheet link to map tabs/columns — do not guess the structure).
 
-## Phase 6 — Finance agent (Plaid, read-only)
+## Phase 6 — Finance agent (reads from YNAB, read-only)
 
-- Plaid Trial plan, `CA` country code, Transactions + Balance products ONLY. Link flow in-app; access tokens stored server-side only.
-- Daily sync into `finance_snapshot` tables (accounts, balances, transactions, detected recurring charges).
-- Recurring-charge detection (Plaid's recurring transactions endpoint where supported; simple pattern-match fallback) → upcoming charges appear in the brief N days ahead.
-- Brief shows a daily money section: current balance + total spent today (confirmed definition). Staleness is first-class: if the connection breaks (common with Canadian banks), show "data from <date> — tap to re-link," never silently-wrong numbers.
+**The division of responsibility, stated explicitly so it's never re-litigated:** YNAB is the system of record for the money itself — categorization, budgeting, payee management, all of it. Olive doesn't compete with that or rebuild it. Olive's job is to be the thing that already knows everything ELSE — your schedule, your jobs, your income pace, your tasks — and merge YNAB's data into that bigger picture. The value Olive adds is entirely in the cross-referencing (spend vs. income pace, a nudge landing in Today's Schedule instead of buried in a separate app) — never in re-doing what YNAB already does well. Any future work on this phase should be read with that framing, not as "build a finance feature" in isolation.
 
-**Done when:** real balance + recent transactions render; a known subscription is flagged before it hits; a broken link shows the stale-data state.
-**BLOCKED on Q2** (which bank(s), personal and/or business account — confirm Plaid coverage first).
+Switched from Plaid to reading directly from the user's own YNAB budget — YNAB already handles bank linking, categorization, and payee sorting, so Olive doesn't rebuild any of that.
+
+- **YNAB Personal Access Token** (self-service — user generates it in YNAB's own Account Settings → Developer Settings, no approval process needed), stored server-side as a secret, same pattern as every other key.
+- Daily sync into `finance_snapshot` tables (accounts, balances, transactions) pulled straight from the YNAB API — **transactions arrive already categorized and payee-matched by YNAB itself.** No Olive-side auto-categorization or merchant-memory build needed; that's YNAB's job now, not ours.
+- **YNAB stays read-only from Olive, same as the Google Sheet** — Olive never writes a category correction back to YNAB. If a transaction is uncategorized in YNAB, Olive surfaces a reminder to go categorize it there, exactly like the Sheet's "reminder, not auto-write" rule. *(Flagging this as the default for consistency with the rest of the app — say so if you actually want Olive to write categories back to YNAB instead.)*
+- **Uncategorized-in-YNAB transactions surface as a nudge in the Today's Schedule nudge area** (same pattern as Unplanned Weekly Tasks / Carryover Tasks) — a reminder to go categorize them in YNAB, not just something buried in the Finance tab.
+- Recurring-charge detection, built on top of the synced transaction history — upcoming known charges appear in the brief N days ahead. **Also detect genuinely NEW recurring charges** (a pattern that didn't exist before starts repeating) — flagged distinctly, the "wait, when did I sign up for that" catch.
+- **Dashboard mini-panel stays simple** (per the existing Dashboard/full-tab split pattern used elsewhere): balance, today's spend, pace vs goal only — no transaction list here.
+- **Full Finance sidebar tab gets the real depth:**
+  - **Recent Transactions** — shown with YNAB's own category and payee already attached.
+  - Category breakdown for the period (where the money's actually going), using YNAB's categories as-is.
+  - **Spend-vs-income-pace cross-reference** — combines the income pace tracker (Phase 7) with actual spending into one insight, something neither shows alone.
+- Brief shows a daily money section: current balance + total spent today (confirmed definition).
+- Staleness is first-class: if the YNAB token/connection breaks, show "data from <date> — tap to re-link," never silently-wrong numbers.
+
+**Done when:** real balance + recent transactions render with YNAB's own categories intact; uncategorized-in-YNAB items nudge correctly in Today's Schedule; a known subscription is flagged before it hits, and a genuinely new one is flagged distinctly; a broken connection shows the stale-data state.
+*(The old Q2 — which bank(s) to link — no longer applies to Olive's build; bank linking now happens on YNAB's side, outside Olive entirely. The user still needs their bank(s) actually linked within YNAB itself before this phase is useful.)*
 
 ## Phase 7 — Pace tracker, maintenance log, weather
 
