@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { appearsToday, cubeStates, mondayIndex, progress, weekDates } from "./weekly";
+import { appearsOn, cubeStates, mondayIndex, progress, weekDates } from "./weekly";
 
 // 2026-07-07 is a Tuesday; its week runs Mon 2026-07-06 … Sun 2026-07-12
 const TODAY = "2026-07-07";
@@ -85,15 +85,15 @@ describe("progress", () => {
   });
 });
 
-describe("appearsToday", () => {
+describe("appearsOn", () => {
   it("fixed_days: appears only on scheduled weekdays", () => {
-    expect(appearsToday(fixedDays([1]), [], TODAY)).toBe(true); // Tue scheduled
-    expect(appearsToday(fixedDays([0, 2]), [], TODAY)).toBe(false);
+    expect(appearsOn(fixedDays([1]), [], TODAY)).toBe(true); // Tue scheduled
+    expect(appearsOn(fixedDays([0, 2]), [], TODAY)).toBe(false);
   });
   it("count: appears while the week's completions are under target, then stops", () => {
-    expect(appearsToday(countMode(2), [checkin("2026-07-06", "completed")], TODAY)).toBe(true);
+    expect(appearsOn(countMode(2), [checkin("2026-07-06", "completed")], TODAY)).toBe(true);
     expect(
-      appearsToday(countMode(2), [checkin("2026-07-06", "completed"), checkin("2026-07-07", "completed")], TODAY),
+      appearsOn(countMode(2), [checkin("2026-07-06", "completed"), checkin("2026-07-07", "completed")], TODAY),
     ).toBe(false);
   });
 });

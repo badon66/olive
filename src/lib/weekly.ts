@@ -53,11 +53,13 @@ export function progress(task: WeeklyTaskLike, states: CubeState[]): Progress {
 
 // Whether the task belongs in Today's schedule (BUILD_PLAN Phase 2):
 // fixed_days → on its scheduled weekdays; count → until the week's target is met.
-export function appearsToday(task: WeeklyTaskLike, checkins: CheckinLike[], today: string): boolean {
+// True when this weekly task belongs to `date`. Date-generic on purpose — it is
+// what lets any viewed day (not just today) render its weekly tasks inline.
+export function appearsOn(task: WeeklyTaskLike, checkins: CheckinLike[], date: string): boolean {
   if (task.recurrence_mode === "fixed_days") {
-    return (task.scheduled_days ?? []).includes(mondayIndex(today));
+    return (task.scheduled_days ?? []).includes(mondayIndex(date));
   }
-  const week = new Set(weekDates(today));
+  const week = new Set(weekDates(date));
   const completedThisWeek = checkins.filter((c) => c.status === "completed" && week.has(c.date)).length;
   return completedThisWeek < (task.target_per_week ?? 0);
 }
