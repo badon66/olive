@@ -18,7 +18,9 @@ export const ActionSchema = z.discriminatedUnion("type", [
     duration_minutes: z.number().int().min(1).nullable().default(null),
     scheduled_time: z.string().regex(/^\d{2}:\d{2}$/).nullable().default(null),
     job_id: z.string().uuid().nullable().default(null),
-    auto_carry_forward: z.boolean().default(false),
+    // BUILD_PLAN: the carry-forward safety net is ON by default. This was
+    // `.default(false)`, so every NL-captured task silently opted out.
+    auto_carry_forward: z.boolean().default(true),
   }),
   z.object({
     type: z.literal("update_task"),
@@ -58,6 +60,19 @@ export const ActionSchema = z.discriminatedUnion("type", [
     status: jobStatus.optional(),
     notes: z.string().min(1).nullable().optional(),
   }),
+  // Reminders (Phase 2). Only the fields for the chosen recurrence_type matter;
+  // the DB check constraint rejects an incoherent combination.
+  z.object({
+    type: z.literal("create_reminder"),
+    name: z.string().min(1),
+    message: z.string().min(1).nullable().default(null),
+    recurrence_type: z.enum(["one_time", "interval", "daily", "weekly", "monthly"]),
+    fire_at: z.string().nullable().default(null),
+    interval_minutes: z.number().int().min(1).nullable().default(null),
+    days_of_week: z.array(z.number().int().min(0).max(6)).nullable().default(null),
+    day_of_month: z.number().int().min(1).max(31).nullable().default(null),
+    time_of_day: z.string().regex(/^\d{2}:\d{2}$/).nullable().default(null),
+  }),
   z.object({
     type: z.literal("add_memory"),
     content: z.string().min(1),
@@ -96,6 +111,7 @@ export const APPLY_ACTIONS_TOOL = {
                 "delete_task",
                 "create_category",
                 "create_job",
+                "create_reminder",
                 "update_job",
                 "add_memory",
               ],
@@ -134,6 +150,16 @@ export const APPLY_ACTIONS_TOOL = {
               description: "create_task/update_task: true if the task should roll forward when not completed by its day",
             },
             notes: { type: ["string", "null"], description: "create_job/update_job only: free-text notes on the job" },
+            recurrence_type: {
+              type: "string",
+              enum: ["one_time", "interval", "daily", "weekly", "monthly"],
+              description: "create_reminder: which recurrence shape",
+            },
+            fire_at: { type: ["string", "null"], description: "create_reminder one_time: full ISO timestamp" },
+            interval_minutes: { type: ["integer", "null"], minimum: 1, description: "create_reminder interval: e.g. 30" },
+            days_of_week: { type: ["array", "null"], items: { type: "integer" }, description: "create_reminder weekly: 0=Monday..6=Sunday" },
+            day_of_month: { type: ["integer", "null"], minimum: 1, maximum: 31, description: "create_reminder monthly" },
+            time_of_day: { type: ["string", "null"], description: "create_reminder daily/weekly/monthly: HH:MM 24h" },
             name: { type: "string", description: "create_category: category name; create_job: the job's name" },
             color: { type: ["string", "null"], description: "create_category: hex color like #4a9eff, or null to auto-pick" },
             content: { type: "string" },
