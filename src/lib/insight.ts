@@ -21,6 +21,10 @@ const hhmm = (t: string) => t.slice(0, 5);
 export function buildInsight(args: {
   open: InsightTask[];
   today: string;
+  // Day whose Night is still running (flips 5 AM, vs `today`'s 1:30). Only the
+  // "what am I doing right now" pick uses it, so the headline can't contradict
+  // Active Tasks during the 1:30–5:00 AM window. Defaults to `today`.
+  activeDay?: string;
   nowSection: TimeSection;
   nowTime: string; // "HH:MM" local
   doneToday: number;
@@ -28,6 +32,7 @@ export function buildInsight(args: {
   dueToday: number;
 }): Insight {
   const { open, today, nowSection, nowTime, doneToday, overdue, dueToday } = args;
+  const activeDay = args.activeDay ?? today;
 
   // 1) The next fixed booking still ahead today wins — it's time-bound.
   const nextBooking = open
@@ -36,7 +41,7 @@ export function buildInsight(args: {
 
   // 2) Otherwise the highest-priority item sitting in the current part of day.
   const nowTask = open
-    .filter((t) => t.due_date === today && (t.time_section ?? "anytime") === nowSection)
+    .filter((t) => t.due_date === activeDay && (t.time_section ?? "anytime") === nowSection)
     .sort((a, b) => b.priority_weight - a.priority_weight || a.created_at.localeCompare(b.created_at))[0];
 
   let headline: string;

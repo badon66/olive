@@ -1,9 +1,12 @@
 // Pure brief builder. Scoring constants deliberately mirror src/lib/ranking.ts —
 // keep the two in sync (no cross-runtime shared package in v1).
 
-// The day flips at 01:30 America/Edmonton, not midnight — must match
-// src/lib/dates.ts so client and server agree on what "today" means.
-export const DAY_START_MINUTES = 90; // 01:30 local
+// TWO day boundaries, mirroring src/lib/dates.ts exactly so client and server
+// agree. Do not collapse them into one — see CLAUDE.md.
+//   VIEW (01:30)   — "which day's page/brief is this".
+//   ACTIVE (05:00) — "which day's Night is still running" (Night is 11 PM–5 AM).
+export const DAY_START_MINUTES = 90; // 01:30 local — VIEW
+export const ACTIVE_DAY_START_MINUTES = 300; // 05:00 local — end of Night
 
 // edmontonHour stays for the cron's "is it 7am?" brief-generation check —
 // that's the delivery time, unrelated to the day boundary.
@@ -19,7 +22,7 @@ export function edmontonHour(now: Date = new Date()): number {
   );
 }
 
-function edmontonMinutes(now: Date): number {
+export function edmontonMinutes(now: Date = new Date()): number {
   const parts = new Intl.DateTimeFormat("en-GB", {
     timeZone: "America/Edmonton",
     hour: "2-digit",
@@ -31,11 +34,22 @@ function edmontonMinutes(now: Date): number {
   return h * 60 + m;
 }
 
-export function edmontonToday(now: Date = new Date()): string {
-  const date = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Edmonton" }).format(now);
-  if (edmontonMinutes(now) >= DAY_START_MINUTES) return date;
+function shiftBack(date: string): string {
   const [y, m, d] = date.split("-").map(Number);
   return new Date(Date.UTC(y, m - 1, d - 1)).toISOString().slice(0, 10);
+}
+
+// VIEW day — the brief's date, task due dates, everything page-level.
+export function edmontonToday(now: Date = new Date()): string {
+  const date = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Edmonton" }).format(now);
+  return edmontonMinutes(now) >= DAY_START_MINUTES ? date : shiftBack(date);
+}
+
+// ACTIVE day — the day whose Night is still in progress. Used to gate work that
+// must not disturb an ongoing night (see carry-forward).
+export function edmontonActiveDay(now: Date = new Date()): string {
+  const date = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Edmonton" }).format(now);
+  return edmontonMinutes(now) >= ACTIVE_DAY_START_MINUTES ? date : shiftBack(date);
 }
 
 function daysBetween(fromISO: string, toISO: string): number {

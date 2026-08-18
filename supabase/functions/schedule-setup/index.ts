@@ -40,7 +40,7 @@ const PARSE_TOOL = {
   },
 } as const;
 
-// Relative to the 1:30 AM day boundary (matches src/lib/dates.ts): before 1:30
+// Relative to the 1:30 AM VIEW boundary (matches src/lib/dates.ts): before 1:30
 // "today" is still yesterday, so "tomorrow" is only +0 from the calendar date.
 function edmontonTomorrow(): string {
   const now = new Date();

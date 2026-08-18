@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
 import { formatCountdown, secondsUntilRollover } from "../lib/dates";
 
-// Live top-corner counter: time remaining until the next 1:30 AM day rollover.
+// Live top-corner counter: time remaining until the next 1:30 AM page flip —
+// the VIEW boundary, i.e. when the schedule page turns over to the next day.
+// (Distinct from the 5:00 AM boundary that ends Night; see lib/dates.ts.)
 export function RolloverCountdown() {
   const [secs, setSecs] = useState(() => secondsUntilRollover());
 

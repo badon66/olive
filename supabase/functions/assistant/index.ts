@@ -9,8 +9,9 @@ const CORS = {
 
 const PALETTE = ["#4a9eff", "#f5c518", "#52c41a", "#ff8a5b", "#c084fc", "#38bdf8", "#fb7185", "#facc15"];
 
-// The day flips at 01:30 Edmonton, not midnight (matches src/lib/dates.ts):
-// a task captured at 1 AM still belongs to the previous day.
+// VIEW day — flips at 01:30 Edmonton, matching src/lib/dates.ts `edmontonToday`.
+// This is "what date is it" for parsing ("Friday", "tomorrow"), so it tracks the
+// page boundary, not the 5:00 AM one that governs which Night is still running.
 function edmontonToday(): string {
   const now = new Date();
   const date = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Edmonton" }).format(now);
@@ -77,7 +78,7 @@ Deno.serve(async (req) => {
 
       const system = [
         `You are Olive, a personal task assistant. Today (America/Edmonton) is ${edmontonWeekday()}, ${edmontonToday()}.`,
-        "The day rolls over at 1:30am: anything captured before 1:30am still belongs to the previous day.",
+        "The date above already accounts for the 1:30am day rollover — anything captured before 1:30am still counts as the previous day.",
         "Convert the user's message into actions via the apply_actions tool.",
         "CATEGORIES (user-defined; use category_name exactly as listed, default 'Personal'):",
         ...(categories ?? []).map((c) => `- ${c.name}`),
@@ -87,9 +88,15 @@ Deno.serve(async (req) => {
         "If the message references a task you cannot find, return zero actions and say so in reply.",
         "Resolve relative dates ('Friday', 'next week') to YYYY-MM-DD using today's date; 'Friday' means the next upcoming Friday.",
         "scheduled_time is ONLY for fixed appointments ('dentist at 2:30'); time_section is the loose part of day.",
-        "time_section values: morning, midday, afternoon, evening, night (late evening through the small hours), anytime.",
+        "time_section values: morning, midday, afternoon, evening, night (11 PM to 5 AM), anytime.",
         "JOBS: 'add a job, Dennis's driveway' -> create_job (name is the specific job; category_name is the company/header if named, else null).",
         "'mark the Flames job paid' / 'the driveway is sold' -> update_job with job_id from ACTIVE JOBS and the new status (quoted/sold/in_progress/paid).",
+        "REMINDERS: 'remind me to X ...' -> create_reminder. Pick recurrence_type from the phrasing:",
+        "  'in 30 minutes' / 'at 4pm tomorrow' -> one_time with fire_at (full ISO timestamp, Edmonton local resolved to UTC).",
+        "  'every 30 minutes' / 'every 2 hours' -> interval with interval_minutes.",
+        "  'every day at 9' -> daily with time_of_day. 'every Monday and Friday at 5' -> weekly with days_of_week (0=Mon..6=Sun) + time_of_day.",
+        "  'on the 1st of every month' -> monthly with day_of_month + time_of_day.",
+        "Only set the fields that shape needs; leave the rest null.",
         "Use add_memory only when the user asks to remember/note something that is not a task.",
         forDate ? `These new tasks are for ${forDate} — set due_date to it unless the user clearly names a different day.` : "",
         // Job-scoped capture: the whole message is one or more tasks for this job.
@@ -221,6 +228,11 @@ Deno.serve(async (req) => {
           .single();
         if (error) throw error;
         confirmations.push(`Updated job: ${data.name} → ${data.status}`);
+      } else if (a.type === "create_reminder") {
+        const { type: _t, ...fields } = a;
+        const { error } = await supabase.from("reminders").insert({ user_id: user.id, ...fields });
+        if (error) throw error;
+        confirmations.push(`Reminder set: ${a.name}`);
       } else if (a.type === "add_memory") {
         const { error } = await supabase.from("memories").insert({
           user_id: user.id,
