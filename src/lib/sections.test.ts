@@ -1,5 +1,15 @@
 import { describe, expect, it } from "vitest";
-import { partitionSchedule, scheduleSort, sectionClockLabel, upcomingDates } from "./sections";
+import {
+  nextSectionFor,
+  orderBySortOrder,
+  partitionSchedule,
+  scheduleSort,
+  sectionClockLabel,
+  reorderSection,
+  SCHEDULE_SLOTS,
+  upcomingDates,
+  type TimeSection,
+} from "./sections";
 
 describe("upcomingDates", () => {
   it("returns today plus the requested days ahead, chronological", () => {
@@ -21,6 +31,80 @@ describe("upcomingDates", () => {
       "2026-08-04",
       "2026-08-05",
     ]);
+  });
+});
+
+describe("orderBySortOrder", () => {
+  const t = (
+    id: string,
+    sort_order: number | null = null,
+    scheduled_time: string | null = null,
+    priority_weight = 3,
+  ) => ({ id, sort_order, scheduled_time, priority_weight, created_at: "2026-08-01T00:00:00Z" });
+
+  it("falls back to the normal schedule sort when nothing is placed", () => {
+    const list = [t("a", null, null, 2), t("b", null, "14:30:00"), t("c", null, "09:00:00")];
+    expect(orderBySortOrder(list).map((x) => x.id)).toEqual(["c", "b", "a"]);
+  });
+
+  it("puts manually placed tasks first, by sort_order", () => {
+    const list = [t("a", 2), t("b", 0), t("c", 1)];
+    expect(orderBySortOrder(list).map((x) => x.id)).toEqual(["b", "c", "a"]);
+  });
+
+  it("placed tasks lead, untouched ones follow in schedule order", () => {
+    const list = [t("a", null, "09:00:00"), t("b", 0), t("c", null)];
+    expect(orderBySortOrder(list).map((x) => x.id)).toEqual(["b", "a", "c"]);
+  });
+
+  it("manual placement beats a booked time", () => {
+    const list = [t("a", 0), t("b", 1, "09:00:00")];
+    expect(orderBySortOrder(list).map((x) => x.id)).toEqual(["a", "b"]);
+  });
+
+  it("treats sort_order 0 as placed, not missing", () => {
+    const list = [t("a", null, "09:00:00"), t("b", 0)];
+    expect(orderBySortOrder(list)[0].id).toBe("b");
+  });
+});
+
+describe("reorderSection", () => {
+  const list = [{ id: "a" }, { id: "b" }, { id: "c" }];
+
+  it("moving up swaps with the previous task and renumbers the section", () => {
+    expect(reorderSection(list, 2, -1)).toEqual([
+      { id: "a", sort_order: 0 },
+      { id: "c", sort_order: 1 },
+      { id: "b", sort_order: 2 },
+    ]);
+  });
+
+  it("moving down swaps with the next task", () => {
+    expect(reorderSection(list, 0, 1)).toEqual([
+      { id: "b", sort_order: 0 },
+      { id: "a", sort_order: 1 },
+      { id: "c", sort_order: 2 },
+    ]);
+  });
+
+  it("renumbers every task so a never-ordered section gets a full order", () => {
+    expect(reorderSection(list, 1, 1).map((r) => r.sort_order)).toEqual([0, 1, 2]);
+  });
+
+  it("refuses to move off either end", () => {
+    expect(reorderSection(list, 0, -1)).toEqual([]);
+    expect(reorderSection(list, 2, 1)).toEqual([]);
+  });
+
+  it("is a no-op for a single-task section", () => {
+    expect(reorderSection([{ id: "solo" }], 0, -1)).toEqual([]);
+    expect(reorderSection([{ id: "solo" }], 0, 1)).toEqual([]);
+  });
+
+  it("does not mutate the input", () => {
+    const original = [{ id: "a" }, { id: "b" }];
+    reorderSection(original, 0, 1);
+    expect(original.map((t) => t.id)).toEqual(["a", "b"]);
   });
 });
 
@@ -63,42 +147,94 @@ describe("scheduleSort", () => {
   });
 });
 
-describe("partitionSchedule — Night bookends the ribbon", () => {
-  const task = (id: string, due_date: string | null, time_section: string | null) =>
-    ({ id, due_date, time_section }) as { id: string; due_date: string | null; time_section: never };
+describe("partitionSchedule — one slot per section, Night appears once", () => {
+  const task = (id: string, time_section: string | null) =>
+    ({ id, time_section }) as { id: string; time_section: never };
 
-  it("routes a night task due before today to the leading (earlier) slot", () => {
-    const out = partitionSchedule([task("a", "2026-07-06", "night")], "2026-07-07");
-    expect(out["night-earlier"].map((t) => t.id)).toEqual(["a"]);
-    expect(out["night-ahead"]).toEqual([]);
+  it("puts every night task in the single Night slot", () => {
+    const out = partitionSchedule([task("a", "night"), task("b", "night")]);
+    expect(out.night.map((t) => t.id)).toEqual(["a", "b"]);
   });
 
-  it("routes a night task due today to the trailing (tonight) slot", () => {
-    const out = partitionSchedule([task("b", "2026-07-07", "night")], "2026-07-07");
-    expect(out["night-ahead"].map((t) => t.id)).toEqual(["b"]);
-    expect(out["night-earlier"]).toEqual([]);
+  it("has no leading 'earlier night' slot any more", () => {
+    const out = partitionSchedule([task("a", "night")]);
+    expect(out["night-earlier"]).toBeUndefined();
+    expect(out["night-ahead"]).toBeUndefined();
+    expect(Object.keys(out)).toEqual(["morning", "midday", "afternoon", "evening", "night", "anytime"]);
   });
 
-  it("keeps the same night task out of both ends — never duplicated", () => {
-    const out = partitionSchedule(
-      [task("a", "2026-07-06", "night"), task("b", "2026-07-07", "night")],
-      "2026-07-07",
-    );
-    expect(out["night-earlier"].map((t) => t.id)).toEqual(["a"]);
-    expect(out["night-ahead"].map((t) => t.id)).toEqual(["b"]);
-  });
-
-  it("drops each daytime task into its own section, overdue included", () => {
-    const out = partitionSchedule(
-      [task("m", "2026-07-04", "morning"), task("e", "2026-07-07", "evening")],
-      "2026-07-07",
-    );
+  it("drops each daytime task into its own section", () => {
+    const out = partitionSchedule([task("m", "morning"), task("e", "evening")]);
     expect(out.morning.map((t) => t.id)).toEqual(["m"]);
     expect(out.evening.map((t) => t.id)).toEqual(["e"]);
   });
 
   it("treats a null time_section as anytime", () => {
-    const out = partitionSchedule([task("x", "2026-07-07", null)], "2026-07-07");
+    const out = partitionSchedule([task("x", null)]);
     expect(out.anytime.map((t) => t.id)).toEqual(["x"]);
+  });
+
+  it("places every task exactly once", () => {
+    const all = [task("a", "morning"), task("b", "night"), task("c", null), task("d", "midday")];
+    const out = partitionSchedule(all);
+    expect(Object.values(out).flat()).toHaveLength(4);
+  });
+});
+
+describe("SCHEDULE_SLOTS — plain chronological sequence", () => {
+  it("is Morning → Midday → Afternoon → Evening → Night, then Anytime", () => {
+    expect(SCHEDULE_SLOTS.map((s) => s.key)).toEqual([
+      "morning",
+      "midday",
+      "afternoon",
+      "evening",
+      "night",
+      "anytime",
+    ]);
+  });
+  it("every slot is a drop target now the read-only night slot is gone", () => {
+    expect(SCHEDULE_SLOTS.every((s) => s.droppable)).toBe(true);
+  });
+});
+
+// Arrows at the edge of a section carry the task across the boundary.
+describe("nextSectionFor — crossing time_section boundaries", () => {
+  const occ = (...s: TimeSection[]) => new Set<TimeSection>(s);
+
+  it("pressing down on the last Evening task moves it into Night", () => {
+    expect(nextSectionFor("evening", 1, occ("evening", "night"))).toEqual({ section: "night", atEnd: false });
+  });
+
+  it("pressing up on the first Midday task moves it into Morning", () => {
+    expect(nextSectionFor("midday", -1, occ("morning", "midday"))).toEqual({ section: "morning", atEnd: true });
+  });
+
+  it("jumps straight over a completely empty adjacent section", () => {
+    // Morning occupied, Midday EMPTY, Afternoon occupied — one press clears Midday
+    expect(nextSectionFor("morning", 1, occ("morning", "afternoon"))).toEqual({
+      section: "afternoon",
+      atEnd: false,
+    });
+  });
+
+  it("skips several empty sections in one press", () => {
+    expect(nextSectionFor("morning", 1, occ("morning", "night"))).toEqual({ section: "night", atEnd: false });
+  });
+
+  it("still lands in the immediate neighbour when nothing ahead is occupied", () => {
+    // Never a no-op just because the rest of the day is empty
+    expect(nextSectionFor("morning", 1, occ("morning"))).toEqual({ section: "midday", atEnd: false });
+  });
+
+  it("stops at the ends of the day", () => {
+    expect(nextSectionFor("morning", -1, occ("morning"))).toBeNull();
+    expect(nextSectionFor("night", 1, occ("night"))).toBeNull();
+  });
+
+  it("never moves a task into or out of Anytime", () => {
+    expect(nextSectionFor("anytime", -1, occ("anytime", "morning"))).toBeNull();
+    expect(nextSectionFor("anytime", 1, occ("anytime", "night"))).toBeNull();
+    // and Night's downward move doesn't fall through into Anytime
+    expect(nextSectionFor("night", 1, occ("night", "anytime"))).toBeNull();
   });
 });

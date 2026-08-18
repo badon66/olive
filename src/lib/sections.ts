@@ -1,9 +1,8 @@
 import { addDays, daysBetween, edmontonToday } from "./dates";
-import { scoreTask } from "./ranking";
 
-// Chronological within a day (the day flips at 1:30 AM — see dates.ts): morning
-// through night, with the small hours before 1:30 still belonging to the night
-// that started the evening before. "anytime" is the catch-all.
+// Chronological within a day (the day flips at 5 AM — see dates.ts): morning
+// through night. Night runs 11 PM–5 AM and belongs wholly to the day it started
+// on. "anytime" is the catch-all.
 export const SECTION_ORDER = ["morning", "midday", "afternoon", "evening", "night", "anytime"] as const;
 export type TimeSection = (typeof SECTION_ORDER)[number];
 
@@ -32,55 +31,50 @@ export function sectionClockLabel(section: TimeSection, wakeTime = "11:00"): str
   return r ? `${to12h(r[0])} – ${to12h(r[1])}` : null;
 }
 
-// Today's Schedule ribbon. Night bookends the day: it leads as the tail of the
-// nights already passed (context — not a drop target) and closes as this day's
-// own upcoming night. "Anytime" is appended so those tasks aren't hidden. The
-// whole ribbon advances at the 1:30 AM boundary because `today` (edmontonToday)
-// is what feeds it — no per-slot clock logic needed.
+// Today's Schedule ribbon — a plain chronological sequence:
+// Morning → Midday → Afternoon → Evening → Night, plus Anytime for the
+// section-less leftovers.
+//
+// Night appears ONCE, at the end, where it belongs. The old build bookended the
+// day with a leading "Night · earlier" slot; that only existed to paper over the
+// 1:30 AM boundary cutting Night in half. With the boundary at 5:00 AM a night
+// belongs wholly to the day it started on, so the leading slot is gone.
 export type ScheduleSlot = {
   key: string;
   label: string;
   section: TimeSection;
-  role: "earlier-night" | "section" | "upcoming-night" | "anytime";
+  role: "section" | "anytime";
   droppable: boolean;
 };
 
 export const SCHEDULE_SLOTS: ScheduleSlot[] = [
-  { key: "night-earlier", label: "Night · earlier", section: "night", role: "earlier-night", droppable: false },
   { key: "morning", label: "Morning", section: "morning", role: "section", droppable: true },
   { key: "midday", label: "Midday", section: "midday", role: "section", droppable: true },
   { key: "afternoon", label: "Afternoon", section: "afternoon", role: "section", droppable: true },
   { key: "evening", label: "Evening", section: "evening", role: "section", droppable: true },
-  { key: "night-ahead", label: "Night · tonight", section: "night", role: "upcoming-night", droppable: true },
+  { key: "night", label: "Night", section: "night", role: "section", droppable: true },
   { key: "anytime", label: "Anytime", section: "anytime", role: "anytime", droppable: true },
 ];
 
-// Split the due-today set (overdue + today) into the ribbon's slots. Night tasks
-// route by due date: anything from before today is "earlier" (a night already
-// passed), today's night tasks are "tonight". Every other task falls into its
-// own time_section; a null section is "anytime". No task appears twice.
-export function partitionSchedule<T extends { due_date: string | null; time_section: TimeSection | null }>(
+// Split the due-today set (overdue + today) into the ribbon's slots: each task
+// simply lands in its own time_section, and a null section is "anytime".
+//
+// Night no longer needs due-date routing. Under the old 1:30 boundary a night
+// task could belong to "yesterday" while the clock said today, so night had to
+// be split into earlier/tonight; the 5:00 AM boundary keeps a night intact, so
+// there is nothing left to disambiguate.
+export function partitionSchedule<T extends { time_section: TimeSection | null }>(
   dueToday: T[],
-  today: string,
 ): Record<string, T[]> {
   const out: Record<string, T[]> = {
-    "night-earlier": [],
     morning: [],
     midday: [],
     afternoon: [],
     evening: [],
-    "night-ahead": [],
+    night: [],
     anytime: [],
   };
-  for (const t of dueToday) {
-    const section = t.time_section ?? "anytime";
-    if (section === "night") {
-      const past = t.due_date !== null && t.due_date < today;
-      out[past ? "night-earlier" : "night-ahead"].push(t);
-    } else {
-      out[section].push(t);
-    }
-  }
+  for (const t of dueToday) out[t.time_section ?? "anytime"].push(t);
   return out;
 }
 
@@ -104,6 +98,80 @@ export function scheduleSort(
   return b.priority_weight - a.priority_weight || a.created_at.localeCompare(b.created_at);
 }
 
+type Sortable = {
+  id: string;
+  scheduled_time: string | null;
+  priority_weight: number;
+  created_at: string;
+  sort_order?: number | null;
+};
+
+// Ordering inside a Today's Schedule section. Manually placed tasks (those with
+// a sort_order) lead, in that order; anything never touched follows in the
+// normal schedule sort — so the default stays bookings-first-by-time.
+export function orderBySortOrder<T extends Sortable>(tasks: T[]): T[] {
+  const placed = tasks.filter((t) => t.sort_order != null).sort((a, b) => a.sort_order! - b.sort_order!);
+  const rest = tasks.filter((t) => t.sort_order == null).sort(scheduleSort);
+  return [...placed, ...rest];
+}
+
+// The sections an arrow can traverse, in clock order. "anytime" is excluded: it
+// is a holding pen, not a point on the timeline, so nudging out of Night must not
+// dump a task there.
+const TRAVERSABLE = SECTION_ORDER.filter((s) => s !== "anytime");
+
+export type SectionMove = {
+  section: TimeSection;
+  // Where it lands within the destination: top when arriving from below, bottom
+  // when arriving from above, so the motion reads as continuous.
+  atEnd: boolean;
+};
+
+// Pressing up on the FIRST item of a section, or down on the LAST, carries the
+// task across the boundary into the neighbouring section and updates its
+// time_section — rather than doing nothing (BUILD_PLAN).
+//
+// `occupied` is the set of sections that currently hold at least one task.
+// Completely empty sections in between are skipped in a single press, so one
+// press always produces visible movement instead of silently landing somewhere
+// the user can't see.
+//
+// Returns null at the very ends of the day (up from Morning, down from Night)
+// and for "anytime", which has no neighbours on the clock.
+export function nextSectionFor(
+  from: TimeSection,
+  dir: -1 | 1,
+  occupied: ReadonlySet<TimeSection>,
+): SectionMove | null {
+  const i = TRAVERSABLE.indexOf(from as (typeof TRAVERSABLE)[number]);
+  if (i === -1) return null; // "anytime" doesn't traverse
+  for (let j = i + dir; j >= 0 && j < TRAVERSABLE.length; j += dir) {
+    const candidate = TRAVERSABLE[j];
+    if (occupied.has(candidate)) return { section: candidate, atEnd: dir === -1 };
+  }
+  // Nothing occupied that way — fall back to the immediate neighbour so the
+  // press still does something, as long as one exists.
+  const neighbour = TRAVERSABLE[i + dir];
+  return neighbour ? { section: neighbour, atEnd: dir === -1 } : null;
+}
+
+// Move the task at `index` one step in `dir` within an already-ordered section,
+// returning the sort_order values to persist for the WHOLE section. Renumbering
+// every row (rather than swapping two) means a section with no prior ordering
+// gets a complete, stable one on the very first nudge.
+// Returns [] when the move would fall off either end.
+export function reorderSection<T extends { id: string }>(
+  ordered: T[],
+  index: number,
+  dir: -1 | 1,
+): { id: string; sort_order: number }[] {
+  const j = index + dir;
+  if (index < 0 || index >= ordered.length || j < 0 || j >= ordered.length) return [];
+  const next = [...ordered];
+  [next[index], next[j]] = [next[j], next[index]];
+  return next.map((t, i) => ({ id: t.id, sort_order: i }));
+}
+
 type TaskLike = {
   id: string;
   due_date: string | null;
@@ -122,25 +190,6 @@ export function computeSections<T extends TaskLike>(open: T[], today: string) {
     today: dated((d) => d === 0),
     upcoming: dated((d) => d > 0 && d <= 7),
   };
-}
-
-// Effective priority order: stored order (manual wins over suggested) filtered to
-// still-open tasks, with anything created after generation appended by score
-export function effectiveOrder<T extends TaskLike>(baseOrder: string[], open: T[], today: string): T[] {
-  const openById = new Map(open.map((t) => [t.id, t]));
-  const seen = new Set<string>();
-  const result: T[] = [];
-  for (const id of baseOrder) {
-    const t = openById.get(id);
-    if (t && !seen.has(id)) {
-      result.push(t);
-      seen.add(id);
-    }
-  }
-  const rest = open
-    .filter((t) => !seen.has(t.id))
-    .sort((a, b) => scoreTask(b, today) - scoreTask(a, today) || a.created_at.localeCompare(b.created_at));
-  return [...result, ...rest];
 }
 
 export function doneTodayCount<T extends TaskLike>(tasks: T[], today: string): number {

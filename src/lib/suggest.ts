@@ -20,17 +20,20 @@ export type SuggestTask = {
 const DEFAULT_DUR = 30; // a task with no duration counts as this much room
 const SECTION_CAP = 120; // soft per-section target in minutes
 
-// Fixed clock ranges (hours) covering the whole 7 AM → 7 AM day. Night wraps
-// midnight, so it carries two ranges. Wake-time-relative boundaries remain a
-// separate deferred feature.
+// Resolved clock ranges (hours), matching sectionClockLabel in sections.ts and
+// the 5:00 AM day boundary. Night wraps midnight (11 PM → 5 AM) so it carries
+// two ranges — and because the day itself now flips at 5 AM, the small hours
+// resolve to Night on the day that night STARTED, not the new calendar date.
+// Morning nominally begins at wake_time; 5 AM is used as its floor here so the
+// ranges tile the full 24 hours with no gap.
 const SECTION_RANGES: Record<Exclude<TimeSection, "anytime">, [number, number][]> = {
-  morning: [[7, 11]],
-  midday: [[11, 14]],
-  afternoon: [[14, 17]],
-  evening: [[17, 23]],
+  morning: [[5, 12]],
+  midday: [[12, 16]],
+  afternoon: [[16, 18]],
+  evening: [[18, 23]],
   night: [
     [23, 24],
-    [0, 7],
+    [0, 5],
   ],
 };
 

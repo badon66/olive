@@ -13,13 +13,18 @@ const task = (over: Partial<SuggestTask> & { id: string }): SuggestTask => ({
 });
 
 describe("sectionBlocked", () => {
+  // 2:00–3:30 PM sits inside Midday (12–4 PM) under the resolved boundaries,
+  // not Afternoon (4–6 PM).
   const dentist = [{ start: "14:00", end: "15:30", label: "dentist" }];
   it("blocks the section a window overlaps", () => {
-    expect(sectionBlocked("afternoon", dentist)).toBe(true);
+    expect(sectionBlocked("midday", dentist)).toBe(true);
   });
   it("leaves other sections open", () => {
-    expect(sectionBlocked("morning", dentist)).toBe(false);
+    expect(sectionBlocked("afternoon", dentist)).toBe(false);
     expect(sectionBlocked("evening", dentist)).toBe(false);
+  });
+  it("a 4:30 PM window blocks Afternoon", () => {
+    expect(sectionBlocked("afternoon", [{ start: "16:30", end: "17:00", label: "x" }])).toBe(true);
   });
   it("anytime is never blocked", () => {
     expect(sectionBlocked("anytime", [{ start: "00:00", end: "23:59", label: "x" }])).toBe(false);
@@ -28,23 +33,28 @@ describe("sectionBlocked", () => {
 
 describe("currentSection", () => {
   // Edmonton is UTC-6 in July (MDT), so 16:00Z = 10:00 local
-  const at = (utcHour: number) => new Date(Date.UTC(2026, 6, 7, utcHour, 0, 0));
-  it("maps the local clock to the right part of day", () => {
+  const at = (utcHour: number) => new Date(Date.UTC(2026, 6, 7, Math.floor(utcHour), (utcHour % 1) * 60, 0));
+  it("maps the local clock to the right part of day (resolved boundaries)", () => {
     expect(currentSection(at(16))).toBe("morning"); // 10:00 local
     expect(currentSection(at(19))).toBe("midday"); // 13:00 local
-    expect(currentSection(at(21))).toBe("afternoon"); // 15:00 local
-    expect(currentSection(at(1))).toBe("evening"); // 19:00 local (prev day UTC+1)
+    expect(currentSection(at(23))).toBe("afternoon"); // 17:00 local
+    expect(currentSection(at(2))).toBe("evening"); // 20:00 local (prev day UTC+1)
   });
-  it("the small hours are Night, not anytime", () => {
-    expect(currentSection(at(9))).toBe("night"); // 03:00 local
+  it("the small hours are Night, all the way to 5 AM", () => {
     expect(currentSection(at(6))).toBe("night"); // 00:00 local
-    expect(currentSection(at(12))).toBe("night"); // 06:00 local — still before the 7 AM flip
+    expect(currentSection(at(8))).toBe("night"); // 02:00 local
+    expect(currentSection(at(8.5))).toBe("night"); // 02:30 local — the case that used to straddle
+    expect(currentSection(at(10))).toBe("night"); // 04:00 local
   });
-  it("7 AM local is Morning — the start of the new day", () => {
-    expect(currentSection(at(13))).toBe("morning"); // 07:00 local
+  it("5 AM local is Morning — the day has rolled over", () => {
+    expect(currentSection(at(11))).toBe("morning"); // 05:00 local
   });
   it("late evening rolls into Night at 23:00", () => {
     expect(currentSection(at(5))).toBe("night"); // 23:00 local
+  });
+  it("noon is Midday and 4 PM is Afternoon", () => {
+    expect(currentSection(at(18))).toBe("midday"); // 12:00 local
+    expect(currentSection(at(22))).toBe("afternoon"); // 16:00 local
   });
 });
 
@@ -58,9 +68,13 @@ describe("sectionBlocked — Night wraps midnight", () => {
   it("an afternoon window does not block Night", () => {
     expect(sectionBlocked("night", [{ start: "14:00", end: "15:00", label: "x" }])).toBe(false);
   });
-  it("morning now starts at the 7 AM day boundary", () => {
-    expect(sectionBlocked("morning", [{ start: "06:00", end: "06:30", label: "x" }])).toBe(false);
-    expect(sectionBlocked("morning", [{ start: "07:30", end: "08:00", label: "x" }])).toBe(true);
+  it("morning runs from the 5 AM day boundary to noon", () => {
+    expect(sectionBlocked("morning", [{ start: "04:00", end: "04:30", label: "x" }])).toBe(false); // still Night
+    expect(sectionBlocked("morning", [{ start: "06:00", end: "06:30", label: "x" }])).toBe(true);
+    expect(sectionBlocked("morning", [{ start: "11:30", end: "11:50", label: "x" }])).toBe(true);
+  });
+  it("a 4 AM window blocks Night, since Night runs to 5 AM", () => {
+    expect(sectionBlocked("night", [{ start: "04:00", end: "04:30", label: "x" }])).toBe(true);
   });
 });
 
@@ -94,7 +108,7 @@ describe("pullForward", () => {
     const windows = [{ start: "14:00", end: "15:30", label: "dentist" }];
     const open = [task({ id: "a" }), task({ id: "b" }), task({ id: "c" }), task({ id: "d" }), task({ id: "e" })];
     const r = pullForward(open, TODAY, windows);
-    expect(r.afternoon).toHaveLength(0); // afternoon is blocked
+    expect(r.midday).toHaveLength(0); // 2–3:30 PM sits in Midday, which is blocked
   });
 
   it("does not pull scheduled tasks forward (only due_date === null)", () => {
