@@ -1,0 +1,12 @@
+-- Manual task ordering inside a Today's Schedule section.
+--
+-- Previously the arrows reused daily_briefs.manual_order, which had two flaws:
+-- it only existed for today (so other days couldn't be reordered), and it was
+-- shared with the Priorities list (reordering one silently reordered the other).
+-- A per-task column fixes both: every task on every day is movable, and the
+-- schedule's order is its own thing.
+--
+-- Null = never manually placed, so it falls back to the normal schedule sort
+-- (bookings first by time, then priority). Values are only ever compared within
+-- one section's own list, so they don't need to be globally unique.
+alter table tasks add column sort_order int;

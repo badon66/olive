@@ -43,14 +43,10 @@ export function WeeklyTasksView({
   completeDay,
   unplanDay,
   uncompleteDay,
-  saveDetail,
   bare = false,
   draggable = false,
   customize = false,
 }: Props) {
-  const [detailFor, setDetailFor] = useState<WeeklyCheckin | null>(null);
-  const [note, setNote] = useState("");
-  const [duration, setDuration] = useState("");
   const [editing, setEditing] = useState<WeeklyTask | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<WeeklyTask | null>(null);
   const today = edmontonToday();
@@ -83,29 +79,10 @@ export function WeeklyTasksView({
       }
       return;
     }
-    // Pencil OFF: mark this day complete (or undo it).
-    if (state === "completed") {
-      setDetailFor(null);
-      await uncompleteDay(t, date);
-    } else {
-      // completeDay returns the written row — the render-time checkin list is
-      // stale here and would miss a brand-new checkin
-      const fresh = await completeDay(t.id, date);
-      if (date === today) {
-        setNote("");
-        setDuration("");
-        if (fresh) setDetailFor(fresh); // offer detail on today's completion — one tap to skip
-      }
-    }
-  };
-
-  const saveDetailNow = async () => {
-    if (!detailFor) return;
-    await saveDetail(detailFor.id, {
-      note: note.trim() || null,
-      duration_minutes: duration.trim() ? Math.max(1, Number(duration)) : null,
-    });
-    setDetailFor(null);
+    // Pencil OFF: mark this day complete (or undo it). Instant — no follow-up
+    // note/duration prompt (BUILD_PLAN: checking off is one tap, nothing else).
+    if (state === "completed") await uncompleteDay(t, date);
+    else await completeDay(t.id, date);
   };
 
   if (loading) return <p className="text-dim pulse-live">Loading weekly tasks…</p>;
@@ -121,8 +98,6 @@ export function WeeklyTasksView({
           {weeklyTasks.map((t) => {
             const rowsFor = checkinsByTask.get(t.id) ?? [];
             const states = cubeStates(t, rowsFor, today);
-            const todayCheckin = rowsFor.find((c) => c.date === today);
-            const showDetail = detailFor !== null && todayCheckin?.id === detailFor.id;
             const body = (
               <div className="py-2.5">
                 {/* Single row: name (+ chips) on the left, the 7 square cubes on
@@ -155,7 +130,7 @@ export function WeeklyTasksView({
                                 : `${DAY_ABBRS[i]} — click to plan / unplan`
                               : `${DAY_ABBRS[i]} — click to mark ${state === "completed" ? "not done" : "done"}`
                           }
-                          className={`w-14 h-14 shrink-0 rounded-md flex flex-col items-center justify-center gap-0.5 font-data cursor-pointer transition-all duration-150 border ${
+                          className={`w-14 h-14 shrink-0 rounded-md flex flex-col items-center justify-center gap-0.5 font-data cursor-pointer transition duration-150 border ${
                             state === "completed"
                               ? "bg-signal-dim border-signal text-hud shadow-[0_0_10px_rgba(63,169,104,0.45)]"
                               : state === "planned"
@@ -174,32 +149,6 @@ export function WeeklyTasksView({
                 {/* Progress note: numbers always add up (planned + completed + to-plan = target) */}
                 <p className="font-data text-[11px] text-dim mt-1">{progressNote(t, states)}</p>
 
-                {showDetail && (
-                  <div className="flex items-center gap-2 mt-2">
-                    <input
-                      className="hud-input flex-1 !min-h-[38px] text-sm"
-                      placeholder="note — optional"
-                      value={note}
-                      onChange={(e) => setNote(e.target.value)}
-                      autoFocus
-                    />
-                    <input
-                      className="hud-input w-20 !min-h-[38px] text-sm"
-                      type="number"
-                      min="1"
-                      placeholder="min"
-                      value={duration}
-                      onChange={(e) => setDuration(e.target.value)}
-                      aria-label="Duration in minutes — optional"
-                    />
-                    <button className="hud-button !min-h-[38px] px-3" onClick={() => void saveDetailNow()}>
-                      Save
-                    </button>
-                    <button className="hud-button !min-h-[38px] px-3 !border-signal-dim/40 !text-dim" onClick={() => setDetailFor(null)}>
-                      Skip
-                    </button>
-                  </div>
-                )}
               </div>
             );
             return draggable ? (

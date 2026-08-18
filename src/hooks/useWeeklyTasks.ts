@@ -22,7 +22,12 @@ export function useWeeklyTasks() {
     // ~4 weeks of history is plenty for the current-week cubes
     const since = addDays(edmontonToday(), -28);
     const [w, c] = await Promise.all([
-      supabase.from("weekly_tasks").select("*").order("created_at"),
+      // Manual order first; never-nudged rows (sort_order null) keep creation order
+      supabase
+        .from("weekly_tasks")
+        .select("*")
+        .order("sort_order", { ascending: true, nullsFirst: false })
+        .order("created_at"),
       supabase.from("weekly_task_checkins").select("*").gte("date", since),
     ]);
     if (!w.error && w.data) setWeeklyTasks(w.data);
@@ -36,7 +41,14 @@ export function useWeeklyTasks() {
 
   const userId = async () => (await supabase.auth.getUser()).data.user!.id;
 
+  // Optimistic check-off: the cube flips instantly, then the row is written and
+  // the real state reconciled by refresh().
   const upsertStatus = async (weeklyTaskId: string, date: string, status: "planned" | "completed") => {
+    setCheckins((prev) => {
+      const hit = prev.find((c) => c.weekly_task_id === weeklyTaskId && c.date === date);
+      if (hit) return prev.map((c) => (c === hit ? { ...c, status } : c));
+      return [...prev, { id: `optimistic-${weeklyTaskId}-${date}`, weekly_task_id: weeklyTaskId, date, status } as WeeklyCheckin];
+    });
     const { data } = await supabase
       .from("weekly_task_checkins")
       .upsert(
@@ -62,6 +74,19 @@ export function useWeeklyTasks() {
       await supabase.from("weekly_tasks").update(patch).eq("id", id);
       await refresh();
     },
+    // Ordering for weekly occurrences shown inside Today's Schedule / Active
+    // Tasks. Not used by the Weekly Tasks tab, which has no arrows (BUILD_PLAN).
+    saveWeeklyOrder: async (updates: { id: string; sort_order: number }[]) => {
+      if (updates.length === 0) return;
+      const before = weeklyTasks;
+      const byId = new Map(updates.map((u) => [u.id, u.sort_order]));
+      setWeeklyTasks((prev) => prev.map((t) => (byId.has(t.id) ? { ...t, sort_order: byId.get(t.id)! } : t)));
+      const results = await Promise.all(
+        updates.map((u) => supabase.from("weekly_tasks").update({ sort_order: u.sort_order }).eq("id", u.id)),
+      );
+      if (results.some((r) => r.error)) setWeeklyTasks(before);
+      await refresh();
+    },
     deleteWeeklyTask: async (id: string) => {
       await supabase.from("weekly_tasks").delete().eq("id", id); // checkins cascade
       await refresh();
@@ -85,10 +110,6 @@ export function useWeeklyTasks() {
       } else {
         await supabase.from("weekly_task_checkins").delete().eq("weekly_task_id", task.id).eq("date", date);
       }
-      await refresh();
-    },
-    saveDetail: async (checkinId: string, detail: { note: string | null; duration_minutes: number | null }) => {
-      await supabase.from("weekly_task_checkins").update(detail).eq("id", checkinId);
       await refresh();
     },
   };
