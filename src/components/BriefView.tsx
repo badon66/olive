@@ -4,11 +4,10 @@ import type { CategoryStore } from "../hooks/useCategories";
 import type { WeeklyStore } from "../hooks/useWeeklyTasks";
 import { useBrief, type BriefContent } from "../hooks/useBrief";
 import { edmontonToday } from "../lib/dates";
-import { computeSections, doneTodayCount, effectiveOrder } from "../lib/sections";
+import { computeSections, doneTodayCount } from "../lib/sections";
 import { ScheduleSetupButton } from "./ScheduleSetup";
 import { WeeklyTaskForm, WeeklyTasksView } from "./WeeklyTasksView";
 import { UpcomingDaysPanel } from "./board/DayBlocksPanel";
-import { PrioritiesPanel } from "./board/PrioritiesPanel";
 import { TaskDndProvider } from "./board/TaskDnd";
 import { TodaySchedulePanel } from "./board/TodaySchedulePanel";
 
@@ -19,6 +18,7 @@ type Props = {
   reopenTask: (id: string) => Promise<void>;
   updateTask: (id: string, patch: Partial<TaskInput>) => Promise<void>;
   onEdit: (task: Task) => void;
+  onTripleClick?: (task: Task) => void;
   categoryStore: CategoryStore;
   weeklyStore?: WeeklyStore;
   customize?: boolean;
@@ -60,27 +60,13 @@ function RingGauge({ done, total }: { done: number; total: number }) {
 }
 
 export function BriefView({ tasks, loading, completeTask, reopenTask, updateTask, onEdit, categoryStore, weeklyStore, customize = false, refresh }: Props) {
-  const { brief, loading: briefLoading, error, regenerate, saveManualOrder } = useBrief();
+  const { brief, loading: briefLoading, error, regenerate } = useBrief();
   const [addWeekly, setAddWeekly] = useState(false);
   const today = edmontonToday();
 
   const open = useMemo(() => tasks.filter((t) => t.status === "open"), [tasks]);
   const sections = useMemo(() => computeSections(open, today), [open, today]);
   const doneToday = useMemo(() => doneTodayCount(tasks, today), [tasks, today]);
-
-  const orderedTasks = useMemo(() => {
-    const content = (brief?.content ?? null) as BriefContent | null;
-    const base = brief?.manual_order ?? content?.suggested_order ?? [];
-    return effectiveOrder(base, open, today);
-  }, [brief, open, today]);
-
-  const move = (index: number, dir: -1 | 1) => {
-    const ids = orderedTasks.map((t) => t.id);
-    const j = index + dir;
-    if (j < 0 || j >= ids.length) return;
-    [ids[index], ids[j]] = [ids[j], ids[index]];
-    void saveManualOrder(ids);
-  };
 
   const cardProps = {
     today,
@@ -108,8 +94,6 @@ export function BriefView({ tasks, loading, completeTask, reopenTask, updateTask
       weeklyTasks={weeklyStore?.weeklyTasks}
       deps={{
         today,
-        orderedIds: orderedTasks.map((t) => t.id),
-        saveManualOrder,
         updateTask,
         setWeeklySection: weeklyStore ? (id, s) => weeklyStore.updateWeeklyTask(id, { time_section: s }) : undefined,
         planWeeklyDay: weeklyStore ? (id, date) => weeklyStore.planDay(id, date) : undefined,
@@ -159,7 +143,8 @@ export function BriefView({ tasks, loading, completeTask, reopenTask, updateTask
           );
         })()}
 
-        {/* Section order per BUILD_PLAN: Weekly Tasks first, Priorities demoted to the bottom */}
+        {/* Priorities is gone entirely (BUILD_PLAN) — overdue tasks surface inline
+            in Today's Schedule, tagged in their own time_section. */}
         {weeklyStore && (
           <section className="hud-panel p-4">
             <div className="flex items-center justify-between mb-2">
@@ -170,7 +155,7 @@ export function BriefView({ tasks, loading, completeTask, reopenTask, updateTask
                 <button
                   onClick={() => setAddWeekly(true)}
                   aria-label="Add weekly task"
-                  className="w-8 h-8 grid place-items-center rounded border border-signal/50 text-signal cursor-pointer hover:bg-signal/15 transition-all duration-150 focus-visible:outline-2 focus-visible:outline-signal"
+                  className="w-8 h-8 grid place-items-center rounded border border-signal/50 text-signal cursor-pointer hover:bg-signal/15 transition duration-150 focus-visible:outline-2 focus-visible:outline-signal"
                 >
                   <svg viewBox="0 0 24 24" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
                     <path d="M12 5v14M5 12h14" />
@@ -193,15 +178,7 @@ export function BriefView({ tasks, loading, completeTask, reopenTask, updateTask
 
         <TodaySchedulePanel dueToday={dueToday} openTasks={open} cardProps={cardProps} weeklyBits={weeklyStore} />
 
-        <UpcomingDaysPanel openTasks={open} today={today} onEdit={onEdit} />
-
-        <PrioritiesPanel
-          orderedTasks={orderedTasks}
-          today={today}
-          onEdit={onEdit}
-          onMove={move}
-          manualOrder={brief?.manual_order !== null && brief?.manual_order !== undefined}
-        />
+        <UpcomingDaysPanel tasks={tasks} today={today} onEdit={onEdit} />
       </div>
     </TaskDndProvider>
   );

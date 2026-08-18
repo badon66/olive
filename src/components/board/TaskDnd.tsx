@@ -14,22 +14,18 @@ import {
   type DragEndEvent,
   type DragStartEvent,
 } from "@dnd-kit/core";
-import { arrayMove } from "@dnd-kit/sortable";
 import type { Task } from "../../hooks/useTasks";
 import type { WeeklyTask } from "../../hooks/useWeeklyTasks";
 import type { TimeSection } from "../../lib/sections";
 
 // Draggable ids are "<zone>:<id>" so the same item can appear in several panels
 // without collisions; payload data carries taskId OR weeklyId. Droppable ids:
-// "section:<time_section>", "day:<YYYY-MM-DD>", "weekly", "cat:<categoryId>",
-// "prio:<taskId>".
+// "section:<time_section>", "day:<YYYY-MM-DD>", "weekly", "cat:<categoryId>".
 
 export type ActiveDrag = { kind: "task"; task: Task } | { kind: "weekly"; weekly: WeeklyTask };
 
 export type DndDeps = {
   today: string;
-  orderedIds: string[];
-  saveManualOrder: (ids: string[]) => void | Promise<void>;
   updateTask: (
     id: string,
     patch: { due_date?: string | null; time_section?: TimeSection | null },
@@ -124,15 +120,6 @@ export function TaskDndProvider({
     } else if (over === "weekly" && deps.convertTaskToWeekly) {
       const undo = await deps.convertTaskToWeekly(task);
       showUndo(`Converted "${task.title}" to a weekly task — tap to undo`, undo);
-    } else if (over.startsWith("prio:")) {
-      // Reorder within priorities: move task to the position of the row it was dropped on
-      const overId = over.slice("prio:".length);
-      if (overId === task.id) return;
-      const ids = deps.orderedIds.includes(task.id) ? [...deps.orderedIds] : [...deps.orderedIds, task.id];
-      const from = ids.indexOf(task.id);
-      const to = ids.indexOf(overId);
-      if (from === -1 || to === -1) return;
-      await deps.saveManualOrder(arrayMove(ids, from, to));
     }
   };
 
@@ -256,7 +243,7 @@ export function DropZone({
   return (
     <div
       ref={setNodeRef}
-      className={`transition-all duration-200 rounded ${
+      className={`transition duration-200 rounded ${
         isOver ? "bg-signal/5 shadow-[inset_0_0_0_1px_#3FA968,0_0_14px_rgba(63,169,104,0.25)]" : ""
       } ${className}`}
     >

@@ -64,15 +64,6 @@ export function useBrief() {
     }
   }, [fetchBrief]);
 
-  const saveManualOrder = useCallback(
-    async (ids: string[]) => {
-      if (!brief) return;
-      // optimistic — reorder feels instant, then persist
-      setBrief({ ...brief, manual_order: ids });
-      await supabase.from("daily_briefs").update({ manual_order: ids }).eq("id", brief.id);
-    },
-    [brief],
-  );
 
-  return { brief, loading, error, regenerate, saveManualOrder };
+  return { brief, loading, error, regenerate };
 }
