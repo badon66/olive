@@ -5,13 +5,14 @@ import { ChatBar } from "./components/ChatBar";
 import { CustomizeToggle } from "./components/CustomizeToggle";
 import { DesktopDashboard } from "./components/DesktopDashboard";
 import { JobsView } from "./components/JobsView";
-import { JournalView } from "./components/JournalView";
+import { ReminderAlerts, RemindersView, useReminderAlerts } from "./components/RemindersView";
 import { NAV_LABELS, Sidebar, type NavKey } from "./components/Sidebar";
 import { TaskForm } from "./components/TaskForm";
 import { TaskList } from "./components/TaskList";
 import { WeeklyTasksView } from "./components/WeeklyTasksView";
 import { useCategories } from "./hooks/useCategories";
 import { useJobs } from "./hooks/useJobs";
+import { useReminders } from "./hooks/useReminders";
 import { useMediaQuery } from "./hooks/useMediaQuery";
 import { useTasks, type Task } from "./hooks/useTasks";
 import { useWeeklyTasks } from "./hooks/useWeeklyTasks";
@@ -46,6 +47,8 @@ function Shell() {
   const weeklyStore = useWeeklyTasks();
   const categoryStore = useCategories();
   const jobStore = useJobs();
+  const reminderStore = useReminders();
+  const alerts = useReminderAlerts(reminderStore);
 
   const dashboard = isDesktop ? (
     <DesktopDashboard
@@ -53,7 +56,9 @@ function Shell() {
       weeklyStore={weeklyStore}
       categoryStore={categoryStore}
       jobStore={jobStore}
+      reminderStore={reminderStore}
       onOpenJobs={() => setNav("jobs")}
+      onOpenReminders={() => setNav("reminders")}
       customize={customize}
       onToggleCustomize={() => setCustomize(!customize)}
     />
@@ -84,13 +89,14 @@ function Shell() {
         )}
         {nav === "weekly" && <WeeklyTasksView {...weeklyStore} customize={customize} />}
         {nav === "jobs" && <JobsView jobStore={jobStore} taskStore={taskStore} categoryStore={categoryStore} />}
-        {nav === "journal" && <JournalView />}
+        {nav === "reminders" && <RemindersView store={reminderStore} />}
         {(nav === "finance" || nav === "groceries" || nav === "settings") && <Placeholder nav={nav} />}
       </div>
     );
 
   return (
     <div className="lg:flex min-h-dvh">
+      <ReminderAlerts firing={alerts.firing} dismiss={alerts.dismiss} />
       <Sidebar active={nav} onNavigate={setNav} open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
 
       <div className="flex-1 min-w-0 flex flex-col">
