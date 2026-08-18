@@ -8,7 +8,7 @@ export function CustomizeToggle({ on, onToggle }: { on: boolean; onToggle: () =>
       aria-pressed={on}
       aria-label={on ? "Finish customizing" : "Customize dashboard"}
       title={on ? "Done customizing" : "Customize"}
-      className={`w-11 h-11 grid place-items-center rounded-lg border cursor-pointer transition-all duration-200 focus-visible:outline-2 focus-visible:outline-signal ${
+      className={`w-11 h-11 grid place-items-center rounded-lg border cursor-pointer transition duration-200 focus-visible:outline-2 focus-visible:outline-signal ${
         on
           ? "border-signal text-signal bg-signal/15 shadow-[0_0_16px_rgba(63,169,104,0.4)] pulse-live"
           : "border-panel-border text-dim hover:text-signal hover:border-signal/40"

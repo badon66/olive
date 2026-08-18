@@ -2,6 +2,7 @@ import { useRef, useState, type FormEvent } from "react";
 import { commitAssistant, previewAssistant, sendToAssistant, type AssistantAction, type JobContext } from "../lib/api";
 import { JOB_STATUSES, JOB_STATUS_LABELS } from "../lib/jobs";
 import { SECTION_ORDER } from "../lib/sections";
+import { Portal } from "./Portal";
 import { SectionPencil } from "./SectionPencil";
 
 type Toast = { kind: "ok" | "error"; text: string };
@@ -18,6 +19,7 @@ const ACTION_LABELS: Record<AssistantAction["type"], string> = {
   delete_task: "Delete",
   create_category: "New section",
   create_job: "New job",
+  create_reminder: "New reminder",
   update_job: "Update job",
   add_memory: "Note",
 };
@@ -137,8 +139,11 @@ export function ChatBar({
         </button>
       </form>
 
-      {/* Voice capture preview: what Olive understood, editable, not yet saved */}
+      {/* Voice capture preview: what Olive understood, editable, not yet saved.
+          Portalled — inside a job card this `fixed` overlay would otherwise be
+          trapped by .hud-panel's backdrop-filter containing block. */}
       {preview && (
+        <Portal>
         <div
           className="fixed inset-0 z-50 grid place-items-center bg-black/70 p-4"
           role="dialog"
@@ -273,6 +278,7 @@ export function ChatBar({
             </div>
           </div>
         </div>
+        </Portal>
       )}
     </div>
   );

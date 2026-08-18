@@ -6,7 +6,7 @@ export function SectionPencil({ active, onToggle, label }: { active: boolean; on
       onClick={onToggle}
       aria-pressed={active}
       aria-label={`${active ? "Finish editing" : "Edit"} ${label}`}
-      className={`w-8 h-8 grid place-items-center rounded cursor-pointer transition-all duration-200 focus-visible:outline-2 focus-visible:outline-signal ${
+      className={`w-8 h-8 grid place-items-center rounded cursor-pointer transition duration-200 focus-visible:outline-2 focus-visible:outline-signal ${
         active
           ? "text-signal bg-signal/15 shadow-[0_0_10px_rgba(63,169,104,0.3)]"
           : "text-dim hover:text-signal"

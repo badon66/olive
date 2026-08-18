@@ -88,7 +88,7 @@ export function ScheduleSetupButton({ onTasksChanged }: { onTasksChanged?: () =>
       <button
         onClick={() => setOpen(true)}
         aria-label="Set up tomorrow's schedule"
-        className={`inline-flex items-center gap-2 px-3 min-h-[36px] rounded-lg border font-data text-[11px] tracking-wide cursor-pointer transition-all duration-200 focus-visible:outline-2 focus-visible:outline-signal ${
+        className={`inline-flex items-center gap-2 px-3 min-h-[36px] rounded-lg border font-data text-[11px] tracking-wide cursor-pointer transition duration-200 focus-visible:outline-2 focus-visible:outline-signal ${
           done
             ? "border-signal/45 text-signal hover:shadow-[0_0_12px_rgba(63,169,104,0.25)]"
             : "border-amber/45 text-amber hover:shadow-[0_0_12px_rgba(255,180,84,0.25)]"

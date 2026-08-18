@@ -176,47 +176,6 @@ export type Database = {
           },
         ]
       }
-      journal_entries: {
-        Row: {
-          cleaned_text: string | null
-          created_at: string
-          date: string
-          entry_time: string
-          id: string
-          raw_transcript: string
-          tags: string[]
-          user_id: string
-        }
-        Insert: {
-          cleaned_text?: string | null
-          created_at?: string
-          date: string
-          entry_time?: string
-          id?: string
-          raw_transcript: string
-          tags?: string[]
-          user_id: string
-        }
-        Update: {
-          cleaned_text?: string | null
-          created_at?: string
-          date?: string
-          entry_time?: string
-          id?: string
-          raw_transcript?: string
-          tags?: string[]
-          user_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "journal_entries_user_id_fkey"
-            columns: ["user_id"]
-            isOneToOne: false
-            referencedRelation: "app_user"
-            referencedColumns: ["user_id"]
-          },
-        ]
-      }
       memories: {
         Row: {
           content: string
@@ -252,6 +211,62 @@ export type Database = {
           },
         ]
       }
+      reminders: {
+        Row: {
+          active: boolean
+          created_at: string
+          day_of_month: number | null
+          days_of_week: number[] | null
+          fire_at: string | null
+          id: string
+          interval_minutes: number | null
+          last_fired_at: string | null
+          message: string | null
+          name: string
+          recurrence_type: Database["public"]["Enums"]["reminder_recurrence"]
+          time_of_day: string | null
+          user_id: string
+        }
+        Insert: {
+          active?: boolean
+          created_at?: string
+          day_of_month?: number | null
+          days_of_week?: number[] | null
+          fire_at?: string | null
+          id?: string
+          interval_minutes?: number | null
+          last_fired_at?: string | null
+          message?: string | null
+          name: string
+          recurrence_type: Database["public"]["Enums"]["reminder_recurrence"]
+          time_of_day?: string | null
+          user_id: string
+        }
+        Update: {
+          active?: boolean
+          created_at?: string
+          day_of_month?: number | null
+          days_of_week?: number[] | null
+          fire_at?: string | null
+          id?: string
+          interval_minutes?: number | null
+          last_fired_at?: string | null
+          message?: string | null
+          name?: string
+          recurrence_type?: Database["public"]["Enums"]["reminder_recurrence"]
+          time_of_day?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "reminders_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "app_user"
+            referencedColumns: ["user_id"]
+          },
+        ]
+      }
       tasks: {
         Row: {
           auto_carry_forward: boolean
@@ -265,6 +280,7 @@ export type Database = {
           job_id: string | null
           priority_weight: number
           scheduled_time: string | null
+          sort_order: number | null
           status: Database["public"]["Enums"]["task_status"]
           time_section: Database["public"]["Enums"]["time_section"] | null
           title: string
@@ -282,6 +298,7 @@ export type Database = {
           job_id?: string | null
           priority_weight?: number
           scheduled_time?: string | null
+          sort_order?: number | null
           status?: Database["public"]["Enums"]["task_status"]
           time_section?: Database["public"]["Enums"]["time_section"] | null
           title: string
@@ -299,6 +316,7 @@ export type Database = {
           job_id?: string | null
           priority_weight?: number
           scheduled_time?: string | null
+          sort_order?: number | null
           status?: Database["public"]["Enums"]["task_status"]
           time_section?: Database["public"]["Enums"]["time_section"] | null
           title?: string
@@ -383,6 +401,7 @@ export type Database = {
           name: string
           recurrence_mode: Database["public"]["Enums"]["recurrence_mode"]
           scheduled_days: number[] | null
+          sort_order: number | null
           target_per_week: number | null
           time_section: Database["public"]["Enums"]["time_section"] | null
           user_id: string
@@ -393,6 +412,7 @@ export type Database = {
           name: string
           recurrence_mode?: Database["public"]["Enums"]["recurrence_mode"]
           scheduled_days?: number[] | null
+          sort_order?: number | null
           target_per_week?: number | null
           time_section?: Database["public"]["Enums"]["time_section"] | null
           user_id: string
@@ -403,6 +423,7 @@ export type Database = {
           name?: string
           recurrence_mode?: Database["public"]["Enums"]["recurrence_mode"]
           scheduled_days?: number[] | null
+          sort_order?: number | null
           target_per_week?: number | null
           time_section?: Database["public"]["Enums"]["time_section"] | null
           user_id?: string
@@ -434,6 +455,7 @@ export type Database = {
       checkin_status: "planned" | "completed"
       job_status: "quoted" | "sold" | "in_progress" | "paid"
       recurrence_mode: "count" | "fixed_days"
+      reminder_recurrence: "one_time" | "interval" | "daily" | "weekly" | "monthly"
       task_status: "open" | "completed"
       time_section:
         | "morning"
@@ -572,6 +594,7 @@ export const Constants = {
       checkin_status: ["planned", "completed"],
       job_status: ["quoted", "sold", "in_progress", "paid"],
       recurrence_mode: ["count", "fixed_days"],
+      reminder_recurrence: ["one_time", "interval", "daily", "weekly", "monthly"],
       task_status: ["open", "completed"],
       time_section: [
         "morning",

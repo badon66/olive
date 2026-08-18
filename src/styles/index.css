@@ -27,6 +27,13 @@
   --font-display: "Orbitron Variable", sans-serif;
   --font-body: "Rajdhani", sans-serif;
   --font-data: "IBM Plex Mono", monospace;
+
+  /* Motion: a spring with slight overshoot is the default easing for every
+     `transition-*` utility, so state changes feel physical rather than linear.
+     Set as the Tailwind token — a plain CSS rule would lose to the utilities. */
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --ease-out-soft: cubic-bezier(0.22, 1, 0.36, 1);
+  --default-transition-timing-function: cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
 body {
@@ -49,7 +56,7 @@ body {
     border: 1px solid var(--color-panel-border);
     border-radius: 0.625rem;
     overflow: hidden;
-    transition: box-shadow 0.25s ease, border-color 0.25s ease;
+    transition: box-shadow 0.25s var(--ease-out-soft), border-color 0.25s var(--ease-out-soft);
   }
   .hud-panel::before {
     content: "";
@@ -183,6 +190,21 @@ body {
     .hud-input,
     .hud-panel {
       transition: none;
+    }
+  }
+}
+
+/* ── Motion & cursor conventions ──────────────────────────────────────────
+   Spring-ish easing: a slight overshoot so state changes feel physical rather
+   than linear. Applied by upgrading the default easing of existing transitions
+   (Tailwind's `duration-*` utilities keep working unchanged).                */
+@layer base {
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      transition-duration: 0.01ms !important;
+      animation-duration: 0.01ms !important;
     }
   }
 }
