@@ -3,6 +3,7 @@ import type { Task, TaskInput } from "../hooks/useTasks";
 import type { CategoryRow } from "../hooks/useCategories";
 import { SECTION_ORDER, type TimeSection } from "../lib/sections";
 import { DatePickerPopup } from "./DatePickerPopup";
+import { Portal } from "./Portal";
 
 type Props = {
   initial?: Task;
@@ -11,11 +12,13 @@ type Props = {
   onClose: () => void;
   // Deleting lives inside the item's edit modal (revised editing pattern)
   onDelete?: () => Promise<void>;
-  // Presets for section-scoped adds (customize-mode "+" on a category panel)
-  defaults?: { category_id?: string; due_date?: string };
+  // Presets for scoped adds (category panel "+", the schedule's viewed day, a job)
+  defaults?: { category_id?: string; due_date?: string; job_id?: string };
+  // Shown as context when the task is being added to a specific job
+  jobName?: string;
 };
 
-export function TaskForm({ initial, categories, onSubmit, onClose, onDelete, defaults }: Props) {
+export function TaskForm({ initial, categories, onSubmit, onClose, onDelete, defaults, jobName }: Props) {
   const [title, setTitle] = useState(initial?.title ?? "");
   const [description, setDescription] = useState(initial?.description ?? "");
   const [categoryId, setCategoryId] = useState(initial?.category_id ?? defaults?.category_id ?? categories[0]?.id ?? "");
@@ -24,7 +27,9 @@ export function TaskForm({ initial, categories, onSubmit, onClose, onDelete, def
   const [scheduledTime, setScheduledTime] = useState(initial?.scheduled_time?.slice(0, 5) ?? "");
   const [timeSection, setTimeSection] = useState<TimeSection | "">(initial?.time_section ?? "");
   const [duration, setDuration] = useState(initial?.duration_minutes ? String(initial.duration_minutes) : "");
-  const [carryForward, setCarryForward] = useState(initial?.auto_carry_forward ?? false);
+  // BUILD_PLAN: on a NEW task the safety net is checked by default; editing an
+  // existing task keeps whatever it already had.
+  const [carryForward, setCarryForward] = useState(initial ? initial.auto_carry_forward : true);
   const [busy, setBusy] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
 
@@ -42,12 +47,14 @@ export function TaskForm({ initial, categories, onSubmit, onClose, onDelete, def
       time_section: timeSection || null,
       duration_minutes: duration.trim() ? Math.max(1, Number(duration)) : null,
       auto_carry_forward: carryForward,
+      ...(initial ? {} : defaults?.job_id ? { job_id: defaults.job_id } : {}),
     });
     setBusy(false);
     onClose();
   };
 
   return (
+    <Portal>
     <div
       className="fixed inset-0 z-30 grid place-items-end sm:place-items-center bg-black/60"
       onClick={onClose}
@@ -70,6 +77,10 @@ export function TaskForm({ initial, categories, onSubmit, onClose, onDelete, def
             </svg>
           </button>
         </div>
+
+        {jobName && (
+          <p className="font-data text-[11px] text-signal">For job: <span className="text-hud">{jobName}</span></p>
+        )}
 
         <label className="block space-y-1">
           <span className="font-data text-xs text-dim uppercase tracking-wider">Title *</span>
@@ -201,5 +212,6 @@ export function TaskForm({ initial, categories, onSubmit, onClose, onDelete, def
         </div>
       </form>
     </div>
+    </Portal>
   );
 }
