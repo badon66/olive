@@ -4,6 +4,7 @@ import {
   changedOn,
   groupByStatus,
   isActiveStatus,
+  jobTaskStats,
   JOB_STATUSES,
   JOB_STATUS_LABELS,
   sortJobs,
@@ -60,6 +61,50 @@ describe("groupByStatus", () => {
     ]);
     expect(groups.map((g) => g.status)).toEqual(["quoted", "paid"]);
     expect(groups[0].jobs.map((j) => j.name)).toEqual(["q2", "q1"]);
+  });
+});
+
+describe("jobTaskStats", () => {
+  const tk = (job_id: string | null, due_date: string | null, status = "open") => ({ job_id, due_date, status });
+  const today = "2026-08-12";
+
+  it("buckets a job's open tasks into overdue / active / upcoming", () => {
+    const tasks = [
+      tk("j1", "2026-08-10"), // overdue
+      tk("j1", "2026-08-11"), // overdue
+      tk("j1", today), // active
+      tk("j1", "2026-08-20"), // upcoming
+      tk("j1", null), // upcoming (unscheduled)
+    ];
+    expect(jobTaskStats(tasks, "j1", today)).toEqual({ overdue: 2, active: 1, upcoming: 2, done: 0, total: 5 });
+  });
+
+  it("ignores other jobs, unscoped tasks, and completed ones", () => {
+    const tasks = [
+      tk("j2", "2026-08-10"),
+      tk(null, "2026-08-10"),
+      tk("j1", "2026-08-10", "completed"),
+      tk("j1", today),
+    ];
+    expect(jobTaskStats(tasks, "j1", today)).toEqual({ overdue: 0, active: 1, upcoming: 0, done: 1, total: 2 });
+  });
+
+  it("is all zeroes for a job with no tasks", () => {
+    expect(jobTaskStats([], "j1", today)).toEqual({ overdue: 0, active: 0, upcoming: 0, done: 0, total: 0 });
+  });
+
+  // The real-world case behind "the stats always show zero": every task for the
+  // job was already completed, so all three live buckets are legitimately 0.
+  // done/total are what distinguish this from a job that never had tasks.
+  it("a job whose tasks are all completed reports zero live work but a real total", () => {
+    const tasks = [tk("j1", "2026-08-10", "completed"), tk("j1", today, "completed")];
+    expect(jobTaskStats(tasks, "j1", today)).toEqual({
+      overdue: 0,
+      active: 0,
+      upcoming: 0,
+      done: 2,
+      total: 2,
+    });
   });
 });
 

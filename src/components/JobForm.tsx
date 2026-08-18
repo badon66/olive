@@ -2,6 +2,7 @@ import { useState, type FormEvent } from "react";
 import type { CategoryRow } from "../hooks/useCategories";
 import type { Job, JobInput } from "../hooks/useJobs";
 import { JOB_STATUSES, JOB_STATUS_LABELS, type JobStatus } from "../lib/jobs";
+import { Portal } from "./Portal";
 
 type Props = {
   initial?: Job;
@@ -34,6 +35,7 @@ export function JobForm({ initial, categories, onSubmit, onClose, onDelete }: Pr
   };
 
   return (
+    <Portal>
     <div
       className="fixed inset-0 z-30 grid place-items-end sm:place-items-center bg-black/60"
       onClick={onClose}
@@ -139,5 +141,6 @@ export function JobForm({ initial, categories, onSubmit, onClose, onDelete }: Pr
         </div>
       </form>
     </div>
+    </Portal>
   );
 }

@@ -39,8 +39,42 @@ export function groupByStatus<T extends JobLike>(jobs: T[]): { status: JobStatus
   })).filter((g) => g.jobs.length > 0);
 }
 
-// Jobs whose updated_at falls on the given Edmonton date (same 1:30 AM day model
+// Jobs whose updated_at falls on the given Edmonton date (same 5 AM day model
 // as everything else) — used by the brief for "changed yesterday".
 export function changedOn<T extends JobLike>(jobs: T[], date: string): T[] {
   return jobs.filter((j) => edmontonToday(new Date(j.updated_at)) === date);
+}
+
+export type JobTaskStats = {
+  upcoming: number;
+  active: number;
+  overdue: number;
+  done: number;
+  total: number;
+};
+
+// Per-job task summary for the dashboard panel. The three live buckets count
+// only OPEN tasks:
+//  • overdue  — due before today
+//  • active   — due today
+//  • upcoming — due after today, or not scheduled at all
+// plus done/total over ALL of the job's tasks, so a job whose work is finished
+// doesn't look identical to one that never had any tasks.
+export function jobTaskStats<T extends { job_id: string | null; status: string; due_date: string | null }>(
+  tasks: T[],
+  jobId: string,
+  today: string,
+): JobTaskStats {
+  const all = tasks.filter((t) => t.job_id === jobId);
+  const mine = all.filter((t) => t.status === "open");
+  return {
+    overdue: mine.filter((t) => t.due_date !== null && t.due_date < today).length,
+    active: mine.filter((t) => t.due_date === today).length,
+    upcoming: mine.filter((t) => t.due_date === null || t.due_date > today).length,
+    // Completed/total are what make an all-done job distinguishable from a job
+    // with no tasks at all — without them both render as a row of zeros, which
+    // is what "the stats always show zero" actually was.
+    done: all.filter((t) => t.status === "completed").length,
+    total: all.length,
+  };
 }
