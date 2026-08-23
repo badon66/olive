@@ -1,7 +1,7 @@
 import { useState } from "react";
 import type { Task } from "../hooks/useTasks";
 import { formatDue } from "../lib/dates";
-import { useTripleClick } from "./TaskActionPopup";
+import { useDoubleClick } from "./TaskActionPopup";
 
 type Props = {
   task: Task;
@@ -11,9 +11,9 @@ type Props = {
   // Revised editing pattern: clicking the item opens its edit modal directly;
   // deleting happens inside that modal, not on the row
   onEdit: (task: Task) => void;
-  // Triple-click opens the two-option action popup (BUILD_PLAN). Supplied by the
+  // Double-click opens the action popup (BUILD_PLAN). Supplied by the
   // dashboard; when absent the card keeps plain single-click-to-edit behaviour.
-  onTripleClick?: (task: Task) => void;
+  onDoubleClick?: (task: Task) => void;
   // Category corner tag (color + name); omit in contexts already grouped by category
   category?: { name: string; color: string };
   // How the description renders: "none" (default, hidden), "always" (shown inline,
@@ -27,14 +27,14 @@ export function TaskCard({
   onComplete,
   onReopen,
   onEdit,
-  onTripleClick,
+  onDoubleClick,
   category,
   descriptionMode = "none",
 }: Props) {
   const [expanded, setExpanded] = useState(false);
-  const handleTitleClick = useTripleClick(
+  const handleTitleClick = useDoubleClick(
     () => onEdit(task),
-    () => onTripleClick?.(task),
+    () => onDoubleClick?.(task),
   );
   const done = task.status === "completed";
   const overdue = !done && task.due_date !== null && formatDue(task.due_date, today).includes("overdue");
@@ -66,7 +66,7 @@ export function TaskCard({
         </button>
 
         <button
-          onClick={onTripleClick ? handleTitleClick : () => onEdit(task)}
+          onClick={onDoubleClick ? handleTitleClick : () => onEdit(task)}
           className="flex-1 min-w-0 text-left rounded cursor-pointer focus-visible:outline-2 focus-visible:outline-signal"
           aria-label={`Edit ${task.title}`}
         >

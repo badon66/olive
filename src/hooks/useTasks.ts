@@ -15,6 +15,13 @@ export type TaskInput = {
   duration_minutes?: number | null;
   auto_carry_forward?: boolean;
   job_id?: string | null;
+  // Flexible scheduling (BUILD_PLAN): either a continuous window OR hand-picked
+  // candidate days, never both. placed_date is where the scheduler currently
+  // has it; due_date stays the authoritative "when is this happening".
+  window_start?: string | null;
+  window_end?: string | null;
+  candidate_dates?: string[] | null;
+  placed_date?: string | null;
 };
 
 export type TaskStore = ReturnType<typeof useTasks>;

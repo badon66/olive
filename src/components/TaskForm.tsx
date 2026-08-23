@@ -3,6 +3,7 @@ import type { Task, TaskInput } from "../hooks/useTasks";
 import type { CategoryRow } from "../hooks/useCategories";
 import { SECTION_ORDER, type TimeSection } from "../lib/sections";
 import { DatePickerPopup } from "./DatePickerPopup";
+import { CandidateDatesGrid } from "./CandidateDatesGrid";
 import { Portal } from "./Portal";
 
 type Props = {
@@ -23,6 +24,18 @@ export function TaskForm({ initial, categories, onSubmit, onClose, onDelete, def
   const [description, setDescription] = useState(initial?.description ?? "");
   const [categoryId, setCategoryId] = useState(initial?.category_id ?? defaults?.category_id ?? categories[0]?.id ?? "");
   const [dueDate, setDueDate] = useState(initial?.due_date ?? defaults?.due_date ?? "");
+  // Scheduling mode (BUILD_PLAN). "fixed" is one day; the two flexible modes
+  // are mutually exclusive — a DB check constraint enforces the same thing.
+  const initialMode: "fixed" | "range" | "pick" =
+    initial?.candidate_dates && initial.candidate_dates.length > 0
+      ? "pick"
+      : initial?.window_start
+        ? "range"
+        : "fixed";
+  const [mode, setMode] = useState<"fixed" | "range" | "pick">(initialMode);
+  const [windowStart, setWindowStart] = useState(initial?.window_start ?? "");
+  const [windowEnd, setWindowEnd] = useState(initial?.window_end ?? "");
+  const [candidateDates, setCandidateDates] = useState<string[]>(initial?.candidate_dates ?? []);
   const [priority, setPriority] = useState(initial?.priority_weight ?? 3);
   const [scheduledTime, setScheduledTime] = useState(initial?.scheduled_time?.slice(0, 5) ?? "");
   const [timeSection, setTimeSection] = useState<TimeSection | "">(initial?.time_section ?? "");
@@ -41,7 +54,10 @@ export function TaskForm({ initial, categories, onSubmit, onClose, onDelete, def
       title: title.trim(),
       description: description.trim() || null,
       category_id: categoryId,
-      due_date: dueDate || null,
+      due_date: mode === "fixed" ? dueDate || null : dueDate || null,
+      window_start: mode === "range" ? windowStart || null : null,
+      window_end: mode === "range" ? windowEnd || null : null,
+      candidate_dates: mode === "pick" && candidateDates.length > 0 ? candidateDates : null,
       priority_weight: priority,
       scheduled_time: scheduledTime || null,
       time_section: timeSection || null,
@@ -56,7 +72,7 @@ export function TaskForm({ initial, categories, onSubmit, onClose, onDelete, def
   return (
     <Portal>
     <div
-      className="fixed inset-0 z-30 grid place-items-end sm:place-items-center bg-black/60"
+      className="fixed inset-0 z-50 grid place-items-end sm:place-items-center bg-void/85 backdrop-blur-sm"
       onClick={onClose}
       role="dialog"
       aria-modal="true"
@@ -65,7 +81,7 @@ export function TaskForm({ initial, categories, onSubmit, onClose, onDelete, def
       <form
         onSubmit={submit}
         onClick={(e) => e.stopPropagation()}
-        className="hud-panel w-full sm:max-w-md max-h-[90dvh] overflow-y-auto p-5 space-y-4 rounded-b-none sm:rounded-b-lg mb-0 pb-[max(1.25rem,env(safe-area-inset-bottom))]"
+        className="hud-modal w-full sm:max-w-md max-h-[90dvh] overflow-y-auto p-5 space-y-4 rounded-b-none sm:rounded-b-lg mb-0 pb-[max(1.25rem,env(safe-area-inset-bottom))]"
       >
         <div className="flex items-center justify-between">
           <h2 className="font-display text-signal text-sm tracking-[0.2em] uppercase">
@@ -109,8 +125,50 @@ export function TaskForm({ initial, categories, onSubmit, onClose, onDelete, def
         </label>
 
         <div className="block space-y-1">
-          <span className="font-data text-xs text-dim uppercase tracking-wider">Due date</span>
-          <DatePickerPopup value={dueDate || null} onChange={(d) => setDueDate(d ?? "")} />
+          <span className="font-data text-xs text-dim uppercase tracking-wider">When</span>
+          {/* Three ways to schedule: one fixed day, a continuous window, or a
+              hand-picked set of days. The two flexible modes let the scheduler
+              place the task on whichever option is least busy, and the task is
+              only overdue once every option is used up (BUILD_PLAN). */}
+          <div className="flex gap-1 mb-1.5" role="group" aria-label="Scheduling mode">
+            {([
+              ["fixed", "Fixed day"],
+              ["range", "Window"],
+              ["pick", "Pick days"],
+            ] as const).map(([m, label]) => (
+              <button
+                key={m}
+                type="button"
+                onClick={() => setMode(m)}
+                aria-pressed={mode === m}
+                className={`px-2.5 h-8 rounded border font-data text-[11px] cursor-pointer transition-colors duration-150 focus-visible:outline-2 focus-visible:outline-signal ${
+                  mode === m
+                    ? "border-signal bg-signal/15 text-signal"
+                    : "border-signal-dim/30 text-dim hover:border-signal/40"
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          {mode === "fixed" && (
+            <DatePickerPopup value={dueDate || null} onChange={(d) => setDueDate(d ?? "")} />
+          )}
+          {mode === "range" && (
+            <div className="flex items-center gap-2">
+              <label className="flex-1">
+                <span className="font-data text-[10px] text-dim block mb-0.5">From</span>
+                <input type="date" className="hud-input w-full" value={windowStart} onChange={(e) => setWindowStart(e.target.value)} />
+              </label>
+              <label className="flex-1">
+                <span className="font-data text-[10px] text-dim block mb-0.5">To</span>
+                <input type="date" className="hud-input w-full" value={windowEnd} onChange={(e) => setWindowEnd(e.target.value)} />
+              </label>
+            </div>
+          )}
+          {mode === "pick" && (
+            <CandidateDatesGrid value={candidateDates} onChange={setCandidateDates} />
+          )}
         </div>
 
         <div className="flex gap-3">

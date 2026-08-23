@@ -290,7 +290,7 @@ export function CategoryForm({
       aria-modal="true"
       aria-label={initial ? "Edit category" : "New category"}
     >
-      <form onSubmit={submit} onClick={(e) => e.stopPropagation()} className="hud-panel w-full max-w-sm p-5 space-y-4">
+      <form onSubmit={submit} onClick={(e) => e.stopPropagation()} className="hud-modal w-full max-w-sm p-5 space-y-4">
         <h2 className="font-display text-signal text-sm tracking-[0.2em] uppercase">
           {initial ? "Edit category" : "New category"}
         </h2>
