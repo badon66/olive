@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { supabase } from "../lib/supabase";
+import { db } from "../lib/db";
 import type { Database } from "../lib/database.types";
 
 export type CategoryRow = Database["public"]["Tables"]["categories"]["Row"];
@@ -9,7 +9,7 @@ export function useCategories() {
   const [loading, setLoading] = useState(true);
 
   const refresh = useCallback(async () => {
-    const { data, error } = await supabase.from("categories").select("*").order("created_at");
+    const { data, error } = await db.from("categories").select("*").order("created_at");
     if (!error && data) setCategories(data);
     setLoading(false);
   }, []);
@@ -20,7 +20,7 @@ export function useCategories() {
 
   const byId = useMemo(() => new Map(categories.map((c) => [c.id, c])), [categories]);
 
-  const userId = async () => (await supabase.auth.getUser()).data.user!.id;
+  const userId = async () => (await db.auth.getUser()).data.user!.id;
 
   return {
     categories,
@@ -28,11 +28,11 @@ export function useCategories() {
     loading,
     refresh,
     addCategory: async (name: string, color: string) => {
-      await supabase.from("categories").insert({ name, color, user_id: await userId() });
+      await db.from("categories").insert({ name, color, user_id: await userId() });
       await refresh();
     },
     updateCategory: async (id: string, patch: { name?: string; color?: string }) => {
-      await supabase.from("categories").update(patch).eq("id", id);
+      await db.from("categories").update(patch).eq("id", id);
       await refresh();
     },
   };

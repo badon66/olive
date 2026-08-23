@@ -1,6 +1,9 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
+// The Supabase-compatible auth adapter returns a Supabase-shaped session, so
+// the type comes from the same package the adapter mirrors. It stays a
+// dependency for this type alone until auth moves to Better Auth natively.
 import type { Session } from "@supabase/supabase-js";
-import { supabase } from "../lib/supabase";
+import { db } from "../lib/db";
 
 export function AuthGate({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
@@ -11,11 +14,11 @@ export function AuthGate({ children }: { children: ReactNode }) {
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => {
+    db.auth.getSession().then(({ data }) => {
       setSession(data.session);
       setReady(true);
     });
-    const { data: sub } = supabase.auth.onAuthStateChange((_e, s) => setSession(s));
+    const { data: sub } = db.auth.onAuthStateChange((_e, s) => setSession(s));
     return () => sub.subscription.unsubscribe();
   }, []);
 
@@ -26,7 +29,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
     e.preventDefault();
     setBusy(true);
     setError(null);
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    const { error } = await db.auth.signInWithPassword({ email, password });
     if (error) setError(error.message);
     setBusy(false);
   };

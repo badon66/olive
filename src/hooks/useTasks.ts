@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { supabase } from "../lib/supabase";
+import { db } from "../lib/db";
 import type { Database } from "../lib/database.types";
 import type { TimeSection } from "../lib/sections";
 
@@ -31,7 +31,7 @@ export function useTasks() {
   const [loading, setLoading] = useState(true);
 
   const refresh = useCallback(async () => {
-    const { data, error } = await supabase
+    const { data, error } = await db
       .from("tasks")
       .select("*")
       .order("due_date", { ascending: true, nullsFirst: false })
@@ -44,14 +44,14 @@ export function useTasks() {
     void refresh();
   }, [refresh]);
 
-  const userId = async () => (await supabase.auth.getUser()).data.user!.id;
+  const userId = async () => (await db.auth.getUser()).data.user!.id;
 
   return {
     tasks,
     loading,
     refresh,
     addTask: async (input: TaskInput) => {
-      await supabase.from("tasks").insert({ ...input, user_id: await userId() });
+      await db.from("tasks").insert({ ...input, user_id: await userId() });
       await refresh();
     },
     // Optimistic: paint the change immediately, then persist and reconcile.
@@ -59,7 +59,7 @@ export function useTasks() {
     updateTask: async (id: string, patch: Partial<TaskInput>) => {
       const before = tasks;
       setTasks((prev) => prev.map((t) => (t.id === id ? { ...t, ...patch } : t)));
-      const { error } = await supabase.from("tasks").update(patch).eq("id", id);
+      const { error } = await db.from("tasks").update(patch).eq("id", id);
       if (error) setTasks(before);
       await refresh();
     },
@@ -67,14 +67,14 @@ export function useTasks() {
       const before = tasks;
       const completed_at = new Date().toISOString();
       setTasks((prev) => prev.map((t) => (t.id === id ? { ...t, status: "completed", completed_at } : t)));
-      const { error } = await supabase.from("tasks").update({ status: "completed", completed_at }).eq("id", id);
+      const { error } = await db.from("tasks").update({ status: "completed", completed_at }).eq("id", id);
       if (error) setTasks(before);
       await refresh();
     },
     reopenTask: async (id: string) => {
       const before = tasks;
       setTasks((prev) => prev.map((t) => (t.id === id ? { ...t, status: "open", completed_at: null } : t)));
-      const { error } = await supabase.from("tasks").update({ status: "open", completed_at: null }).eq("id", id);
+      const { error } = await db.from("tasks").update({ status: "open", completed_at: null }).eq("id", id);
       if (error) setTasks(before);
       await refresh();
     },
@@ -86,13 +86,13 @@ export function useTasks() {
       const byId = new Map(updates.map((u) => [u.id, u.sort_order]));
       setTasks((prev) => prev.map((t) => (byId.has(t.id) ? { ...t, sort_order: byId.get(t.id)! } : t)));
       const results = await Promise.all(
-        updates.map((u) => supabase.from("tasks").update({ sort_order: u.sort_order }).eq("id", u.id)),
+        updates.map((u) => db.from("tasks").update({ sort_order: u.sort_order }).eq("id", u.id)),
       );
       if (results.some((r) => r.error)) setTasks(before);
       await refresh();
     },
     deleteTask: async (id: string) => {
-      await supabase.from("tasks").delete().eq("id", id);
+      await db.from("tasks").delete().eq("id", id);
       await refresh();
     },
   };

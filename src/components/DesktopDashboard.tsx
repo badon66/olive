@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { supabase } from "../lib/supabase";
+import { db } from "../lib/db";
 import type { CategoryStore } from "../hooks/useCategories";
 import type { JobStore } from "../hooks/useJobs";
 import type { ReminderStore } from "../hooks/useReminders";
@@ -250,7 +250,7 @@ export function DesktopDashboard({
 
   // Two-way task ↔ weekly conversion, each returning an undo closure
   const convertTaskToWeekly = async (task: Task) => {
-    const { data: wt, error: werr } = await supabase
+    const { data: wt, error: werr } = await db
       .from("weekly_tasks")
       .insert({
         user_id: task.user_id,
@@ -262,18 +262,18 @@ export function DesktopDashboard({
       .select("id")
       .single();
     if (werr) throw werr;
-    await supabase.from("tasks").delete().eq("id", task.id);
+    await db.from("tasks").delete().eq("id", task.id);
     await Promise.all([taskStore.refresh(), weeklyStore.refresh()]);
     return async () => {
-      await supabase.from("weekly_tasks").delete().eq("id", wt.id);
-      await supabase.from("tasks").insert(task);
+      await db.from("weekly_tasks").delete().eq("id", wt.id);
+      await db.from("tasks").insert(task);
       await Promise.all([taskStore.refresh(), weeklyStore.refresh()]);
     };
   };
 
   const convertWeeklyToTask = async (weekly: WeeklyTask, categoryId: string) => {
-    const { data: history } = await supabase.from("weekly_task_checkins").select("*").eq("weekly_task_id", weekly.id);
-    const { data: created, error: terr } = await supabase
+    const { data: history } = await db.from("weekly_task_checkins").select("*").eq("weekly_task_id", weekly.id);
+    const { data: created, error: terr } = await db
       .from("tasks")
       .insert({
         user_id: weekly.user_id,
@@ -284,12 +284,12 @@ export function DesktopDashboard({
       .select("id")
       .single();
     if (terr) throw terr;
-    await supabase.from("weekly_tasks").delete().eq("id", weekly.id);
+    await db.from("weekly_tasks").delete().eq("id", weekly.id);
     await Promise.all([taskStore.refresh(), weeklyStore.refresh()]);
     return async () => {
-      await supabase.from("tasks").delete().eq("id", created.id);
-      await supabase.from("weekly_tasks").insert(weekly);
-      if (history?.length) await supabase.from("weekly_task_checkins").insert(history);
+      await db.from("tasks").delete().eq("id", created.id);
+      await db.from("weekly_tasks").insert(weekly);
+      if (history?.length) await db.from("weekly_task_checkins").insert(history);
       await Promise.all([taskStore.refresh(), weeklyStore.refresh()]);
     };
   };

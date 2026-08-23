@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { supabase } from "../lib/supabase";
+import { db } from "../lib/db";
 import { generateBrief } from "../lib/api";
 import type { Database } from "../lib/database.types";
 import { edmontonToday } from "../lib/dates";
@@ -21,7 +21,7 @@ export function useBrief() {
   const [error, setError] = useState<string | null>(null);
 
   const fetchBrief = useCallback(async (): Promise<BriefRow | null> => {
-    const { data } = await supabase
+    const { data } = await db
       .from("daily_briefs")
       .select("*")
       .eq("brief_date", edmontonToday())

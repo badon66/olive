@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { supabase } from "../lib/supabase";
+import { db } from "../lib/db";
 import type { Database } from "../lib/database.types";
 import type { JobStatus } from "../lib/jobs";
 
@@ -18,7 +18,7 @@ export function useJobs() {
   const [loading, setLoading] = useState(true);
 
   const refresh = useCallback(async () => {
-    const { data, error } = await supabase.from("active_jobs").select("*").order("updated_at", { ascending: false });
+    const { data, error } = await db.from("active_jobs").select("*").order("updated_at", { ascending: false });
     if (!error && data) setJobs(data);
     setLoading(false);
   }, []);
@@ -27,22 +27,22 @@ export function useJobs() {
     void refresh();
   }, [refresh]);
 
-  const userId = async () => (await supabase.auth.getUser()).data.user!.id;
+  const userId = async () => (await db.auth.getUser()).data.user!.id;
 
   return {
     jobs,
     loading,
     refresh,
     addJob: async (input: JobInput) => {
-      await supabase.from("active_jobs").insert({ ...input, user_id: await userId() });
+      await db.from("active_jobs").insert({ ...input, user_id: await userId() });
       await refresh();
     },
     updateJob: async (id: string, patch: Partial<JobInput>) => {
-      await supabase.from("active_jobs").update(patch).eq("id", id);
+      await db.from("active_jobs").update(patch).eq("id", id);
       await refresh();
     },
     deleteJob: async (id: string) => {
-      await supabase.from("active_jobs").delete().eq("id", id);
+      await db.from("active_jobs").delete().eq("id", id);
       await refresh();
     },
   };

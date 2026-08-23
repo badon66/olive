@@ -32,3 +32,6 @@ supabase/.temp
 *.njsproj
 *.sln
 *.sw?
+
+# Claude Code local permissions — machine-specific, not shared.
+.claude/settings.local.json

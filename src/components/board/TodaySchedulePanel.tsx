@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { supabase } from "../../lib/supabase";
+import { db } from "../../lib/db";
 import type { Task } from "../../hooks/useTasks";
 import type { WeeklyCheckin, WeeklyTask } from "../../hooks/useWeeklyTasks";
 import type { BlockedWindow } from "../../lib/api";
@@ -209,7 +209,7 @@ export function TodaySchedulePanel({
   useEffect(() => {
     let alive = true;
     const prevDay = addDays(viewDate, -1);
-    void supabase
+    void db
       .from("daily_schedule_setup")
       .select("date, wake_time, bedtime, blocked_windows")
       .in("date", [prevDay, viewDate])

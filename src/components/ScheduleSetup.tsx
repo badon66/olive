@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { supabase } from "../lib/supabase";
+import { db } from "../lib/db";
 import { submitScheduleSetup, type BlockedWindow } from "../lib/api";
 import { addDays, edmontonToday } from "../lib/dates";
 import { ChatBar } from "./ChatBar";
@@ -26,7 +26,7 @@ export function ScheduleSetupButton({ onTasksChanged }: { onTasksChanged?: () =>
   const tomorrow = addDays(edmontonToday(), 1);
 
   const check = useCallback(async () => {
-    const { data } = await supabase
+    const { data } = await db
       .from("daily_schedule_setup")
       .select("wake_time, bedtime, blocked_windows, going_selling")
       .eq("date", tomorrow)

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { supabase } from "../lib/supabase";
+import { db } from "../lib/db";
 import type { Database } from "../lib/database.types";
 import { addDays, edmontonToday } from "../lib/dates";
 
@@ -23,12 +23,12 @@ export function useWeeklyTasks() {
     const since = addDays(edmontonToday(), -28);
     const [w, c] = await Promise.all([
       // Manual order first; never-nudged rows (sort_order null) keep creation order
-      supabase
+      db
         .from("weekly_tasks")
         .select("*")
         .order("sort_order", { ascending: true, nullsFirst: false })
         .order("created_at"),
-      supabase.from("weekly_task_checkins").select("*").gte("date", since),
+      db.from("weekly_task_checkins").select("*").gte("date", since),
     ]);
     if (!w.error && w.data) setWeeklyTasks(w.data);
     if (!c.error && c.data) setCheckins(c.data);
@@ -39,7 +39,7 @@ export function useWeeklyTasks() {
     void refresh();
   }, [refresh]);
 
-  const userId = async () => (await supabase.auth.getUser()).data.user!.id;
+  const userId = async () => (await db.auth.getUser()).data.user!.id;
 
   // Optimistic check-off: the cube flips instantly, then the row is written and
   // the real state reconciled by refresh().
@@ -49,7 +49,7 @@ export function useWeeklyTasks() {
       if (hit) return prev.map((c) => (c === hit ? { ...c, status } : c));
       return [...prev, { id: `optimistic-${weeklyTaskId}-${date}`, weekly_task_id: weeklyTaskId, date, status } as WeeklyCheckin];
     });
-    const { data } = await supabase
+    const { data } = await db
       .from("weekly_task_checkins")
       .upsert(
         { weekly_task_id: weeklyTaskId, date, status, user_id: await userId() },
@@ -67,11 +67,11 @@ export function useWeeklyTasks() {
     loading,
     refresh,
     addWeeklyTask: async (input: WeeklyTaskInput) => {
-      await supabase.from("weekly_tasks").insert({ ...input, user_id: await userId() });
+      await db.from("weekly_tasks").insert({ ...input, user_id: await userId() });
       await refresh();
     },
     updateWeeklyTask: async (id: string, patch: Partial<WeeklyTaskInput>) => {
-      await supabase.from("weekly_tasks").update(patch).eq("id", id);
+      await db.from("weekly_tasks").update(patch).eq("id", id);
       await refresh();
     },
     // Ordering for weekly occurrences shown inside Today's Schedule / Active
@@ -82,13 +82,13 @@ export function useWeeklyTasks() {
       const byId = new Map(updates.map((u) => [u.id, u.sort_order]));
       setWeeklyTasks((prev) => prev.map((t) => (byId.has(t.id) ? { ...t, sort_order: byId.get(t.id)! } : t)));
       const results = await Promise.all(
-        updates.map((u) => supabase.from("weekly_tasks").update({ sort_order: u.sort_order }).eq("id", u.id)),
+        updates.map((u) => db.from("weekly_tasks").update({ sort_order: u.sort_order }).eq("id", u.id)),
       );
       if (results.some((r) => r.error)) setWeeklyTasks(before);
       await refresh();
     },
     deleteWeeklyTask: async (id: string) => {
-      await supabase.from("weekly_tasks").delete().eq("id", id); // checkins cascade
+      await db.from("weekly_tasks").delete().eq("id", id); // checkins cascade
       await refresh();
     },
     // "Skip today" (BUILD_PLAN): explicitly not doing this occurrence. Distinct
@@ -100,19 +100,19 @@ export function useWeeklyTasks() {
     completeDay: (id: string, date: string) => upsertStatus(id, date, "completed"),
     // Unplanning removes the row (fixed_days cubes fall back to their virtual planned state)
     unplanDay: async (id: string, date: string) => {
-      await supabase.from("weekly_task_checkins").delete().eq("weekly_task_id", id).eq("date", date);
+      await db.from("weekly_task_checkins").delete().eq("weekly_task_id", id).eq("date", date);
       await refresh();
     },
     // Un-completing: count-mode keeps the cube planned, fixed_days reverts to virtual planned
     uncompleteDay: async (task: WeeklyTask, date: string) => {
       if (task.recurrence_mode === "count") {
-        await supabase
+        await db
           .from("weekly_task_checkins")
           .update({ status: "planned" })
           .eq("weekly_task_id", task.id)
           .eq("date", date);
       } else {
-        await supabase.from("weekly_task_checkins").delete().eq("weekly_task_id", task.id).eq("date", date);
+        await db.from("weekly_task_checkins").delete().eq("weekly_task_id", task.id).eq("date", date);
       }
       await refresh();
     },
