@@ -35,3 +35,6 @@ supabase/.temp
 
 # Claude Code local permissions — machine-specific, not shared.
 .claude/settings.local.json
+
+# Migration staging — the device bridge cannot delete, so things to bin land here.
+docs/neon-migration/_to_delete/
