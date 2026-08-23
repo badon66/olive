@@ -13,8 +13,9 @@ The phased spec is in `docs/BUILD_PLAN.md`. Build ONE phase at a time, then stop
 
 ## Security (non-negotiable)
 
-- All secrets (Anthropic API key, YNAB Personal Access Token, Google OAuth credentials, Telegram bot token) live in Supabase Edge Function secrets or a gitignored `.env`. Never in frontend code, never committed, never exposed to the browser.
-- All LLM calls happen server-side in Supabase Edge Functions. The React app never calls the Anthropic API directly.
+- All secrets (Anthropic API key, YNAB Personal Access Token, Google OAuth credentials, Telegram bot token) live in the function host's secrets or a gitignored `.env`. Never in frontend code, never committed, never exposed to the browser.
+- All LLM calls happen server-side. The React app never calls the Anthropic API directly.
+- **Anything prefixed `VITE_` is compiled into the public bundle.** Olive is a browser app with no server of its own, so there is no such thing as a private value in the frontend. **Row-level security is the only thing protecting the data** — every table has RLS on with a policy matching `auth.user_id()` against `user_id`. A new table without a policy is world-readable.
 
 ## Working style
 
@@ -31,9 +32,10 @@ The phased spec is in `docs/BUILD_PLAN.md`. Build ONE phase at a time, then stop
 - **No capped-width containers.** Don't wrap the layout in a fixed `max-w-4xl`/`max-w-6xl`-style container that leaves large empty margins on a wide screen. The layout should genuinely use the full viewport width, with padding that scales, not a narrow column centered in empty space.
 - **Grid, not fixed columns.** Panels should use a responsive grid (CSS Grid `auto-fit`/`minmax`, not a hardcoded 2-column layout) so more columns appear as the viewport gets wider — a 2560px+ screen should show meaningfully more side-by-side content than a 1440px laptop, not the same layout stretched.
 - Add an explicit ultrawide breakpoint (e.g. `xl`/`2xl` around 1920–2560px) rather than relying only on Tailwind's default `lg` (1024px), which stops scaling far short of an actual ultrawide monitor.
-- Backend: Supabase — Postgres, Auth, Edge Functions (Deno), pg_cron + pg_net for scheduled jobs.
+- Backend: **Neon** (Lakebase Postgres) — Postgres, Neon Auth, and the PostgREST-compatible Data API, declared in `neon.ts` and provisioned with `neon deploy`. Project region **us-east-2**, because Neon Functions / Object Storage / AI Gateway are public beta and only exist there.
+- **Mid-migration:** the frontend is on Neon; the five Edge Functions, the two `pg_cron` jobs and the Vault secrets are still on Supabase. Until those move, the Supabase project can't be paused. See `docs/neon-migration/`.
 - LLM: Anthropic API from Edge Functions; `claude-sonnet-4-6` for parsing/routing unless quality demands escalation.
-- Single user: Supabase email auth, one account, RLS on all tables.
+- Single user: Neon Auth email/password, one account, RLS on all tables. The client uses `SupabaseAuthAdapter()`, which presents Neon Auth through a Supabase-shaped API — a migration aid, not the native one. Neon's own is Better Auth; switching is optional and touches only `AuthGate.tsx` and five `userId()` helpers.
 - Timezone: America/Edmonton for ALL scheduling logic. Cron runs in UTC — convert explicitly.
 - **Two separate rollover boundaries, deliberately different — not a bug, don't collapse these into one (an earlier version of this rule tried that and was wrong):**
   - **The Today's Schedule page/view flips at 1:30 AM.** This decides which day's full schedule (header, arrows, navigation) is showing by default. Before 1:30 AM, you're still looking at yesterday's page; at 1:30 AM sharp, the default view moves to today's page.
@@ -53,7 +55,7 @@ The phased spec is in `docs/BUILD_PLAN.md`. Build ONE phase at a time, then stop
 ## Conventions
 
 - TypeScript everywhere, including Edge Functions.
-- Schema changes via Supabase CLI migration files only.
+- Schema changes via migration files only — never edit a database by hand.
 - Natural-language capture pattern: user text → Edge Function → Claude with a JSON schema → validate with zod → write to Postgres. Every LLM-driven write returns a plain confirmation ("Added job: Dennis's driveway").
 - Graceful degradation: if an external source (YNAB, Sheets, weather) is stale or disconnected, show it in the UI with the last-synced time. Never present stale data as current.
 - Keep components small; no state management library until genuinely needed.
@@ -94,12 +96,14 @@ Concrete tokens if not re-derived by the skill:
 ## Commands
 
 - `npm run dev` — local dev server (http://localhost:5173)
+- `neon status` / `neon config plan` / `neon deploy` — inspect, diff, and provision the services declared in `neon.ts`
 - `npm run build` — typecheck + production build (`npm run preview` to serve it)
 - `npm run test` — Vitest unit tests (`src/**/*.test.ts`)
 - `npm run lint` — oxlint
-- Migrations: add a SQL file to `supabase/migrations/`, apply the identical SQL to project `dpkdsmvskryettdxcvpp` via Supabase MCP `apply_migration`
+- Migrations: add a SQL file to `supabase/migrations/` (name kept for history) and apply the identical SQL to the Neon project. The Supabase project `dpkdsmvskryettdxcvpp` is read-only history now — don't migrate it.
 - Edge functions: edit under `supabase/functions/`, deploy via Supabase MCP `deploy_edge_function` (include `_shared/*` files; `daily-brief` deploys with verify_jwt OFF, `assistant` and `journal-clean` with it ON)
-- Secrets: `anthropic_api_key`, `cron_secret`, `project_url` all live in Supabase Vault (read by edge functions via service-role-only RPCs `get_anthropic_key()`/`get_cron_secret()`); local copies in gitignored `.env`/`.env.local`
+- Secrets: `anthropic_api_key`, `cron_secret`, `project_url` still live in Supabase Vault, read by the edge functions via the service-role RPCs `get_anthropic_key()`/`get_cron_secret()`. They move when the functions do. Local copies in gitignored `.env`/`.env.local`.
+- Neon env: `neon deploy` writes `VITE_NEON_DATABASE_URL` and friends into `.env.local`. `VITE_FUNCTIONS_URL` points at wherever the functions are served — it's the one line that changes when they move.
 - Keep this section current as the project evolves — add new scripts, functions, or secrets here as they're built.
 
 ## What this project is NOT
