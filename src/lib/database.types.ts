@@ -270,6 +270,10 @@ export type Database = {
       tasks: {
         Row: {
           auto_carry_forward: boolean
+          candidate_dates: string[] | null
+          placed_date: string | null
+          window_end: string | null
+          window_start: string | null
           category_id: string
           completed_at: string | null
           created_at: string
@@ -288,6 +292,10 @@ export type Database = {
         }
         Insert: {
           auto_carry_forward?: boolean
+          candidate_dates?: string[] | null
+          placed_date?: string | null
+          window_end?: string | null
+          window_start?: string | null
           category_id: string
           completed_at?: string | null
           created_at?: string
@@ -306,6 +314,10 @@ export type Database = {
         }
         Update: {
           auto_carry_forward?: boolean
+          candidate_dates?: string[] | null
+          placed_date?: string | null
+          window_end?: string | null
+          window_start?: string | null
           category_id?: string
           completed_at?: string | null
           created_at?: string
@@ -452,7 +464,7 @@ export type Database = {
       get_cron_secret: { Args: never; Returns: string }
     }
     Enums: {
-      checkin_status: "planned" | "completed"
+      checkin_status: "planned" | "completed" | "skipped"
       job_status: "quoted" | "sold" | "in_progress" | "paid"
       recurrence_mode: "count" | "fixed_days"
       reminder_recurrence: "one_time" | "interval" | "daily" | "weekly" | "monthly"
@@ -591,7 +603,7 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
-      checkin_status: ["planned", "completed"],
+      checkin_status: ["planned", "completed", "skipped"],
       job_status: ["quoted", "sold", "in_progress", "paid"],
       recurrence_mode: ["count", "fixed_days"],
       reminder_recurrence: ["one_time", "interval", "daily", "weekly", "monthly"],

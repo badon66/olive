@@ -5,14 +5,14 @@ import { addDays } from "./dates";
 // weekdays as "planned" with no checkin rows; count-mode tasks are planned
 // manually (drag onto a day). Completing writes a checkin for that date only.
 
-export type CubeState = "empty" | "planned" | "completed";
+export type CubeState = "empty" | "planned" | "completed" | "skipped";
 
 type WeeklyTaskLike = {
   recurrence_mode: "count" | "fixed_days";
   scheduled_days: number[] | null;
   target_per_week: number | null;
 };
-type CheckinLike = { date: string; status: "planned" | "completed" };
+type CheckinLike = { date: string; status: "planned" | "completed" | "skipped" };
 
 export function mondayIndex(iso: string): number {
   const [y, m, d] = iso.split("-").map(Number);
@@ -46,9 +46,13 @@ export type Progress = { target: number; planned: number; completed: number; toP
 export function progress(task: WeeklyTaskLike, states: CubeState[]): Progress {
   const planned = states.filter((s) => s === "planned").length;
   const completed = states.filter((s) => s === "completed").length;
+  // A skipped day is explicitly not-doing-it, which is NOT the same as missing
+  // it: it comes off the target rather than sitting in toPlan nagging forever.
+  const skipped = states.filter((s) => s === "skipped").length;
   const target =
     task.recurrence_mode === "fixed_days" ? (task.scheduled_days ?? []).length : (task.target_per_week ?? 0);
-  return { target, planned, completed, toPlan: Math.max(0, target - planned - completed) };
+  const effectiveTarget = Math.max(0, target - skipped);
+  return { target: effectiveTarget, planned, completed, toPlan: Math.max(0, effectiveTarget - planned - completed) };
 }
 
 // Whether the task belongs in Today's schedule (BUILD_PLAN Phase 2):
@@ -56,6 +60,10 @@ export function progress(task: WeeklyTaskLike, states: CubeState[]): Progress {
 // True when this weekly task belongs to `date`. Date-generic on purpose — it is
 // what lets any viewed day (not just today) render its weekly tasks inline.
 export function appearsOn(task: WeeklyTaskLike, checkins: CheckinLike[], date: string): boolean {
+  // Explicitly skipped for this day -> don't offer it again, whichever mode it
+  // is. Checked FIRST: a fixed-days task returns early below, so a skip test
+  // placed after that branch would silently never apply to fixed-days tasks.
+  if (checkins.some((c) => c.date === date && c.status === "skipped")) return false;
   if (task.recurrence_mode === "fixed_days") {
     return (task.scheduled_days ?? []).includes(mondayIndex(date));
   }

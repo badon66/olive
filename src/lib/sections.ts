@@ -183,17 +183,87 @@ type TaskLike = {
 
 // Brief sections computed live from open tasks so mid-day changes are always current
 export function computeSections<T extends TaskLike>(open: T[], today: string) {
+  // A flexible task sitting on a past day is NOT overdue while it still has
+  // candidate days left — it has somewhere else to go, and the scheduler will
+  // move it. It only becomes overdue once every option is exhausted
+  // (BUILD_PLAN). Plain tasks keep the ordinary "due_date < today" rule.
+  const stillHasOptions = (t: T) => {
+    const f = t as unknown as Partial<FlexibleShape>;
+    if (!f.window_start && !(f.candidate_dates && f.candidate_dates.length > 0)) return false;
+    if (f.candidate_dates && f.candidate_dates.length > 0) return f.candidate_dates.some((d) => d >= today);
+    return (f.window_end ?? "") >= today;
+  };
   const dated = (pred: (d: number) => boolean) =>
     open.filter((t) => t.due_date && pred(daysBetween(today, t.due_date)));
   return {
-    overdue: dated((d) => d < 0),
+    overdue: dated((d) => d < 0).filter((t) => !stillHasOptions(t)),
     today: dated((d) => d === 0),
     upcoming: dated((d) => d > 0 && d <= 7),
   };
 }
 
+type FlexibleShape = {
+  window_start: string | null;
+  window_end: string | null;
+  candidate_dates: string[] | null;
+};
+
 export function doneTodayCount<T extends TaskLike>(tasks: T[], today: string): number {
   return tasks.filter(
     (t) => t.status === "completed" && t.completed_at !== null && edmontonToday(new Date(t.completed_at)) === today,
   ).length;
+}
+
+// How far through the current section the clock is, 0..1 — drives the progress
+// line on Today's Schedule's active-section indicator (BUILD_PLAN), replacing a
+// static border with something that actually shows the section draining.
+//
+// Morning is wake-relative; the rest are fixed. Night wraps midnight, so its
+// elapsed time is measured on a 6-hour line from 23:00 through 05:00.
+export function sectionProgress(
+  section: TimeSection,
+  minutesSinceLocalMidnight: number,
+  wakeTime = "11:00",
+): number {
+  const clamp = (v: number) => Math.max(0, Math.min(1, v));
+  const hhmmToMin = (s: string) => {
+    const [h, m] = s.split(":").map(Number);
+    return h * 60 + m;
+  };
+
+  if (section === "anytime") return 0; // no window, nothing to elapse
+
+  let start: number;
+  let end: number;
+  if (section === "morning") {
+    start = hhmmToMin(wakeTime);
+    end = 12 * 60;
+  } else if (section === "night") {
+    // 23:00 -> 05:00 next day. Shift the clock onto that 360-minute line.
+    start = 23 * 60;
+    end = start + 6 * 60;
+    // <= so 05:00 itself lands at the END of the line (progress 1, night over)
+    // rather than falling through as a pre-23:00 time and clamping back to 0.
+    const m = minutesSinceLocalMidnight <= 5 * 60 ? minutesSinceLocalMidnight + 24 * 60 : minutesSinceLocalMidnight;
+    return clamp((m - start) / (end - start));
+  } else {
+    const r = SECTION_CLOCK[section];
+    if (!r) return 0;
+    start = hhmmToMin(r[0]);
+    end = hhmmToMin(r[1]);
+  }
+  if (end <= start) return 0;
+  return clamp((minutesSinceLocalMidnight - start) / (end - start));
+}
+
+// Overdue work sorts to the TOP of whatever list it is in (BUILD_PLAN) — both
+// Active Tasks and Today's Schedule. Stable: within each group the incoming
+// order (manual sort_order, then the normal schedule sort) is preserved.
+export function overdueFirst<T extends { due_date: string | null; status?: string }>(
+  items: T[],
+  today: string,
+): T[] {
+  const isOverdue = (t: T) =>
+    t.status !== "completed" && t.due_date !== null && t.due_date < today;
+  return [...items.filter(isOverdue), ...items.filter((t) => !isOverdue(t))];
 }

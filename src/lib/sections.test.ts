@@ -7,6 +7,9 @@ import {
   sectionClockLabel,
   reorderSection,
   SCHEDULE_SLOTS,
+  computeSections,
+  overdueFirst,
+  sectionProgress,
   upcomingDates,
   type TimeSection,
 } from "./sections";
@@ -236,5 +239,113 @@ describe("nextSectionFor — crossing time_section boundaries", () => {
     expect(nextSectionFor("anytime", 1, occ("anytime", "night"))).toBeNull();
     // and Night's downward move doesn't fall through into Anytime
     expect(nextSectionFor("night", 1, occ("night", "anytime"))).toBeNull();
+  });
+});
+
+describe("sectionProgress — the active-section line fills as the section elapses", () => {
+  const at = (h: number, m = 0) => h * 60 + m;
+
+  it("is 0 at the start of a fixed section and 1 at its end", () => {
+    expect(sectionProgress("midday", at(12))).toBe(0);
+    expect(sectionProgress("midday", at(16))).toBe(1);
+  });
+
+  it("is half way through the middle of a section", () => {
+    expect(sectionProgress("midday", at(14))).toBeCloseTo(0.5, 5);
+    expect(sectionProgress("afternoon", at(17))).toBeCloseTo(0.5, 5);
+  });
+
+  it("morning is measured from wake_time, not a fixed hour", () => {
+    // wake 08:00 -> noon is a 4h section; 10:00 is half way
+    expect(sectionProgress("morning", at(10), "08:00")).toBeCloseTo(0.5, 5);
+    // wake 11:00 -> noon is 1h; 11:30 is half way
+    expect(sectionProgress("morning", at(11, 30), "11:00")).toBeCloseTo(0.5, 5);
+  });
+
+  it("night wraps midnight on a single 6-hour line", () => {
+    expect(sectionProgress("night", at(23))).toBe(0);
+    expect(sectionProgress("night", at(2))).toBeCloseTo(0.5, 5); // 02:00 = 3h in
+    expect(sectionProgress("night", at(5))).toBe(1);
+  });
+
+  it("clamps outside its own window rather than going negative or past 1", () => {
+    expect(sectionProgress("midday", at(9))).toBe(0);
+    expect(sectionProgress("midday", at(20))).toBe(1);
+  });
+
+  it("anytime has no window, so no progress", () => {
+    expect(sectionProgress("anytime", at(14))).toBe(0);
+  });
+});
+
+describe("overdueFirst", () => {
+  const TODAY = "2026-08-14";
+  const mk = (id: string, due: string | null, status = "open") => ({ id, due_date: due, status });
+
+  it("lifts overdue items to the top", () => {
+    const rows = [mk("a", TODAY), mk("b", "2026-08-10"), mk("c", TODAY), mk("d", "2026-08-12")];
+    expect(overdueFirst(rows, TODAY).map((r) => r.id)).toEqual(["b", "d", "a", "c"]);
+  });
+
+  it("is stable within each group", () => {
+    const rows = [mk("a", "2026-08-11"), mk("b", "2026-08-09"), mk("c", TODAY), mk("d", null)];
+    expect(overdueFirst(rows, TODAY).map((r) => r.id)).toEqual(["a", "b", "c", "d"]);
+  });
+
+  it("a completed task is never treated as overdue", () => {
+    const rows = [mk("a", TODAY), mk("b", "2026-08-01", "completed")];
+    expect(overdueFirst(rows, TODAY).map((r) => r.id)).toEqual(["a", "b"]);
+  });
+
+  it("undated tasks are not overdue", () => {
+    const rows = [mk("a", null), mk("b", "2026-08-01")];
+    expect(overdueFirst(rows, TODAY).map((r) => r.id)).toEqual(["b", "a"]);
+  });
+});
+
+describe("computeSections — a flexible task isn't overdue while options remain", () => {
+  const TODAY = "2026-08-14";
+  const base = {
+    status: "open", completed_at: null, scheduled_time: null,
+    priority_weight: 3, created_at: "2026-08-01T00:00:00Z",
+    window_start: null, window_end: null, candidate_dates: null,
+  };
+  const mk = (id: string, over: Record<string, unknown>) => ({ id, ...base, ...over }) as never;
+
+  it("a plain task sitting on a past day IS overdue", () => {
+    const out = computeSections([mk("a", { due_date: "2026-08-10" })], TODAY);
+    expect(out.overdue.map((t: { id: string }) => t.id)).toEqual(["a"]);
+  });
+
+  it("a windowed task on a past day is NOT overdue while the window still runs", () => {
+    const out = computeSections(
+      [mk("a", { due_date: "2026-08-10", window_start: "2026-08-08", window_end: "2026-08-20" })],
+      TODAY,
+    );
+    expect(out.overdue).toEqual([]);
+  });
+
+  it("...but IS overdue once the window has fully passed", () => {
+    const out = computeSections(
+      [mk("a", { due_date: "2026-08-05", window_start: "2026-08-01", window_end: "2026-08-09" })],
+      TODAY,
+    );
+    expect(out.overdue.map((t: { id: string }) => t.id)).toEqual(["a"]);
+  });
+
+  it("hand-picked days: one future pick keeps it out of overdue", () => {
+    const out = computeSections(
+      [mk("a", { due_date: "2026-08-11", candidate_dates: ["2026-08-11", "2026-08-25"] })],
+      TODAY,
+    );
+    expect(out.overdue).toEqual([]);
+  });
+
+  it("hand-picked days all past means overdue", () => {
+    const out = computeSections(
+      [mk("a", { due_date: "2026-08-11", candidate_dates: ["2026-08-09", "2026-08-11"] })],
+      TODAY,
+    );
+    expect(out.overdue.map((t: { id: string }) => t.id)).toEqual(["a"]);
   });
 });
