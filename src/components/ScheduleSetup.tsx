@@ -108,7 +108,7 @@ export function ScheduleSetupButton({ onTasksChanged }: { onTasksChanged?: () =>
           aria-modal="true"
           aria-label="Set up tomorrow's schedule"
         >
-          <div className="hud-panel w-full max-w-lg p-5 space-y-4" onClick={(e) => e.stopPropagation()}>
+          <div className="hud-modal w-full max-w-lg p-5 space-y-4" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between">
               <h2 className="font-display text-signal text-sm tracking-[0.2em] uppercase">Set up tomorrow</h2>
               <button onClick={() => setOpen(false)} aria-label="Close" className="w-11 h-11 grid place-items-center text-dim hover:text-hud cursor-pointer">

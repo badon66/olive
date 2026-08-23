@@ -6,14 +6,15 @@ import type { ReminderStore } from "../hooks/useReminders";
 import type { Task, TaskStore } from "../hooks/useTasks";
 import type { WeeklyStore, WeeklyTask } from "../hooks/useWeeklyTasks";
 import { carryoverTasks } from "../lib/dayrules";
+import { candidatesFor, isFlexible, loadByDay, replacementFor } from "../lib/flexible";
 import { activeCount } from "../lib/jobs";
 import { useBrief } from "../hooks/useBrief";
-import { addDays, daysBetween, edmontonActiveDay, edmontonHour, edmontonToday, fullDateLabel } from "../lib/dates";
+import { addDays, daysBetween, edmontonActiveDay, edmontonHour, edmontonMinutes, edmontonToday, fullDateLabel } from "../lib/dates";
 import { buildInsight } from "../lib/insight";
 import { computeSections, doneTodayCount } from "../lib/sections";
 import { currentSection } from "../lib/suggest";
 import { CategoryPanelBody } from "./CategoryPanel";
-import { TaskActionPopup } from "./TaskActionPopup";
+import { TaskActionPopup, type ActionTarget } from "./TaskActionPopup";
 import { ChatBar } from "./ChatBar";
 import { CustomizeToggle } from "./CustomizeToggle";
 import { DashSection } from "./DashSection";
@@ -89,7 +90,8 @@ export function DesktopDashboard({
   const [addTaskFor, setAddTaskFor] = useState<
     { category_id?: string; due_date?: string; job_id?: string } | null
   >(null);
-  const [actionFor, setActionFor] = useState<Task | null>(null);
+  // Double-click target: a regular task OR a weekly occurrence on a given day.
+  const [actionFor, setActionFor] = useState<ActionTarget | null>(null);
   const [now, setNow] = useState(() => new Date());
   // Previous-day navigation for Today's Schedule: 0 = today, down to -3.
   const [scheduleOffset, setScheduleOffset] = useState(0);
@@ -160,10 +162,10 @@ export function DesktopDashboard({
     onComplete: taskStore.completeTask,
     onReopen: taskStore.reopenTask,
     onEdit: setEditing,
-    // Triple-click → "Delete for today" / "Reschedule" (BUILD_PLAN). Flows through
+    // Double-click → task actions / weekly skip (BUILD_PLAN). Flows through
     // cardProps, so it reaches Today's Schedule, Active Tasks and Upcoming Days
     // without each panel wiring it separately.
-    onTripleClick: setActionFor,
+    onDoubleClick: (t: Task) => setActionFor({ kind: "task", task: t }),
     categoryOf: (t: Task) => categoryStore.byId.get(t.category_id),
   };
 
@@ -179,6 +181,27 @@ export function DesktopDashboard({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, activeDay, today, sections]);
   const activeCardProps = { ...cardProps, today: activeDay };
+
+  // Flexible-window placement (BUILD_PLAN). Every time the task set changes,
+  // re-evaluate where each flexible task should sit: the least-busy day still
+  // available to it. A task moves only if its current day is meaningfully
+  // busier than the best alternative, so it does not thrash between two
+  // near-equal days, and a completed task never moves at all.
+  useEffect(() => {
+    const flexible = open.filter(isFlexible);
+    if (flexible.length === 0) return;
+    const horizon = [...new Set(flexible.flatMap((t) => candidatesFor(t)))];
+    if (horizon.length === 0) return;
+    const load = loadByDay(open, horizon);
+    for (const t of flexible) {
+      const target = replacementFor(t, today, load);
+      if (target && target !== t.due_date) {
+        void taskStore.updateTask(t.id, { due_date: target, placed_date: target });
+      }
+    }
+    // taskStore is stable enough here; re-running on `open` is the point.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, today]);
 
   // Carryover: opted-in one-off tasks the rollover cron rolled into today, plus
   // any still sitting overdue if the cron hasn't run. Its own nudge button —
@@ -322,6 +345,7 @@ export function DesktopDashboard({
                   weeklyBits={weeklyStore}
                   onSaveOrder={taskStore.saveOrder}
                   onSaveWeeklyOrder={weeklyStore.saveWeeklyOrder}
+                  onWeeklyDoubleClick={(w, date) => setActionFor({ kind: "weekly", weekly: w, date })}
                 />
               </DashSection>
               <DashSection
@@ -402,7 +426,9 @@ export function DesktopDashboard({
                 onMoveSection={(id, section) => taskStore.updateTask(id, { time_section: section })}
                 onSaveOrder={taskStore.saveOrder}
                 onSaveWeeklyOrder={weeklyStore.saveWeeklyOrder}
+                onWeeklyDoubleClick={(w, date) => setActionFor({ kind: "weekly", weekly: w, date })}
                 nowSection={nowSection}
+                nowMinutes={edmontonMinutes(now)}
                 activeDay={activeDay}
               />
             </DashSection>
@@ -491,7 +517,9 @@ export function DesktopDashboard({
 
         {actionFor && (
           <TaskActionPopup
-            task={actionFor}
+            target={actionFor}
+            today={today}
+            onSkipWeekly={(w, date) => void weeklyStore.skipDay(w.id, date)}
             onClose={() => setActionFor(null)}
             // "Delete for today" = off today's schedule, not destroyed. The task
             // drops back to its category's backlog with no due date.

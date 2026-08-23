@@ -77,6 +77,21 @@ body {
     background: linear-gradient(90deg, transparent, var(--color-glow), transparent);
   }
 
+  /* Modal surface. Deliberately NOT .hud-panel: that is 55% alpha so the page
+     texture shows through, which is right for a panel resting ON the page and
+     wrong for a dialog — the dashboard was legible straight through the edit
+     form. Opaque, with a real shadow to lift it off the backdrop. */
+  .hud-modal {
+    position: relative;
+    background: #0B1912;
+    border: 1px solid rgba(63, 169, 104, 0.38);
+    border-radius: 0.625rem;
+    box-shadow:
+      0 24px 60px rgba(0, 0, 0, 0.72),
+      0 0 0 1px rgba(63, 169, 104, 0.1),
+      inset 0 1px 0 rgba(63, 169, 104, 0.14);
+  }
+
   .hud-input {
     display: block;
     width: 100%;

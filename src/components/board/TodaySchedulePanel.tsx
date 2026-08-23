@@ -13,11 +13,14 @@ import {
   SECTION_ORDER,
   scheduleSort,
   sectionClockLabel,
+  sectionProgress,
+  overdueFirst,
   type TimeSection,
 } from "../../lib/sections";
 import { pullForward } from "../../lib/suggest";
 import { appearsOn, cubeStates, progress } from "../../lib/weekly";
 import { TaskCard } from "../TaskCard";
+import { useDoubleClick } from "../TaskActionPopup";
 import { combineRows, ScheduleRow, splitOrderWrites, type ScheduleItem } from "./ScheduleRow";
 import { DraggableTask, DraggableWeekly, DropZone } from "./TaskDnd";
 
@@ -102,7 +105,7 @@ type CardProps = {
   onComplete: (id: string) => void;
   onReopen: (id: string) => void;
   onEdit: (task: Task) => void;
-  onTripleClick?: (task: Task) => void;
+  onDoubleClick?: (task: Task) => void;
   categoryOf?: (task: Task) => { name: string; color: string } | undefined;
 };
 
@@ -112,6 +115,36 @@ type WeeklyBits = {
   completeDay: (id: string, date: string) => Promise<WeeklyCheckin | null>;
   uncompleteDay: (task: WeeklyTask, date: string) => Promise<void>;
 };
+
+// One Carryover Tasks row: a checkbox to complete it inline, single-click to
+// edit, double-click for the action popup — the same gesture set as the other
+// panels, so carryover is not a second-class list.
+function CarryoverRow({ t, today, cardProps }: { t: Task; today: string; cardProps: CardProps }) {
+  const onTitleClick = useDoubleClick(
+    () => cardProps.onEdit(t),
+    () => cardProps.onDoubleClick?.(t),
+  );
+  return (
+    <div className="flex items-center gap-2 py-1">
+      <button
+        onClick={() => cardProps.onComplete(t.id)}
+        aria-label={"Complete " + t.title}
+        className="shrink-0 w-8 h-8 grid place-items-center cursor-pointer rounded-full focus-visible:outline-2 focus-visible:outline-signal"
+      >
+        <span className="w-4 h-4 rounded-full border border-signal-dim hover:border-signal transition-colors duration-200" />
+      </button>
+      <span className="w-1.5 h-1.5 rounded-full bg-amber shrink-0" aria-hidden="true" />
+      <button
+        onClick={onTitleClick}
+        className="flex-1 min-w-0 text-left truncate text-[13px] text-hud cursor-pointer hover:text-signal focus-visible:outline-2 focus-visible:outline-signal rounded"
+        aria-label={"Edit " + t.title}
+      >
+        {t.title}
+      </button>
+      {t.due_date && <span className="hud-chip hud-chip-amber shrink-0">{formatDue(t.due_date, today)}</span>}
+    </div>
+  );
+}
 
 // Tasks due today grouped by time_section, plus weekly tasks that belong today
 // (fixed_days on their weekdays; count-mode until the week's target is met).
@@ -129,6 +162,8 @@ export function TodaySchedulePanel({
   activeDay,
   onSaveOrder,
   onSaveWeeklyOrder,
+  onWeeklyDoubleClick,
+  nowMinutes,
 }: {
   dueToday: Task[];
   // All open tasks — needed to find unscheduled pull-forward candidates
@@ -151,6 +186,12 @@ export function TodaySchedulePanel({
   // Manual within-section ordering, persisted per task (works on any day)
   onSaveOrder?: (updates: { id: string; sort_order: number }[]) => void;
   onSaveWeeklyOrder?: (updates: { id: string; sort_order: number }[]) => void;
+  // Double-click a weekly occurrence -> "Skip today" (BUILD_PLAN). Weekly rows
+  // have no competing single-click action, so this is a plain dblclick with no
+  // delay — unlike TaskCard, where it must not race the edit modal.
+  onWeeklyDoubleClick?: (weekly: WeeklyTask, date: string) => void;
+  // Minutes since local midnight — drives the active section's progress line.
+  nowMinutes?: number;
 }) {
   const today = cardProps.today;
   const historical = dayNav?.historical ?? false;
@@ -224,7 +265,9 @@ export function TodaySchedulePanel({
   // Within-section ordering. Untouched sections keep the normal schedule sort;
   // once the user nudges something with the arrows, their placement wins.
   // sort_order lives on the task, so this works on any day, not just today.
-  const orderedFor = (key: string) => orderBySortOrder(partition[key] ?? []);
+  // Overdue lifts to the top of whatever section it sits in (BUILD_PLAN),
+  // applied AFTER the manual/schedule ordering so it wins over both.
+  const orderedFor = (key: string) => overdueFirst(orderBySortOrder(partition[key] ?? []), today);
   const canReorder = !!onSaveOrder;
 
   // One combined, ordered list per section: regular tasks AND weekly
@@ -390,15 +433,10 @@ export function TodaySchedulePanel({
             <ul className="border border-amber/25 rounded p-2 divide-y divide-signal-dim/15">
               {carryover.map((t) => (
                 <li key={t.id}>
-                  <button
-                    onClick={() => cardProps.onEdit(t)}
-                    className="w-full text-left flex items-center gap-2 py-1 text-[13px] text-hud cursor-pointer hover:text-signal focus-visible:outline-2 focus-visible:outline-signal rounded"
-                    aria-label={`Reschedule ${t.title}`}
-                  >
-                    <span className="w-1.5 h-1.5 rounded-full bg-amber shrink-0" aria-hidden="true" />
-                    <span className="flex-1 min-w-0 truncate">{t.title}</span>
-                    {t.due_date && <span className="hud-chip hud-chip-amber shrink-0">{formatDue(t.due_date, today)}</span>}
-                  </button>
+                  {/* Checkbox completes it inline — no need to open the edit
+                      modal first (BUILD_PLAN). Double-click opens the same
+                      action popup the other panels use. */}
+                  <CarryoverRow t={t} today={today} cardProps={cardProps} />
                 </li>
               ))}
             </ul>
@@ -464,6 +502,12 @@ export function TodaySchedulePanel({
           // deliberately keys off `activeDay` rather than "is this today's view" —
           // arrowing back one day in that window is what surfaces the highlight.
           const isNow = activeDay !== undefined && shownDate === activeDay && nowSection === slot.section;
+          // Progress line: the active section visibly drains as it elapses,
+          // rather than just carrying a static outline (BUILD_PLAN).
+          const elapsed =
+            isNow && nowMinutes !== undefined
+              ? sectionProgress(slot.section, nowMinutes, setup?.wake_time)
+              : 0;
 
           const clock = sectionClockLabel(slot.section, setup?.wake_time);
           const content = (
@@ -501,7 +545,9 @@ export function TodaySchedulePanel({
                           );
                           return (
                             <DraggableWeekly zone="schedweekly" weekly={w}>
-                              <div className="flex items-center gap-3 py-1.5">
+                              <div className="flex items-center gap-3 py-1.5"
+                        onDoubleClick={() => onWeeklyDoubleClick?.(w, viewDate)}
+                      >
                                 <button
                                   // Instant, no follow-up prompt: check off and done.
                                   onClick={async () => {
@@ -570,12 +616,26 @@ export function TodaySchedulePanel({
             <DropZone
               key={slot.key}
               id={`section:${slot.section}`}
-              className={`border rounded p-2 transition-colors duration-200 ${
+              className={`relative overflow-hidden border rounded p-2 transition-colors duration-200 ${
                 isNow
                   ? "border-signal/60 bg-signal/[0.05] shadow-[0_0_12px_rgba(63,169,104,0.18)]"
                   : "border-signal-dim/15"
               }`}
             >
+              {/* Progress line for the section the clock is in: a signal-green
+                  rule along the top edge that fills left-to-right as the section
+                  elapses. Animated with scaleX (a transform) rather than width,
+                  per the motion rules — width would trigger layout each tick. */}
+              {isNow && (
+                <span
+                  aria-hidden="true"
+                  className="absolute top-0 left-0 h-[2px] w-full origin-left bg-signal shadow-[0_0_8px_rgba(63,169,104,0.7)] transition-transform duration-700 ease-out"
+                  style={{ transform: `scaleX(${elapsed})` }}
+                />
+              )}
+              {isNow && (
+                <span className="sr-only">{Math.round(elapsed * 100)}% through this section</span>
+              )}
               {content}
             </DropZone>
           );

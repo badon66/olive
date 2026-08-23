@@ -18,7 +18,7 @@ type Props = {
   reopenTask: (id: string) => Promise<void>;
   updateTask: (id: string, patch: Partial<TaskInput>) => Promise<void>;
   onEdit: (task: Task) => void;
-  onTripleClick?: (task: Task) => void;
+  onDoubleClick?: (task: Task) => void;
   categoryStore: CategoryStore;
   weeklyStore?: WeeklyStore;
   customize?: boolean;

@@ -150,7 +150,7 @@ export function ChatBar({
           aria-modal="true"
           aria-label="Review what Olive understood"
         >
-          <div className="hud-panel w-full max-w-xl max-h-[85dvh] overflow-y-auto p-5 space-y-3" onClick={(e) => e.stopPropagation()}>
+          <div className="hud-modal w-full max-w-xl max-h-[85dvh] overflow-y-auto p-5 space-y-3" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2.5">
                 <svg viewBox="0 0 24 24" className="w-4 h-4 text-signal" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">

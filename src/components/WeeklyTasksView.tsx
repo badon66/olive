@@ -188,7 +188,7 @@ export function WeeklyTasksView({
           aria-modal="true"
           aria-label="Confirm delete weekly task"
         >
-          <div className="hud-panel p-5 w-full max-w-sm space-y-4" onClick={(e) => e.stopPropagation()}>
+          <div className="hud-modal p-5 w-full max-w-sm space-y-4" onClick={(e) => e.stopPropagation()}>
             <p className="font-body">
               Delete <span className="text-signal font-semibold">{confirmDelete.name}</span>? Its history goes too.
             </p>
@@ -264,7 +264,7 @@ export function WeeklyTaskForm({
 
   return (
     <div
-      className="fixed inset-0 z-30 grid place-items-end sm:place-items-center bg-black/60"
+      className="fixed inset-0 z-50 grid place-items-end sm:place-items-center bg-void/85 backdrop-blur-sm"
       onClick={onClose}
       role="dialog"
       aria-modal="true"
@@ -273,7 +273,7 @@ export function WeeklyTaskForm({
       <form
         onSubmit={submit}
         onClick={(e) => e.stopPropagation()}
-        className="hud-panel w-full sm:max-w-md p-5 space-y-4 rounded-b-none sm:rounded-b-lg pb-[max(1.25rem,env(safe-area-inset-bottom))]"
+        className="hud-modal w-full sm:max-w-md p-5 space-y-4 rounded-b-none sm:rounded-b-lg pb-[max(1.25rem,env(safe-area-inset-bottom))]"
       >
         <div className="flex items-center justify-between">
           <h2 className="font-display text-signal text-sm tracking-[0.2em] uppercase">

@@ -9,7 +9,7 @@ type CardProps = {
   onComplete: (id: string) => void;
   onReopen: (id: string) => void;
   onEdit: (task: Task) => void;
-  onTripleClick?: (task: Task) => void;
+  onDoubleClick?: (task: Task) => void;
 };
 
 // One category's tasks — the dashboard's per-category section content

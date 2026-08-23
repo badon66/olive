@@ -43,7 +43,7 @@ export function useWeeklyTasks() {
 
   // Optimistic check-off: the cube flips instantly, then the row is written and
   // the real state reconciled by refresh().
-  const upsertStatus = async (weeklyTaskId: string, date: string, status: "planned" | "completed") => {
+  const upsertStatus = async (weeklyTaskId: string, date: string, status: "planned" | "completed" | "skipped") => {
     setCheckins((prev) => {
       const hit = prev.find((c) => c.weekly_task_id === weeklyTaskId && c.date === date);
       if (hit) return prev.map((c) => (c === hit ? { ...c, status } : c));
@@ -91,6 +91,10 @@ export function useWeeklyTasks() {
       await supabase.from("weekly_tasks").delete().eq("id", id); // checkins cascade
       await refresh();
     },
+    // "Skip today" (BUILD_PLAN): explicitly not doing this occurrence. Distinct
+    // from missing it — it doesn't count against the weekly target and leaves
+    // the recurring pattern completely alone.
+    skipDay: (id: string, date: string) => upsertStatus(id, date, "skipped"),
     // Drag onto a day block (or tap a future cube): lights just that cube
     planDay: (id: string, date: string) => upsertStatus(id, date, "planned"),
     completeDay: (id: string, date: string) => upsertStatus(id, date, "completed"),

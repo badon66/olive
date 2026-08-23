@@ -1,6 +1,6 @@
 import type { Task } from "../../hooks/useTasks";
 import type { WeeklyCheckin, WeeklyTask } from "../../hooks/useWeeklyTasks";
-import { orderBySortOrder, scheduleSort, type TimeSection } from "../../lib/sections";
+import { orderBySortOrder, overdueFirst, scheduleSort, type TimeSection } from "../../lib/sections";
 import { appearsOn } from "../../lib/weekly";
 import { TaskCard } from "../TaskCard";
 import { combineRows, ScheduleRow, splitOrderWrites } from "./ScheduleRow";
@@ -20,7 +20,7 @@ type CardProps = {
   onComplete: (id: string) => void;
   onReopen: (id: string) => void;
   onEdit: (task: Task) => void;
-  onTripleClick?: (task: Task) => void;
+  onDoubleClick?: (task: Task) => void;
   categoryOf?: (task: Task) => { name: string; color: string } | undefined;
 };
 
@@ -41,6 +41,7 @@ export function ActiveTasksPanel({
   weeklyBits,
   onSaveOrder,
   onSaveWeeklyOrder,
+  onWeeklyDoubleClick,
 }: {
   section: TimeSection;
   dueToday: Task[];
@@ -48,6 +49,10 @@ export function ActiveTasksPanel({
   weeklyBits?: WeeklyBits;
   onSaveOrder?: (updates: { id: string; sort_order: number }[]) => void;
   onSaveWeeklyOrder?: (updates: { id: string; sort_order: number }[]) => void;
+  // Double-click a weekly occurrence -> "Skip today" (BUILD_PLAN). Weekly rows
+  // have no competing single-click action, so this is a plain dblclick with no
+  // delay — unlike TaskCard, where it must not race the edit modal.
+  onWeeklyDoubleClick?: (weekly: WeeklyTask, date: string) => void;
 }) {
   const today = cardProps.today;
   const items = dueToday.filter((t) => (t.time_section ?? "anytime") === section).sort(scheduleSort);
@@ -63,7 +68,8 @@ export function ActiveTasksPanel({
   // weekly occurrences together — so the arrows move an item relative to what is
   // actually on screen, not just its own kind.
   const rows = combineRows<Task, WeeklyTask>(
-    orderBySortOrder(items).map((t) => ({ kind: "task" as const, id: t.id, label: t.title, sort: t.sort_order, task: t })),
+    // Overdue first (BUILD_PLAN), then manual/schedule order within each group.
+    overdueFirst(orderBySortOrder(items), today).map((t) => ({ kind: "task" as const, id: t.id, label: t.title, sort: t.sort_order, task: t })),
     weeklyNow.map((w) => ({ kind: "weekly" as const, id: w.id, label: w.name, sort: w.sort_order, weekly: w })),
   );
   const showArrows = !!onSaveOrder;
@@ -105,7 +111,9 @@ export function ActiveTasksPanel({
                   const w = row.weekly;
                   const done = checkinsFor(w.id).some((c) => c.date === today && c.status === "completed");
                   return (
-                    <div className="flex items-center gap-3 py-3">
+                    <div className="flex items-center gap-3 py-3"
+                        onDoubleClick={() => onWeeklyDoubleClick?.(w, today)}
+                      >
                       <button
                         onClick={() =>
                           done ? void weeklyBits?.uncompleteDay?.(w, today) : void weeklyBits?.completeDay?.(w.id, today)

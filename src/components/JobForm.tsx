@@ -37,7 +37,7 @@ export function JobForm({ initial, categories, onSubmit, onClose, onDelete }: Pr
   return (
     <Portal>
     <div
-      className="fixed inset-0 z-30 grid place-items-end sm:place-items-center bg-black/60"
+      className="fixed inset-0 z-50 grid place-items-end sm:place-items-center bg-void/85 backdrop-blur-sm"
       onClick={onClose}
       role="dialog"
       aria-modal="true"
@@ -46,7 +46,7 @@ export function JobForm({ initial, categories, onSubmit, onClose, onDelete }: Pr
       <form
         onSubmit={submit}
         onClick={(e) => e.stopPropagation()}
-        className="hud-panel w-full sm:max-w-md max-h-[90dvh] overflow-y-auto p-5 space-y-4 rounded-b-none sm:rounded-b-lg mb-0 pb-[max(1.25rem,env(safe-area-inset-bottom))]"
+        className="hud-modal w-full sm:max-w-md max-h-[90dvh] overflow-y-auto p-5 space-y-4 rounded-b-none sm:rounded-b-lg mb-0 pb-[max(1.25rem,env(safe-area-inset-bottom))]"
       >
         <div className="flex items-center justify-between">
           <h2 className="font-display text-signal text-sm tracking-[0.2em] uppercase">
