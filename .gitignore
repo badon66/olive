@@ -36,3 +36,8 @@ supabase/.temp
 # Neon CLI link file — this project is on Supabase. Keeping this out stops
 # `neon env pull` / `link` / `checkout` regenerating DATABASE_URL + NEON_*.
 .neon
+
+# Local plaintext credential scratch files — never commit.
+Database password.txt
+*password*.txt
+*credentials*.txt
