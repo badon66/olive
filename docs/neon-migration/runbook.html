@@ -377,9 +377,19 @@ git push -u origin neon-migration</code></pre>
     <div class="step">
       <div class="num">03</div>
       <div class="body">
-        <h3>Create the Neon project</h3>
-        <p>Name it <code>olive</code>. Region <strong>us-east-2</strong> — that one specifically.</p>
-        <pre><code>npx neon@latest init --agent
+        <h3>Install the CLI, then create the project</h3>
+        <p>
+          The <code>neon</code> command doesn't exist on your machine yet — that's why the
+          terminal doesn't know the word. Install it, then <strong>open a new terminal</strong>:
+          Windows won't put a newly installed command on the PATH of a window that's already
+          open.
+        </p>
+<pre><code>npm i -g neon
+<span class="c"># close this terminal, open a new one, then:</span>
+neon --version   <span class="c"># should print 3.6.0 or later</span></code></pre>
+        <p>Now log in and create the project. The region id is <code>aws-us-east-2</code> — with the <code>aws-</code> prefix, which the CLI requires.</p>
+<pre><code>neon auth
+neon projects create --name olive --region-id aws-us-east-2 --set-context
 neon link</code></pre>
         <div class="note">
           <span class="lbl">Why us-east-2</span>
@@ -391,10 +401,16 @@ neon link</code></pre>
             picking anywhere else closes that door permanently.
           </p>
         </div>
+        <div class="note watch">
+          <span class="lbl">Correction</span>
+          <p>
+            This step previously said <code>npx neon@latest init --agent</code>. That was my
+            error: <code>--agent</code> is a machine-readable mode meant for an AI assistant
+            driving the CLI, not a person at a prompt, and it doesn't reliably install
+            anything. The commands above are the plain human path.
+          </p>
+        </div>
       </div>
-    </div>
-
-    <div class="step">
       <div class="num">04</div>
       <div class="body">
         <h3>Provision auth and the Data API</h3>
@@ -403,7 +419,12 @@ neon link</code></pre>
           creates what's missing, and writes the matching variables into <code>.env.local</code>.
         </p>
         <pre><code>neon config plan   <span class="c"># see what it would do — read this</span>
-neon deploy        <span class="c"># do it</span></code></pre>
+neon deploy        <span class="c"># do it, and pull the env into .env.local</span></code></pre>
+        <p>
+          If <code>neon</code> still isn't recognised here, the new terminal from step 3 is the
+          fix — or prefix every command with <code>npx neon@latest</code> and skip the global
+          install entirely.
+        </p>
         <p>
           Then open <code>.env.local</code> and set <code>VITE_NEON_DATABASE_URL</code> to your
           project's HTTPS endpoint — it looks like

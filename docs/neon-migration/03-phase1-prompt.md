@@ -27,7 +27,18 @@ not to be good enough, we stop here having lost nothing.
 >
 > Then, Phase 1 only:
 >
-> 1. **Create a Neon project** named `olive`, in region **`us-east-2`**. That
+> 1. **Install the Neon CLI and create the project.** `neon` is not on PATH yet:
+>
+>    ```bash
+>    npm i -g neon      # or prefix every command below with `npx neon@latest`
+>    neon auth          # opens a browser — Keenan completes the login
+>    neon projects create --name olive --region-id aws-us-east-2 --set-context
+>    neon link
+>    ```
+>
+>    The region id needs the `aws-` prefix; the CLI rejects a bare `us-east-2`.
+>    If `neon` still isn't found after the global install, use `npx neon@latest`
+>    rather than fighting the PATH. Region **`aws-us-east-2`**, and that one only. That
 >    region specifically: Neon's Object Storage, Functions and AI Gateway are
 >    in public beta and only available there. Phase 4 will likely use Neon
 >    Functions to replace Olive's five Supabase Edge Functions, and a project
