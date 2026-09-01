@@ -145,7 +145,10 @@ export function ChatBar({
       {preview && (
         <Portal>
         <div
-          className="fixed inset-0 z-50 grid place-items-center bg-black/70 p-4"
+          // Deliberately NO click-outside and NO Escape: this holds a parsed
+          // voice capture, and an accidental dismiss discards dictated work.
+          // The explicit X ("Discard") is the only way out.
+          className="fixed inset-0 z-50 grid place-items-center bg-void/85 backdrop-blur-sm p-4"
           role="dialog"
           aria-modal="true"
           aria-label="Review what Olive understood"
@@ -162,7 +165,7 @@ export function ChatBar({
               <button
                 onClick={() => setPreview(null)}
                 aria-label="Discard — nothing will be created"
-                className="w-11 h-11 grid place-items-center text-dim hover:text-critical cursor-pointer"
+                className="w-11 h-11 grid place-items-center text-dim hover:text-hud cursor-pointer"
               >
                 <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true">
                   <path d="M18 6 6 18M6 6l12 12" />

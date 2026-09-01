@@ -3,6 +3,8 @@ import { supabase } from "../lib/supabase";
 import { submitScheduleSetup, type BlockedWindow } from "../lib/api";
 import { addDays, edmontonToday } from "../lib/dates";
 import { ChatBar } from "./ChatBar";
+import { Portal } from "./Portal";
+import { useEscape } from "./useEscape";
 
 type Setup = {
   wake_time: string;
@@ -16,6 +18,7 @@ type Setup = {
 // selling" flag, and an in-popup task adder for tomorrow. Shows set/not-set.
 export function ScheduleSetupButton({ onTasksChanged }: { onTasksChanged?: () => Promise<void> }) {
   const [open, setOpen] = useState(false);
+  useEscape(() => setOpen(false));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<Setup | null>(null);
@@ -101,8 +104,14 @@ export function ScheduleSetupButton({ onTasksChanged }: { onTasksChanged?: () =>
       </button>
 
       {open && (
+        <Portal>
+        {/* Portal is load-bearing: on desktop this button lives inside the sticky
+            header, whose backdrop-blur-md made IT the containing block — the
+            "fullscreen" overlay rendered as a 66px strip pinned to the header
+            (measured live) instead of covering the viewport. Top-aligned rather
+            than centered is deliberate (BUILD_PLAN allows "centered or top"). */}
         <div
-          className="fixed inset-0 z-50 grid justify-items-center items-start bg-black/70 p-4 pt-[7vh] overflow-y-auto"
+          className="fixed inset-0 z-50 grid justify-items-center items-start bg-void/85 backdrop-blur-sm p-4 pt-[7vh] overflow-y-auto"
           onClick={() => setOpen(false)}
           role="dialog"
           aria-modal="true"
@@ -176,6 +185,7 @@ export function ScheduleSetupButton({ onTasksChanged }: { onTasksChanged?: () =>
             </div>
           </div>
         </div>
+        </Portal>
       )}
     </>
   );

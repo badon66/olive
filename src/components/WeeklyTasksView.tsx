@@ -4,6 +4,9 @@ import { edmontonToday, weekRangeLabel } from "../lib/dates";
 import { SECTION_ORDER } from "../lib/sections";
 import { cubeStates, progress, weekDates, type CubeState } from "../lib/weekly";
 import { DraggableWeekly } from "./board/TaskDnd";
+import { Portal } from "./Portal";
+import { SkeletonRows } from "./Skeleton";
+import { useEscape } from "./useEscape";
 
 const DAY_LETTERS = ["M", "T", "W", "T", "F", "S", "S"];
 const DAY_ABBRS = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"];
@@ -48,7 +51,6 @@ export function WeeklyTasksView({
   customize = false,
 }: Props) {
   const [editing, setEditing] = useState<WeeklyTask | null>(null);
-  const [confirmDelete, setConfirmDelete] = useState<WeeklyTask | null>(null);
   const today = edmontonToday();
   const week = useMemo(() => weekDates(today), [today]);
 
@@ -81,18 +83,22 @@ export function WeeklyTasksView({
     }
     // Pencil OFF: mark this day complete (or undo it). Instant — no follow-up
     // note/duration prompt (BUILD_PLAN: checking off is one tap, nothing else).
+    // A SKIPPED day restores to unset instead of completing: it used to render
+    // identically to empty, so one click on an invisible skip silently marked
+    // the day complete.
     if (state === "completed") await uncompleteDay(t, date);
+    else if (state === "skipped") await unplanDay(t.id, date);
     else await completeDay(t.id, date);
   };
 
-  if (loading) return <p className="text-dim pulse-live">Loading weekly tasks…</p>;
+  if (loading) return <SkeletonRows count={4} />;
 
   const rows = (
     <>
       {/* Fixed Monday–Sunday week; header shows the calendar range (BUILD_PLAN) */}
       <p className="font-data text-[11px] text-dim uppercase tracking-widest mb-2">{weekRangeLabel(week[0], week[6])}</p>
       {weeklyTasks.length === 0 ? (
-        <p className="text-dim text-sm py-2">No weekly tasks yet. Use the pencil menu to add one.</p>
+        <p className="text-dim text-sm py-2">No weekly tasks yet. Turn on the pencil and press + to add one.</p>
       ) : (
         <div className="divide-y divide-signal-dim/15">
           {weeklyTasks.map((t) => {
@@ -128,14 +134,18 @@ export function WeeklyTasksView({
                               ? t.recurrence_mode === "fixed_days"
                                 ? `${DAY_ABBRS[i]} — click to ${(t.scheduled_days ?? []).includes(i) ? "remove from" : "add to"} schedule`
                                 : `${DAY_ABBRS[i]} — click to plan / unplan`
-                              : `${DAY_ABBRS[i]} — click to mark ${state === "completed" ? "not done" : "done"}`
+                              : state === "skipped"
+                                ? `${DAY_ABBRS[i]} — skipped; click to restore`
+                                : `${DAY_ABBRS[i]} — click to mark ${state === "completed" ? "not done" : "done"}`
                           }
                           className={`w-14 h-14 shrink-0 rounded-md flex flex-col items-center justify-center gap-0.5 font-data cursor-pointer transition duration-150 border ${
                             state === "completed"
                               ? "bg-signal-dim border-signal text-hud shadow-[0_0_10px_rgba(63,169,104,0.45)]"
                               : state === "planned"
                                 ? "bg-signal/15 border-signal/45 text-signal"
-                                : "bg-transparent border-panel-border text-dim/60 hover:border-signal/40"
+                                : state === "skipped"
+                                  ? "bg-transparent border-dashed border-dim/40 text-dim/40 line-through"
+                                  : "bg-transparent border-panel-border text-dim/60 hover:border-signal/40"
                           } ${date === today ? "ring-1 ring-hud/50" : ""}`}
                         >
                           <span className="text-[10px] tracking-wide leading-none">{DAY_ABBRS[i]}</span>
@@ -173,43 +183,18 @@ export function WeeklyTasksView({
         <WeeklyTaskForm
           initial={editing}
           onClose={() => setEditing(null)}
-          onDelete={() => setConfirmDelete(editing)}
+          // Inline two-tap confirm inside the form — same pattern as TaskForm.
+          // The old separate confirm modal rendered at z-40 BEHIND the z-50 edit
+          // form (and un-portalled), so pressing Delete appeared to do nothing.
+          onDelete={async () => {
+            await deleteWeeklyTask(editing.id);
+          }}
           onSubmit={async (input) => {
             await updateWeeklyTask(editing.id, input);
           }}
         />
       )}
 
-      {confirmDelete && (
-        <div
-          className="fixed inset-0 z-40 grid place-items-center bg-black/60 p-6"
-          onClick={() => setConfirmDelete(null)}
-          role="dialog"
-          aria-modal="true"
-          aria-label="Confirm delete weekly task"
-        >
-          <div className="hud-modal p-5 w-full max-w-sm space-y-4" onClick={(e) => e.stopPropagation()}>
-            <p className="font-body">
-              Delete <span className="text-signal font-semibold">{confirmDelete.name}</span>? Its history goes too.
-            </p>
-            <div className="flex gap-3">
-              <button className="hud-button flex-1" onClick={() => setConfirmDelete(null)}>
-                Cancel
-              </button>
-              <button
-                className="hud-button flex-1 !border-critical/60 !text-critical hover:!bg-critical/10"
-                onClick={async () => {
-                  await deleteWeeklyTask(confirmDelete.id);
-                  setConfirmDelete(null);
-                  setEditing(null);
-                }}
-              >
-                Delete
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
@@ -237,6 +222,8 @@ export function WeeklyTaskForm({
   const [days, setDays] = useState<number[]>(initial?.scheduled_days ?? []);
   const [section, setSection] = useState<WeeklyTask["time_section"] | "">(initial?.time_section ?? "");
   const [busy, setBusy] = useState(false);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  useEscape(onClose);
 
   const toggleDay = (d: number) =>
     setDays((prev) => (prev.includes(d) ? prev.filter((x) => x !== d) : [...prev, d].sort()));
@@ -263,6 +250,11 @@ export function WeeklyTaskForm({
   );
 
   return (
+    <Portal>
+    {/* Portal is load-bearing: rendered as a plain descendant, .hud-panel's
+        backdrop-filter made the panel the containing block for this fixed
+        overlay — on the dashboard the "modal" opened clipped INSIDE the Weekly
+        Tasks panel (measured 590x192 in a 1280x720 viewport). */}
     <div
       className="fixed inset-0 z-50 grid place-items-end sm:place-items-center bg-void/85 backdrop-blur-sm"
       onClick={onClose}
@@ -384,16 +376,34 @@ export function WeeklyTaskForm({
         </label>
 
         <div className="flex gap-3">
-          {onDelete && (
-            <button type="button" className="hud-button !border-critical/60 !text-critical hover:!bg-critical/10 px-4" onClick={onDelete}>
-              Delete
+          {initial && onDelete && (
+            <button
+              type="button"
+              className="hud-button !border-critical/60 !text-critical hover:!bg-critical/10 px-4"
+              disabled={busy}
+              onClick={async () => {
+                if (!confirmingDelete) {
+                  setConfirmingDelete(true);
+                  return;
+                }
+                setBusy(true);
+                await onDelete();
+                setBusy(false);
+                onClose();
+              }}
+            >
+              {confirmingDelete ? "Confirm delete?" : "Delete"}
             </button>
           )}
-          <button className="hud-button flex-1" disabled={busy || !valid}>
+          <button className="hud-button-primary flex-1" disabled={busy || !valid}>
             {busy ? "Saving…" : initial ? "Save changes" : "Add weekly task"}
           </button>
         </div>
+        {confirmingDelete && (
+          <p className="font-data text-[11px] text-critical/80">Deletes its whole check-in history too.</p>
+        )}
       </form>
     </div>
+    </Portal>
   );
 }

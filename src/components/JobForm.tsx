@@ -3,6 +3,7 @@ import type { CategoryRow } from "../hooks/useCategories";
 import type { Job, JobInput } from "../hooks/useJobs";
 import { JOB_STATUSES, JOB_STATUS_LABELS, type JobStatus } from "../lib/jobs";
 import { Portal } from "./Portal";
+import { useEscape } from "./useEscape";
 
 type Props = {
   initial?: Job;
@@ -18,6 +19,7 @@ export function JobForm({ initial, categories, onSubmit, onClose, onDelete }: Pr
   const [status, setStatus] = useState<JobStatus>(initial?.status ?? "quoted");
   const [notes, setNotes] = useState(initial?.notes ?? "");
   const [busy, setBusy] = useState(false);
+  useEscape(onClose);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
 
   const submit = async (e: FormEvent) => {
@@ -135,7 +137,7 @@ export function JobForm({ initial, categories, onSubmit, onClose, onDelete }: Pr
               {confirmingDelete ? "Confirm delete?" : "Delete"}
             </button>
           )}
-          <button className="hud-button flex-1" disabled={busy || !name.trim()}>
+          <button className="hud-button-primary flex-1" disabled={busy || !name.trim()}>
             {busy ? "Saving…" : initial ? "Save changes" : "Add job"}
           </button>
         </div>

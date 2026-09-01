@@ -3,9 +3,12 @@ import type { Task, TaskInput } from "../hooks/useTasks";
 import type { CategoryRow, CategoryStore } from "../hooks/useCategories";
 import { CATEGORY_PALETTE } from "../lib/categories";
 import { edmontonToday } from "../lib/dates";
+import { SkeletonRows } from "./Skeleton";
 import { TaskCard } from "./TaskCard";
 import { TaskForm } from "./TaskForm";
 import { DropZone } from "./board/TaskDnd";
+import { Portal } from "./Portal";
+import { useEscape } from "./useEscape";
 
 type Props = {
   tasks: Task[];
@@ -75,7 +78,12 @@ export function TaskList({ tasks, loading, categoryStore, addTask, updateTask, c
     onEdit: setEditing,
   };
 
-  if (loading || categoryStore.loading) return <p className="text-dim pulse-live">Loading tasks…</p>;
+  if (loading || categoryStore.loading)
+    return (
+      <section className="hud-panel p-4">
+        <SkeletonRows count={5} />
+      </section>
+    );
 
   const selectCls =
     "hud-input !min-h-[38px] !w-auto text-sm cursor-pointer py-1 pr-7";
@@ -147,7 +155,7 @@ export function TaskList({ tasks, loading, categoryStore, addTask, updateTask, c
                 </span>
               </header>
               {group.length === 0 ? (
-                <p className="text-dim text-sm py-2">Nothing here. Tell Olive or use the pencil menu.</p>
+                <p className="text-dim text-sm py-2">Nothing here. Tell Olive, or turn on the pencil and press +.</p>
               ) : (
                 <div className="divide-y divide-signal-dim/15">
                   {group.map((t) => (
@@ -270,6 +278,7 @@ export function CategoryForm({
   onClose: () => void;
 }) {
   const [name, setName] = useState(initial?.name ?? "");
+  useEscape(onClose);
   const [color, setColor] = useState(initial?.color ?? CATEGORY_PALETTE[0]);
   const [busy, setBusy] = useState(false);
 
@@ -283,17 +292,25 @@ export function CategoryForm({
   };
 
   return (
+    <Portal>
     <div
-      className="fixed inset-0 z-40 grid place-items-center bg-black/60 p-6"
+      className="fixed inset-0 z-50 grid place-items-center bg-void/85 backdrop-blur-sm p-6"
       onClick={onClose}
       role="dialog"
       aria-modal="true"
       aria-label={initial ? "Edit category" : "New category"}
     >
       <form onSubmit={submit} onClick={(e) => e.stopPropagation()} className="hud-modal w-full max-w-sm p-5 space-y-4">
-        <h2 className="font-display text-signal text-sm tracking-[0.2em] uppercase">
-          {initial ? "Edit category" : "New category"}
-        </h2>
+        <div className="flex items-center justify-between">
+          <h2 className="font-display text-signal text-sm tracking-[0.2em] uppercase">
+            {initial ? "Edit category" : "New category"}
+          </h2>
+          <button type="button" onClick={onClose} aria-label="Close" className="w-11 h-11 grid place-items-center text-dim hover:text-hud cursor-pointer">
+            <svg viewBox="0 0 24 24" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" aria-hidden="true">
+              <path d="M18 6 6 18M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
         <label className="block space-y-1">
           <span className="font-data text-xs text-dim uppercase tracking-wider">Name *</span>
           <input className="hud-input" value={name} onChange={(e) => setName(e.target.value)} required autoFocus />
@@ -321,5 +338,6 @@ export function CategoryForm({
         </button>
       </form>
     </div>
+    </Portal>
   );
 }

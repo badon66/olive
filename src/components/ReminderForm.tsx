@@ -2,6 +2,7 @@ import { useState, type FormEvent } from "react";
 import type { Reminder, ReminderInput } from "../hooks/useReminders";
 import { RECURRENCE_LABELS, RECURRENCE_TYPES, type RecurrenceType } from "../lib/reminders";
 import { Portal } from "./Portal";
+import { useEscape } from "./useEscape";
 
 const DAY_LETTERS = ["M", "T", "W", "T", "F", "S", "S"];
 
@@ -26,6 +27,7 @@ export function ReminderForm({
   const [dayOfMonth, setDayOfMonth] = useState(String(initial?.day_of_month ?? 1));
   const [timeOfDay, setTimeOfDay] = useState(initial?.time_of_day?.slice(0, 5) ?? "09:00");
   const [busy, setBusy] = useState(false);
+  useEscape(onClose);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
 
   const valid =
@@ -186,7 +188,7 @@ export function ReminderForm({
                 {confirmingDelete ? "Confirm delete?" : "Delete"}
               </button>
             )}
-            <button className="hud-button flex-1" disabled={busy || !valid}>
+            <button className="hud-button-primary flex-1" disabled={busy || !valid}>
               {busy ? "Saving…" : initial ? "Save changes" : "Add reminder"}
             </button>
           </div>

@@ -5,6 +5,7 @@ import { SECTION_ORDER, type TimeSection } from "../lib/sections";
 import { DatePickerPopup } from "./DatePickerPopup";
 import { CandidateDatesGrid } from "./CandidateDatesGrid";
 import { Portal } from "./Portal";
+import { useEscape } from "./useEscape";
 
 type Props = {
   initial?: Task;
@@ -44,13 +45,30 @@ export function TaskForm({ initial, categories, onSubmit, onClose, onDelete, def
   // existing task keeps whatever it already had.
   const [carryForward, setCarryForward] = useState(initial ? initial.auto_carry_forward : true);
   const [busy, setBusy] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+  useEscape(onClose);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     if (!title.trim() || !categoryId) return;
+    // Window mode needs BOTH ends, in order — a half-filled range used to sail
+    // through to the DB, violate the tasks_window_range_sane constraint, and
+    // fail silently: the modal closed and no task existed.
+    if (mode === "range") {
+      if (!windowStart || !windowEnd) {
+        setFormError("A window needs both a From and a To date.");
+        return;
+      }
+      if (windowStart > windowEnd) {
+        setFormError("The window's From date must not be after its To date.");
+        return;
+      }
+    }
+    setFormError(null);
     setBusy(true);
-    await onSubmit({
+    try {
+      await onSubmit({
       title: title.trim(),
       description: description.trim() || null,
       category_id: categoryId,
@@ -65,6 +83,11 @@ export function TaskForm({ initial, categories, onSubmit, onClose, onDelete, def
       auto_carry_forward: carryForward,
       ...(initial ? {} : defaults?.job_id ? { job_id: defaults.job_id } : {}),
     });
+    } catch (err) {
+      setBusy(false);
+      setFormError(err instanceof Error ? err.message : "Saving failed — nothing was created.");
+      return;
+    }
     setBusy(false);
     onClose();
   };
@@ -244,6 +267,8 @@ export function TaskForm({ initial, categories, onSubmit, onClose, onDelete, def
           <span className="font-body text-sm text-hud">Carry forward if not done</span>
         </label>
 
+        {formError && <p className="font-data text-xs text-critical" role="alert">{formError}</p>}
+
         <div className="flex gap-3">
           {initial && onDelete && (
             <button
@@ -264,7 +289,7 @@ export function TaskForm({ initial, categories, onSubmit, onClose, onDelete, def
               {confirmingDelete ? "Confirm delete?" : "Delete"}
             </button>
           )}
-          <button className="hud-button flex-1" disabled={busy || !title.trim() || !categoryId}>
+          <button className="hud-button-primary flex-1" disabled={busy || !title.trim() || !categoryId}>
             {busy ? "Saving…" : initial ? "Save changes" : "Add task"}
           </button>
         </div>
