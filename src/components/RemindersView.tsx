@@ -1,3 +1,4 @@
+import { SkeletonRows } from "./Skeleton";
 import { useEffect, useState } from "react";
 import type { Reminder, ReminderStore } from "../hooks/useReminders";
 import { describeRecurrence, dueReminders, nextFireAt } from "../lib/reminders";
@@ -134,7 +135,7 @@ export function RemindersView({ store }: { store: ReminderStore }) {
   const [editing, setEditing] = useState<Reminder | null>(null);
   const { reminders, loading } = store;
 
-  if (loading) return <p className="text-dim pulse-live">Loading reminders…</p>;
+  if (loading) return <SkeletonRows count={3} />;
 
   return (
     <div className="space-y-4">
@@ -159,7 +160,8 @@ export function RemindersView({ store }: { store: ReminderStore }) {
           reminder.
         </div>
       ) : (
-        <div className="grid grid-cols-1 xl:grid-cols-2 gap-3 items-start">
+        // auto-fit per CLAUDE.md's "grid, not fixed columns" — scales past 2 cols
+        <div className="grid grid-cols-[repeat(auto-fit,minmax(340px,1fr))] gap-3 items-start">
           {reminders.map((r) => (
             <div key={r.id} className={`hud-panel p-3.5 ${r.active ? "" : "opacity-55"}`}>
               <div className="flex items-start gap-3">

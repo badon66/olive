@@ -1,6 +1,7 @@
 import type { CategoryRow } from "../hooks/useCategories";
 import type { Task } from "../hooks/useTasks";
 import { orderBySortOrder } from "../lib/sections";
+import { SkeletonRows } from "./Skeleton";
 import { TaskCard } from "./TaskCard";
 import { DraggableTask, DropZone } from "./board/TaskDnd";
 
@@ -18,10 +19,12 @@ export function CategoryPanelBody({
   category,
   tasks,
   cardProps,
+  loading = false,
 }: {
   category: CategoryRow;
   tasks: Task[];
   cardProps: CardProps;
+  loading?: boolean;
 }) {
   const mine = tasks.filter((t) => t.category_id === category.id);
   // No reorder arrows here (BUILD_PLAN): arrows live ONLY in Active Tasks and
@@ -38,8 +41,10 @@ export function CategoryPanelBody({
   return (
     <DropZone id={`cat:${category.id}`}>
       <div className="border-l-[3px] pl-3 -ml-1" style={{ borderColor: category.color }}>
-        {group.length === 0 ? (
-          <p className="text-dim text-sm py-2">Nothing here. Tell Olive or use the pencil.</p>
+        {loading ? (
+          <SkeletonRows count={2} compact />
+        ) : group.length === 0 ? (
+          <p className="text-dim text-sm py-2">Nothing here. Tell Olive, or turn on the pencil and press +.</p>
         ) : (
           <div className="divide-y divide-signal-dim/15">
             {group.map((t) => (

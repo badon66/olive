@@ -6,6 +6,7 @@ import { useBrief, type BriefContent } from "../hooks/useBrief";
 import { edmontonToday } from "../lib/dates";
 import { computeSections, doneTodayCount } from "../lib/sections";
 import { ScheduleSetupButton } from "./ScheduleSetup";
+import { SkeletonRows } from "./Skeleton";
 import { WeeklyTaskForm, WeeklyTasksView } from "./WeeklyTasksView";
 import { UpcomingDaysPanel } from "./board/DayBlocksPanel";
 import { TaskDndProvider } from "./board/TaskDnd";
@@ -38,7 +39,7 @@ function RingGauge({ done, total }: { done: number; total: number }) {
           cy="64"
           r={r}
           fill="none"
-          stroke="#3FA968"
+          stroke="var(--color-glow)"
           strokeWidth="8"
           strokeLinecap="round"
           strokeDasharray={c}
@@ -76,7 +77,10 @@ export function BriefView({ tasks, loading, completeTask, reopenTask, updateTask
     categoryOf: (t: Task) => categoryStore.byId.get(t.category_id),
   };
 
-  if (loading || briefLoading) return <p className="text-dim pulse-live">Building your brief…</p>;
+  // Gate ONLY on the task fetch. briefLoading can include an on-demand LLM
+  // generation lasting seconds — the live task data must never hide behind it;
+  // the brief-derived bits below are all null-safe and simply fill in later.
+  if (loading) return <SkeletonRows count={5} />;
 
   const generatedAt = brief
     ? new Intl.DateTimeFormat("en-US", {
@@ -109,7 +113,7 @@ export function BriefView({ tasks, loading, completeTask, reopenTask, updateTask
               className="hud-chip hud-chip-signal cursor-pointer focus-visible:outline-2 focus-visible:outline-signal"
               aria-label="Regenerate brief"
             >
-              {generatedAt ? `⟳ ${generatedAt}` : "⟳ generate"}
+              {briefLoading ? "…" : generatedAt ? `⟳ ${generatedAt}` : "⟳ generate"}
             </button>
           </span>
         </div>

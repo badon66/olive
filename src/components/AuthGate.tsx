@@ -19,7 +19,14 @@ export function AuthGate({ children }: { children: ReactNode }) {
     return () => sub.subscription.unsubscribe();
   }, []);
 
-  if (!ready) return null;
+  if (!ready)
+    return (
+      // Cold-start state — the first thing seen on every PWA launch. A bare
+      // `null` here was a literal black screen until the session check resolved.
+      <div className="min-h-dvh grid place-items-center bg-void">
+        <p className="font-display text-signal text-2xl tracking-[0.4em] text-glow pulse-live">OLIVE</p>
+      </div>
+    );
   if (session) return <>{children}</>;
 
   const signIn = async (e: FormEvent) => {
