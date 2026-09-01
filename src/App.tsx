@@ -84,6 +84,16 @@ function Shell() {
       dashboard
     ) : (
       <div className="px-6 lg:px-10 py-5 pb-32 w-full">
+        {/* Desktop pencil for non-dashboard tabs, in NORMAL FLOW above the page.
+            It used to be absolutely positioned over the content (top-4 right-10
+            z-30), where it sat directly on top of each page's own top-right
+            controls — clicks meant for "+ New job" / "+ New reminder" toggled
+            customize mode instead (Known UI Bugs #4/#5, one shared root cause). */}
+        {isDesktop && (
+          <div className="flex justify-end mb-2">
+            <CustomizeToggle on={customize} onToggle={() => setCustomize(!customize)} />
+          </div>
+        )}
         {nav === "tasks" && (
           <TaskList {...taskStore} categoryStore={categoryStore} customize={customize} filterable />
         )}
@@ -121,17 +131,7 @@ function Shell() {
           </header>
         )}
 
-        <main className="flex-1 relative">
-          {/* Desktop pencil for the non-dashboard tabs (which have no sticky header
-              of their own). The Dashboard renders its own pencil inside its sticky
-              header, so exclude it here to avoid a duplicate / one hidden behind it. */}
-          {isDesktop && nav !== "dashboard" && (
-            <div className="absolute top-4 right-10 z-30">
-              <CustomizeToggle on={customize} onToggle={() => setCustomize(!customize)} />
-            </div>
-          )}
-          {inner}
-        </main>
+        <main className="flex-1 relative">{inner}</main>
 
         {/* quick capture stays global on mobile; desktop has it inline under the orb */}
         {!isDesktop && (
