@@ -1,6 +1,7 @@
 import type { CategoryStore } from "../../hooks/useCategories";
 import type { Job } from "../../hooks/useJobs";
 import type { Task } from "../../hooks/useTasks";
+import { SkeletonRows } from "../Skeleton";
 import { isActiveStatus, jobTaskStats, JOB_STATUSES, JOB_STATUS_LABELS, sortJobs } from "../../lib/jobs";
 
 // Compact dashboard panel for the still-open jobs. Deliberately thicker than a
@@ -8,6 +9,7 @@ import { isActiveStatus, jobTaskStats, JOB_STATUSES, JOB_STATUS_LABELS, sortJobs
 // a "+" that adds a task already scoped to that job.
 export function ActiveJobsPanel({
   jobs,
+  loading = false,
   tasks,
   today,
   categoryStore,
@@ -17,6 +19,7 @@ export function ActiveJobsPanel({
   customize = false,
 }: {
   jobs: Job[];
+  loading?: boolean;
   tasks: Task[];
   today: string;
   categoryStore: CategoryStore;
@@ -29,7 +32,8 @@ export function ActiveJobsPanel({
   const active = jobs.filter((j) => isActiveStatus(j.status)).sort(sortJobs);
 
   if (active.length === 0) {
-    return <p className="text-dim text-xs py-1">No active jobs — say "add a job, Dennis's driveway".</p>;
+    if (loading) return <SkeletonRows count={2} compact />;
+  return <p className="text-dim text-xs py-1">No active jobs — say "add a job, Dennis's driveway".</p>;
   }
 
   return (
@@ -53,7 +57,7 @@ export function ActiveJobsPanel({
                   aria-label={`${job.name} — open Active Jobs`}
                 >
                   <p className="font-body font-semibold text-[14px] truncate">{job.name}</p>
-                  <p className="font-data text-[10px] text-dim truncate">{cat?.name ?? "No header"}</p>
+                  <p className="font-data text-[10px] text-dim truncate">{cat?.name ?? "No company"}</p>
                 </button>
 
                 {/* Status chips — click to change, no pencil required */}
@@ -64,7 +68,7 @@ export function ActiveJobsPanel({
                       onClick={() => onEditStatus?.(job.id, s)}
                       disabled={!onEditStatus}
                       aria-pressed={job.status === s}
-                      className={`font-data text-[9.5px] px-1.5 py-0.5 rounded border transition-colors duration-200 ${
+                      className={`font-data text-[11px] px-2 py-1 min-h-[26px] rounded border transition-colors duration-200 ${
                         job.status === s
                           ? "border-signal text-signal bg-signal/10"
                           : "border-signal-dim/25 text-dim/70 hover:border-signal-dim hover:text-dim"
@@ -75,11 +79,20 @@ export function ActiveJobsPanel({
                   ))}
                 </div>
 
-                {/* Task-stat summary for this job's own tasks */}
+                {/* Task-stat summary for this job's own tasks. done/total is the
+                    piece that was computed and tested but never rendered — without
+                    it, a job whose work is all FINISHED read "0 upcoming 0 active
+                    0 overdue", visually identical to a job with no tasks at all
+                    (the original "stats always show zero" complaint). */}
                 <p className="flex items-center gap-2 mt-1.5 font-data text-[10px]">
                   <span className="text-dim">{stats.upcoming} upcoming</span>
                   <span className="text-signal">{stats.active} active</span>
                   <span className={stats.overdue > 0 ? "text-amber" : "text-dim/50"}>{stats.overdue} overdue</span>
+                  {stats.total > 0 && (
+                    <span className={stats.done === stats.total ? "text-signal/80" : "text-dim/70"}>
+                      · {stats.done}/{stats.total} done
+                    </span>
+                  )}
                 </p>
               </div>
 

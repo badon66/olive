@@ -61,7 +61,10 @@ export function JobsView({
           <h2 className="font-data text-[11px] text-dim uppercase tracking-widest">
             {JOB_STATUS_LABELS[group.status]} · {group.jobs.length}
           </h2>
-          <div className="grid grid-cols-1 xl:grid-cols-2 gap-3 items-start">
+          {/* auto-fit, not a hard 2-column cap: CLAUDE.md's "grid, not fixed
+              columns" — a 2560px+ monitor gets more columns, not the same two
+              stretched. */}
+          <div className="grid grid-cols-[repeat(auto-fit,minmax(380px,1fr))] gap-3 items-start">
             {group.jobs.map((job) => {
               const cat = job.category_id ? categoryStore.byId.get(job.category_id) : undefined;
               const jobTasks = taskStore.tasks
@@ -90,7 +93,7 @@ export function JobsView({
                             border: `1px solid ${cat?.color ?? "#7FA89A"}55`,
                           }}
                         >
-                          {cat?.name ?? "No header"}
+                          {cat?.name ?? "No company"}
                         </span>
                         {openCount > 0 && <span className="hud-chip">{openCount} task{openCount === 1 ? "" : "s"}</span>}
                       </p>

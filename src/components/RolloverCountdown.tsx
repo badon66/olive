@@ -23,7 +23,9 @@ export function RolloverCountdown() {
         <path d="M12 7v5l3 2" />
       </svg>
       <span className="text-signal tabular-nums">{formatCountdown(secs)}</span>
-      <span className="hidden 2xl:inline text-dim/70">to rollover</span>
+      {/* From lg, not just 2xl — below that the header showed an unexplained
+          ticking h:mm:ss with no label at all */}
+      <span className="hidden lg:inline text-dim/70">to rollover</span>
     </span>
   );
 }

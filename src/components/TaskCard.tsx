@@ -69,6 +69,9 @@ export function TaskCard({
           onClick={onDoubleClick ? handleTitleClick : () => onEdit(task)}
           className="flex-1 min-w-0 text-left rounded cursor-pointer focus-visible:outline-2 focus-visible:outline-signal"
           aria-label={`Edit ${task.title}`}
+          // The double-click gesture is otherwise invisible — this is the only
+          // in-UI hint it exists (a fuller affordance is a design decision).
+          title={onDoubleClick ? "Click to edit · double-click for quick actions" : undefined}
         >
           <p className={`flex items-center gap-2 font-body font-semibold text-base leading-snug ${done ? "line-through" : ""}`}>
             <span className="truncate">{task.title}</span>
