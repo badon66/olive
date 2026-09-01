@@ -46,18 +46,33 @@ export function ReorderArrows({
   count,
   label,
   onMove,
+  canUp,
+  canDown,
 }: {
   index: number;
   count: number;
   label: string;
   onMove: (index: number, dir: -1 | 1) => void;
+  // Override the index-based end disabling. Today's Schedule passes these at a
+  // section's edges when the press carries the task ACROSS the boundary into
+  // the neighbouring section — the previous unconditional disabling made that
+  // entire feature unreachable: the handler existed, its unit tests passed, and
+  // no user could ever fire it. Active Tasks leaves them unset (its arrows are
+  // within-section by design).
+  canUp?: boolean;
+  canDown?: boolean;
 }) {
   return (
     <span className="flex flex-col shrink-0" role="group" aria-label={`Reorder ${label}`}>
-      <ReorderArrow dir="up" disabled={index === 0} label={`Move ${label} up`} onClick={() => onMove(index, -1)} />
+      <ReorderArrow
+        dir="up"
+        disabled={canUp !== undefined ? !canUp : index === 0}
+        label={`Move ${label} up`}
+        onClick={() => onMove(index, -1)}
+      />
       <ReorderArrow
         dir="down"
-        disabled={index >= count - 1}
+        disabled={canDown !== undefined ? !canDown : index >= count - 1}
         label={`Move ${label} down`}
         onClick={() => onMove(index, 1)}
       />

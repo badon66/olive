@@ -97,7 +97,9 @@ export function TaskDndProvider({
     if (item.kind === "weekly") {
       const w = item.weekly;
       if (over.startsWith("section:") && deps.setWeeklySection) {
-        await deps.setWeeklySection(w.id, over.slice("section:".length) as TimeSection);
+        // id is "section:<sec>" or "section:<sec>:<date>" — a weekly's section
+        // is a property of the recurring task, so any date part is ignored here.
+        await deps.setWeeklySection(w.id, over.split(":")[1] as TimeSection);
       } else if (over.startsWith("day:") && deps.planWeeklyDay) {
         // Plans only that specific day (a `planned` checkin) — never the pattern
         await deps.planWeeklyDay(w.id, over.slice("day:".length));
@@ -112,8 +114,15 @@ export function TaskDndProvider({
 
     const task = item.task;
     if (over.startsWith("section:")) {
-      const section = over.slice("section:".length) as TimeSection;
-      await deps.updateTask(task.id, { due_date: deps.today, time_section: section });
+      // "section:<sec>" (legacy -> today) or "section:<sec>:<date>". The date
+      // matters: Today's Schedule renders the SAME section drop zones for
+      // whatever day is being viewed, and stamping deps.today unconditionally
+      // yanked a task dropped into tomorrow's Evening back onto today.
+      const [, section, dropDate] = over.split(":");
+      await deps.updateTask(task.id, {
+        due_date: dropDate ?? deps.today,
+        time_section: section as TimeSection,
+      });
     } else if (over.startsWith("day:")) {
       // Booking times survive a date move — only due_date changes
       await deps.updateTask(task.id, { due_date: over.slice("day:".length) });

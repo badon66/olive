@@ -18,6 +18,8 @@ export function ScheduleRow({
   label,
   onMove,
   showArrows,
+  canUp,
+  canDown,
   children,
 }: {
   index: number;
@@ -26,12 +28,17 @@ export function ScheduleRow({
   label: string;
   onMove: (index: number, dir: -1 | 1) => void;
   showArrows: boolean;
+  // Force-enable an end arrow when the press crosses a section boundary.
+  canUp?: boolean;
+  canDown?: boolean;
   children: ReactNode;
 }) {
   return (
     <div className="flex items-center gap-1">
       <div className="flex-1 min-w-0">{children}</div>
-      {showArrows && <ReorderArrows index={index} count={count} label={label} onMove={onMove} />}
+      {showArrows && (
+        <ReorderArrows index={index} count={count} label={label} onMove={onMove} canUp={canUp} canDown={canDown} />
+      )}
     </div>
   );
 }
@@ -57,6 +64,18 @@ export function combineRows<T, W>(
 // Renumber the whole combined list after a move, then split the writes back out
 // per underlying table — tasks carry sort_order on `tasks`, weekly occurrences
 // on `weekly_tasks`.
+// Lift rows matching `lifted` to the top, preserving relative order in both
+// groups. Applied AFTER combineRows: combineRows re-sorts every row that has a
+// sort_order by that value, so an overdue lift applied to the inputs was thrown
+// away for any manually-placed row. Post-combine is the only position where the
+// lift actually survives to the screen.
+export function liftRows<T, W>(
+  rows: ScheduleItem<T, W>[],
+  lifted: (row: ScheduleItem<T, W>) => boolean,
+): ScheduleItem<T, W>[] {
+  return [...rows.filter(lifted), ...rows.filter((r) => !lifted(r))];
+}
+
 export function splitOrderWrites<T, W>(
   ordered: ScheduleItem<T, W>[],
 ): { tasks: { id: string; sort_order: number }[]; weekly: { id: string; sort_order: number }[] } {

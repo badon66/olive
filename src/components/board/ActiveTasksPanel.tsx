@@ -1,9 +1,10 @@
 import type { Task } from "../../hooks/useTasks";
 import type { WeeklyCheckin, WeeklyTask } from "../../hooks/useWeeklyTasks";
-import { orderBySortOrder, overdueFirst, scheduleSort, type TimeSection } from "../../lib/sections";
+import { orderBySortOrder, scheduleSort, type TimeSection } from "../../lib/sections";
 import { appearsOn } from "../../lib/weekly";
+import { SkeletonRows } from "../Skeleton";
 import { TaskCard } from "../TaskCard";
-import { combineRows, ScheduleRow, splitOrderWrites } from "./ScheduleRow";
+import { combineRows, liftRows, ScheduleRow, splitOrderWrites } from "./ScheduleRow";
 import { DraggableTask, DropZone } from "./TaskDnd";
 
 const SECTION_LABELS: Record<TimeSection, string> = {
@@ -42,6 +43,7 @@ export function ActiveTasksPanel({
   onSaveOrder,
   onSaveWeeklyOrder,
   onWeeklyDoubleClick,
+  loading = false,
 }: {
   section: TimeSection;
   dueToday: Task[];
@@ -53,24 +55,39 @@ export function ActiveTasksPanel({
   // have no competing single-click action, so this is a plain dblclick with no
   // delay — unlike TaskCard, where it must not race the edit modal.
   onWeeklyDoubleClick?: (weekly: WeeklyTask, date: string) => void;
+  // While the stores load, show skeletons instead of asserting "nothing scheduled"
+  loading?: boolean;
 }) {
   const today = cardProps.today;
-  const items = dueToday.filter((t) => (t.time_section ?? "anytime") === section).sort(scheduleSort);
+  // Current section PLUS anytime, always (BUILD_PLAN): an anytime task is by
+  // definition valid right now, whatever the clock says. currentSection can
+  // never return "anytime" (the clock ranges tile all 24h), so without this
+  // branch anytime tasks were permanently invisible in this panel.
+  const inPanel = (ts: string | null) => {
+    const sec = ts ?? "anytime";
+    return sec === section || sec === "anytime";
+  };
+  const items = dueToday.filter((t) => inPanel(t.time_section)).sort(scheduleSort);
   // Active Tasks shows one section, so the arrows reorder within it. There is no
   // adjacent section on screen here, so they stop at the ends rather than
   // silently moving a task somewhere the panel can't show.
   const checkinsFor = (id: string) => (weeklyBits?.checkins ?? []).filter((c) => c.weekly_task_id === id);
   const weeklyNow = (weeklyBits?.weeklyTasks ?? []).filter(
-    (t) => (t.time_section ?? "anytime") === section && appearsOn(t, checkinsFor(t.id), today),
+    (t) => inPanel(t.time_section) && appearsOn(t, checkinsFor(t.id), today),
   );
 
   // ONE combined list of everything this panel renders — regular tasks and
   // weekly occurrences together — so the arrows move an item relative to what is
   // actually on screen, not just its own kind.
-  const rows = combineRows<Task, WeeklyTask>(
+  // Overdue lifted AFTER combining — combineRows re-sorts placed rows by
+  // sort_order, which silently defeated a pre-combine lift.
+  const rows = liftRows(
+    combineRows<Task, WeeklyTask>(
     // Overdue first (BUILD_PLAN), then manual/schedule order within each group.
-    overdueFirst(orderBySortOrder(items), today).map((t) => ({ kind: "task" as const, id: t.id, label: t.title, sort: t.sort_order, task: t })),
-    weeklyNow.map((w) => ({ kind: "weekly" as const, id: w.id, label: w.name, sort: w.sort_order, weekly: w })),
+      orderBySortOrder(items).map((t) => ({ kind: "task" as const, id: t.id, label: t.title, sort: t.sort_order, task: t })),
+      weeklyNow.map((w) => ({ kind: "weekly" as const, id: w.id, label: w.name, sort: w.sort_order, weekly: w })),
+    ),
+    (r) => r.kind === "task" && r.task.due_date !== null && r.task.due_date < today,
   );
   const showArrows = !!onSaveOrder;
   const move = (index: number, dir: -1 | 1) => {
@@ -84,12 +101,14 @@ export function ActiveTasksPanel({
   };
 
   return (
-    <DropZone id={`section:${section}`} className="h-full">
+    <DropZone id={`section:${section}:${today}`} className="h-full">
       <div className="flex items-center justify-between mb-1.5">
         <span className="hud-chip hud-chip-signal">{SECTION_LABELS[section]} — right now</span>
         <span className="hud-chip">{items.length + weeklyNow.length}</span>
       </div>
-      {items.length === 0 && weeklyNow.length === 0 ? (
+      {loading ? (
+        <SkeletonRows count={3} />
+      ) : items.length === 0 && weeklyNow.length === 0 ? (
         <p className="text-dim text-sm py-1.5">Nothing scheduled for this part of the day.</p>
       ) : (
         <div className="divide-y divide-signal-dim/15">
@@ -148,7 +167,10 @@ export function ActiveTasksPanel({
                 count={rows.length}
                 label={row.label}
                 onMove={move}
-                showArrows={showArrows}
+                // Single-row: nothing to reorder here, and unlike Today's
+                // Schedule these arrows never cross sections — so hide the
+                // dead pair instead of showing two disabled chevrons.
+                showArrows={showArrows && rows.length > 1}
               >
                 {inner}
               </ScheduleRow>

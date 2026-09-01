@@ -14,14 +14,14 @@ import {
   scheduleSort,
   sectionClockLabel,
   sectionProgress,
-  overdueFirst,
   type TimeSection,
 } from "../../lib/sections";
 import { pullForward } from "../../lib/suggest";
 import { appearsOn, cubeStates, progress } from "../../lib/weekly";
+import { SkeletonRows } from "../Skeleton";
 import { TaskCard } from "../TaskCard";
 import { useDoubleClick } from "../TaskActionPopup";
-import { combineRows, ScheduleRow, splitOrderWrites, type ScheduleItem } from "./ScheduleRow";
+import { combineRows, liftRows, ScheduleRow, splitOrderWrites, type ScheduleItem } from "./ScheduleRow";
 import { DraggableTask, DraggableWeekly, DropZone } from "./TaskDnd";
 
 const SECTION_LABELS: Record<TimeSection, string> = {
@@ -69,7 +69,7 @@ export function DayNavigator({ nav }: { nav: DayNav }) {
         className={`px-3.5 h-10 font-data text-[11px] tracking-wide transition-colors duration-200 focus-visible:outline-2 focus-visible:outline-signal ${
           nav.isToday
             ? "text-dim cursor-default"
-            : "text-amber hover:bg-amber/10 cursor-pointer"
+            : "text-signal hover:bg-signal/10 cursor-pointer"
         }`}
       >
         {nav.isToday ? "Today" : nav.label}
@@ -129,9 +129,11 @@ function CarryoverRow({ t, today, cardProps }: { t: Task; today: string; cardPro
       <button
         onClick={() => cardProps.onComplete(t.id)}
         aria-label={"Complete " + t.title}
-        className="shrink-0 w-8 h-8 grid place-items-center cursor-pointer rounded-full focus-visible:outline-2 focus-visible:outline-signal"
+        className="shrink-0 w-11 h-11 grid place-items-center cursor-pointer rounded-full focus-visible:outline-2 focus-visible:outline-signal"
       >
-        <span className="w-4 h-4 rounded-full border border-signal-dim hover:border-signal transition-colors duration-200" />
+        {/* One checkbox size everywhere interactive (44px target / 20px dot) —
+            three different sizes used to sit in the same divide-y lists. */}
+        <span className="w-5 h-5 rounded-full border border-signal-dim hover:border-signal transition-colors duration-200" />
       </button>
       <span className="w-1.5 h-1.5 rounded-full bg-amber shrink-0" aria-hidden="true" />
       <button
@@ -164,6 +166,7 @@ export function TodaySchedulePanel({
   onSaveWeeklyOrder,
   onWeeklyDoubleClick,
   nowMinutes,
+  loading = false,
 }: {
   dueToday: Task[];
   // All open tasks — needed to find unscheduled pull-forward candidates
@@ -192,6 +195,8 @@ export function TodaySchedulePanel({
   onWeeklyDoubleClick?: (weekly: WeeklyTask, date: string) => void;
   // Minutes since local midnight — drives the active section's progress line.
   nowMinutes?: number;
+  // While the stores load, show skeletons instead of the empty-day state.
+  loading?: boolean;
 }) {
   const today = cardProps.today;
   const historical = dayNav?.historical ?? false;
@@ -265,23 +270,27 @@ export function TodaySchedulePanel({
   // Within-section ordering. Untouched sections keep the normal schedule sort;
   // once the user nudges something with the arrows, their placement wins.
   // sort_order lives on the task, so this works on any day, not just today.
-  // Overdue lifts to the top of whatever section it sits in (BUILD_PLAN),
-  // applied AFTER the manual/schedule ordering so it wins over both.
-  const orderedFor = (key: string) => overdueFirst(orderBySortOrder(partition[key] ?? []), today);
+  const orderedFor = (key: string) => orderBySortOrder(partition[key] ?? []);
   const canReorder = !!onSaveOrder;
 
   // One combined, ordered list per section: regular tasks AND weekly
   // occurrences, interleaved by sort_order. This is what the arrows act on.
+  // Overdue lifts to the top AFTER combining — combineRows re-sorts placed rows
+  // by sort_order, so a pre-combine lift never survived for any row that had
+  // been nudged (the previous "applied AFTER … so it wins" comment was false).
   const rowsFor = (slotKey: string, weekly: WeeklyTask[]) =>
-    combineRows<Task, WeeklyTask>(
-      orderedFor(slotKey).map((t) => ({
-        kind: "task" as const,
-        id: t.id,
-        label: t.title,
-        sort: t.sort_order,
-        task: t,
-      })),
-      weekly.map((w) => ({ kind: "weekly" as const, id: w.id, label: w.name, sort: w.sort_order, weekly: w })),
+    liftRows(
+      combineRows<Task, WeeklyTask>(
+        orderedFor(slotKey).map((t) => ({
+          kind: "task" as const,
+          id: t.id,
+          label: t.title,
+          sort: t.sort_order,
+          task: t,
+        })),
+        weekly.map((w) => ({ kind: "weekly" as const, id: w.id, label: w.name, sort: w.sort_order, weekly: w })),
+      ),
+      (r) => r.kind === "task" && r.task.due_date !== null && r.task.due_date < today,
     );
 
   const moveRow = (
@@ -310,10 +319,20 @@ export function TodaySchedulePanel({
   // Pushed off the end of a section: carry the task across the boundary into the
   // neighbouring one instead of doing nothing (BUILD_PLAN). Completely empty
   // sections in between are skipped in a single press.
+  // Sections that visibly hold ANYTHING — regular tasks or weekly occurrences.
+  // Built from both so a boundary nudge never skips over a section the user can
+  // see is populated (weekly-only sections previously counted as empty).
+  const occupiedSections = new Set<TimeSection>(
+    SECTION_ORDER.filter(
+      (s) =>
+        (partition[s] ?? []).length > 0 ||
+        weeklyToday.some((w) => ((w.time_section ?? "anytime") as TimeSection) === s),
+    ),
+  );
+
   const moveTask = (_slotKey: string, task: Task, dir: -1 | 1) => {
     if (!onMoveSection) return;
-    const occupied = new Set<TimeSection>(SECTION_ORDER.filter((s) => (partition[s] ?? []).length > 0));
-    const dest = nextSectionFor((task.time_section ?? "anytime") as TimeSection, dir, occupied);
+    const dest = nextSectionFor((task.time_section ?? "anytime") as TimeSection, dir, occupiedSections);
     if (dest) void onMoveSection(task.id, dest.section);
   };
 
@@ -337,7 +356,7 @@ export function TodaySchedulePanel({
         className={`px-3 h-8 rounded border font-data text-[11px] tracking-wide transition duration-200 ${
           dayNav.isToday
             ? "border-signal-dim/25 text-dim cursor-default"
-            : "border-amber/50 text-amber hover:bg-amber/10 cursor-pointer focus-visible:outline-2 focus-visible:outline-signal"
+            : "border-signal/50 text-signal hover:bg-signal/10 cursor-pointer focus-visible:outline-2 focus-visible:outline-signal"
         }`}
       >
         {dayNav.isToday ? "Today" : `${dayNav.label} · back to today`}
@@ -480,8 +499,11 @@ export function TodaySchedulePanel({
 
       {historical && historicalBody}
 
-      {!historical && dueToday.length === 0 && weeklyToday.length === 0 && (
-        <p className="text-dim text-sm py-1.5 mb-1">Clear for today — drag something in.</p>
+      {loading && <SkeletonRows count={4} />}
+
+      {/* Also shown when viewing a future day, so no "today" in the wording */}
+      {!loading && !historical && dueToday.length === 0 && weeklyToday.length === 0 && (
+        <p className="text-dim text-sm py-1.5 mb-1">Nothing scheduled — drag something in.</p>
       )}
 
       {!historical && (
@@ -555,10 +577,10 @@ export function TodaySchedulePanel({
                                     else await weeklyBits!.completeDay(w.id, viewDate);
                                   }}
                                   aria-label={checked ? `Uncheck ${w.name}` : `Check off ${w.name}`}
-                                  className="shrink-0 w-9 h-9 grid place-items-center cursor-pointer focus-visible:outline-2 focus-visible:outline-signal rounded-full"
+                                  className="shrink-0 w-11 h-11 grid place-items-center cursor-pointer focus-visible:outline-2 focus-visible:outline-signal rounded-full"
                                 >
                                   <span
-                                    className={`w-4 h-4 rounded-full border grid place-items-center transition-colors duration-200 ${
+                                    className={`w-5 h-5 rounded-full border grid place-items-center transition-colors duration-200 ${
                                       checked ? "border-signal bg-signal/20" : "border-signal-dim hover:border-signal"
                                     }`}
                                   >
@@ -578,6 +600,18 @@ export function TodaySchedulePanel({
                           );
                         })()
                       );
+                    // At a section edge, a TASK row's arrow stays live when the
+                    // press crosses into a neighbouring section (weekly rows
+                    // never traverse — their section is a property of the
+                    // recurring task itself, and nudging it would move every
+                    // occurrence). Without these overrides, ReorderArrows'
+                    // unconditional end-disabling made cross-section movement
+                    // unreachable — verified live: a section's only task had
+                    // both arrows dead.
+                    const crosses = (dir: -1 | 1) =>
+                      row.kind === "task" &&
+                      !historical &&
+                      nextSectionFor(slot.section, dir, occupiedSections) !== null;
                     return (
                       <ScheduleRow
                         key={`${row.kind}-${row.id}`}
@@ -586,6 +620,8 @@ export function TodaySchedulePanel({
                         label={row.label}
                         onMove={(idx, dir) => moveRow(slot.key, all, idx, dir)}
                         showArrows={canReorder}
+                        canUp={i === 0 ? crosses(-1) : undefined}
+                        canDown={i === all.length - 1 ? crosses(1) : undefined}
                       >
                         {inner}
                       </ScheduleRow>
@@ -615,7 +651,7 @@ export function TodaySchedulePanel({
           return (
             <DropZone
               key={slot.key}
-              id={`section:${slot.section}`}
+              id={`section:${slot.section}:${viewDate}`}
               className={`relative overflow-hidden border rounded p-2 transition-colors duration-200 ${
                 isNow
                   ? "border-signal/60 bg-signal/[0.05] shadow-[0_0_12px_rgba(63,169,104,0.18)]"

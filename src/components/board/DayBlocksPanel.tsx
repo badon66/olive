@@ -84,7 +84,10 @@ export function UpcomingDaysPanel({
     // Grouped under section dividers. UPCOMING DAYS ONLY: an empty section is
     // hidden entirely rather than shown as a bare divider — this panel is meant
     // to be glanceable. Everywhere else (Today's Schedule) keeps all sections.
-    const sectionsWithContent = [...SECTION_ORDER, "anytime" as const]
+    // SECTION_ORDER already ends with "anytime" — appending it again rendered
+    // every anytime task TWICE under two identical dividers (with duplicate
+    // React keys).
+    const sectionsWithContent = [...SECTION_ORDER]
       .map((section) => ({
         section,
         tasks: items.filter((t) => (t.time_section ?? "anytime") === section),
@@ -195,7 +198,11 @@ export function UpcomingDaysPanel({
                           <DraggableTask key={t.id} zone="day" task={t}>
                             <button
                               onClick={() => onEdit(t)}
-                              className="w-full cursor-grab active:cursor-grabbing hover:text-signal transition-colors duration-200 rounded focus-visible:outline-2 focus-visible:outline-signal"
+                              // cursor-pointer, not cursor-grab: this is a BUTTON whose
+                              // click opens the edit modal — the grab cursor promised a
+                              // drag and hid the click affordance (drag still works via
+                              // the wrapping DraggableTask).
+                              className="w-full cursor-pointer hover:text-signal transition-colors duration-200 rounded focus-visible:outline-2 focus-visible:outline-signal"
                             >
                               {inner}
                             </button>
