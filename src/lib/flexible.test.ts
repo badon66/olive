@@ -5,6 +5,7 @@ import {
   isFlexible,
   isFlexibleOverdue,
   loadByDay,
+  planPlacements,
   remainingCandidates,
   replacementFor,
   type FlexibleTask,
@@ -164,5 +165,50 @@ describe("overdue only once every option is exhausted", () => {
   it("a plain task falls back to ordinary due_date overdue", () => {
     expect(isFlexibleOverdue(t({ due_date: "2026-08-01" }), TODAY)).toBe(true);
     expect(isFlexibleOverdue(t({ due_date: "2026-08-20" }), TODAY)).toBe(false);
+  });
+});
+
+describe("planPlacements — one pass, no oscillation", () => {
+  it("two tasks sharing candidates do NOT both flee to the same quiet day", () => {
+    const A = t({ id: "A", window_start: "2026-08-14", window_end: "2026-08-15", placed_date: "2026-08-14", due_date: "2026-08-14" });
+    const B = t({ id: "B", window_start: "2026-08-14", window_end: "2026-08-15", placed_date: "2026-08-14", due_date: "2026-08-14" });
+    const l = loadByDay(
+      [
+        { due_date: "2026-08-14", status: "open", duration_minutes: 60 },
+        { due_date: "2026-08-14", status: "open", duration_minutes: 60 },
+      ],
+      ["2026-08-14", "2026-08-15"],
+    );
+    const withDur = (x: FlexibleTask) => ({ ...x, duration_minutes: 60 });
+    const moves = planPlacements([withDur(A), withDur(B)], TODAY, l);
+    // Exactly ONE moves; the second sees the updated load and stays put.
+    expect(moves).toHaveLength(1);
+    expect(moves[0]).toEqual({ id: "A", target: "2026-08-15" });
+  });
+
+  it("a follow-up pass after the move is a no-op (converged)", () => {
+    // State after the pass above: A on d2, B on d1, 60 min each.
+    const A = t({ id: "A", window_start: "2026-08-14", window_end: "2026-08-15", placed_date: "2026-08-15", due_date: "2026-08-15" });
+    const B = t({ id: "B", window_start: "2026-08-14", window_end: "2026-08-15", placed_date: "2026-08-14", due_date: "2026-08-14" });
+    const l = loadByDay(
+      [
+        { due_date: "2026-08-15", status: "open", duration_minutes: 60 },
+        { due_date: "2026-08-14", status: "open", duration_minutes: 60 },
+      ],
+      ["2026-08-14", "2026-08-15"],
+    );
+    const withDur = (x: FlexibleTask) => ({ ...x, duration_minutes: 60 });
+    expect(planPlacements([withDur(A), withDur(B)], TODAY, l)).toEqual([]);
+  });
+
+  it("still moves a task off a genuinely busy day", () => {
+    const A = t({ id: "A", candidate_dates: ["2026-08-14", "2026-08-16"], placed_date: "2026-08-14", due_date: "2026-08-14" });
+    const l = loadByDay(
+      [{ due_date: "2026-08-14", status: "open", duration_minutes: 300 }],
+      ["2026-08-14", "2026-08-16"],
+    );
+    expect(planPlacements([{ ...A, duration_minutes: 30 }], TODAY, l)).toEqual([
+      { id: "A", target: "2026-08-16" },
+    ]);
   });
 });

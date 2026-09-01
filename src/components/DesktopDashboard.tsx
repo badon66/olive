@@ -6,7 +6,7 @@ import type { ReminderStore } from "../hooks/useReminders";
 import type { Task, TaskStore } from "../hooks/useTasks";
 import type { WeeklyStore, WeeklyTask } from "../hooks/useWeeklyTasks";
 import { carryoverTasks } from "../lib/dayrules";
-import { candidatesFor, isFlexible, loadByDay, replacementFor } from "../lib/flexible";
+import { candidatesFor, isFlexible, loadByDay, planPlacements } from "../lib/flexible";
 import { activeCount } from "../lib/jobs";
 import { useBrief } from "../hooks/useBrief";
 import { addDays, daysBetween, edmontonActiveDay, edmontonHour, edmontonMinutes, edmontonToday, fullDateLabel } from "../lib/dates";
@@ -193,17 +193,19 @@ export function DesktopDashboard({
     const horizon = [...new Set(flexible.flatMap((t) => candidatesFor(t)))];
     if (horizon.length === 0) return;
     const load = loadByDay(open, horizon);
-    for (const t of flexible) {
-      const target = replacementFor(t, today, load);
-      if (target && target !== t.due_date) {
-        void taskStore.updateTask(t.id, { due_date: target, placed_date: target });
-      }
+    // planPlacements updates the load map as each move is accepted, so two
+    // tasks sharing candidates can no longer both flee the same busy day to the
+    // same quiet one and oscillate back on the next render (an infinite
+    // write loop — two DB updates per cycle — armed the moment a second
+    // flexible task existed).
+    for (const m of planPlacements(flexible, today, load)) {
+      void taskStore.updateTask(m.id, { due_date: m.target, placed_date: m.target });
     }
     // taskStore is stable enough here; re-running on `open` is the point.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, today]);
 
-  // Carryover: opted-in one-off tasks the rollover cron rolled into today, plus
+  // Carryover is MANUAL (no cron bumps anything): opted-in tasks overdue, plus
   // any still sitting overdue if the cron hasn't run. Its own nudge button —
   // never blended with generic overdue or with weekly-task planning.
   const carryover = useMemo(() => carryoverTasks(open, today), [open, today]);
@@ -346,6 +348,7 @@ export function DesktopDashboard({
                   onSaveOrder={taskStore.saveOrder}
                   onSaveWeeklyOrder={weeklyStore.saveWeeklyOrder}
                   onWeeklyDoubleClick={(w, date) => setActionFor({ kind: "weekly", weekly: w, date })}
+                  loading={loading || weeklyStore.loading}
                 />
               </DashSection>
               <DashSection
@@ -355,6 +358,7 @@ export function DesktopDashboard({
                 className="basis-1/2 grow-0 shrink-0 min-h-0"
               >
                 <ActiveJobsPanel
+                  loading={jobStore.loading}
                   jobs={jobStore.jobs}
                   tasks={tasks}
                   today={today}
@@ -420,7 +424,11 @@ export function DesktopDashboard({
                 dueToday={scheduleDue}
                 openTasks={otherDay ? [] : open}
                 cardProps={cardProps}
-                weeklyBits={otherDay ? undefined : weeklyStore}
+                // Weekly occurrences render for today AND future days; only
+                // genuinely-past (historical) days go without. Gating on
+                // otherDay stripped them from every non-today view — the exact
+                // regression the appearsOn() fix was meant to close.
+                weeklyBits={scheduleDate < activeDay ? undefined : weeklyStore}
                 carryover={otherDay ? [] : carryover}
                 dayNav={dayNav}
                 onMoveSection={(id, section) => taskStore.updateTask(id, { time_section: section })}
@@ -430,6 +438,7 @@ export function DesktopDashboard({
                 nowSection={nowSection}
                 nowMinutes={edmontonMinutes(now)}
                 activeDay={activeDay}
+                loading={loading || weeklyStore.loading}
               />
             </DashSection>
           </div>
@@ -509,6 +518,7 @@ export function DesktopDashboard({
                   category={cat}
                   tasks={tasks}
                   cardProps={cardProps}
+                  loading={loading}
                 />
               </DashSection>
             ))}
@@ -523,7 +533,19 @@ export function DesktopDashboard({
             onClose={() => setActionFor(null)}
             // "Delete for today" = off today's schedule, not destroyed. The task
             // drops back to its category's backlog with no due date.
-            onUnschedule={(id) => void taskStore.updateTask(id, { due_date: null })}
+            // "Delete for today" must clear the WHOLE scheduling state: leaving
+            // window/candidates/placed_date behind let the placement effect
+            // re-place the task onto another candidate day moments later,
+            // silently undoing the user's action.
+            onUnschedule={(id) =>
+              void taskStore.updateTask(id, {
+                due_date: null,
+                placed_date: null,
+                window_start: null,
+                window_end: null,
+                candidate_dates: null,
+              })
+            }
             onReschedule={(id, date) => void taskStore.updateTask(id, { due_date: date })}
           />
         )}

@@ -120,3 +120,39 @@ export function replacementFor(
   const targetLoad = load.get(target)?.minutes ?? 0;
   return currentLoad - targetLoad > slackMinutes ? target : null;
 }
+
+// One placement pass over every flexible task, in a single call. The load map
+// is UPDATED as each move is accepted, so later tasks in the same pass see the
+// world the earlier moves created. Computing the map once and iterating against
+// it — the previous behaviour — made two tasks sharing the same candidates both
+// flee the same "busy" day to the same "quiet" one, then both flee back on the
+// next render: an infinite write loop, two DB updates per cycle.
+export function planPlacements<T extends FlexibleTask & { duration_minutes?: number | null }>(
+  flexible: T[],
+  today: string,
+  load: Map<string, DayLoad>,
+): { id: string; target: string }[] {
+  const moves: { id: string; target: string }[] = [];
+  for (const t of flexible) {
+    const target = replacementFor(t, today, load);
+    if (!target || target === t.due_date) continue;
+    const minutes = t.duration_minutes ?? 30;
+    const from = t.placed_date ?? t.due_date;
+    if (from) {
+      const slot = load.get(from);
+      if (slot) {
+        slot.minutes -= minutes;
+        slot.count -= 1;
+      }
+    }
+    const dst = load.get(target);
+    if (dst) {
+      dst.minutes += minutes;
+      dst.count += 1;
+    } else {
+      load.set(target, { date: target, minutes, count: 1 });
+    }
+    moves.push({ id: t.id, target });
+  }
+  return moves;
+}
