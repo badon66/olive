@@ -204,3 +204,105 @@ derivation at both times:
 Full suite: **164 tests passing, 10 files, production build clean.**
 
 ## Phases 4–9 — not started (hard gate; explicit approval required)
+
+## Full-codebase audit — four parallel review agents + verified fix pass (2026-08-31)
+
+Four read-only agents (dead code / performance / bugs / interface) swept the repo;
+every claim was independently spot-checked against code, the live DB, and a
+running browser before anything changed. 213 tests green before and after.
+
+**Verified and FIXED (selected — commit messages carry the detail):**
+- Pencil overlap (Known UI Bugs #4/#5, one shared root cause): the absolute
+  `top-4 right-10 z-30` CustomizeToggle in App.tsx sat directly on "+ New job" /
+  "+ New reminder" (measured 44×40px overlap; clicks hit the pencil). Now in
+  normal flow above the page content.
+- Cross-section arrow movement was DEAD CODE: ReorderArrows unconditionally
+  disabled end presses, so the boundary branch (and its passing unit tests)
+  could never fire from the UI. End arrows on task rows are now live when a
+  neighbouring section exists; weekly rows still don't traverse.
+- WeeklyTaskForm + its delete confirm and the ScheduleSetup popup were NOT
+  portalled — trapped by backdrop-filter containing blocks (weekly modal
+  measured 590×192 inside its panel; schedule-setup pinned to a 66px header
+  strip). All portalled; weekly delete is now the same inline two-tap confirm
+  as TaskForm.
+- overdueFirst was silently defeated for any manually-nudged row (combineRows
+  re-sorts placed rows by sort_order) — the lift now applies post-combine.
+- Weekly occurrences were stripped from every non-today day
+  (`weeklyBits={otherDay ? undefined : weeklyStore}`) — the exact regression
+  the appearsOn() fix was meant to close. Gated on historical instead.
+- Section drops always stamped due_date=today even when viewing another day —
+  drop-zone ids now carry the viewed date ("section:<sec>:<date>").
+- Upcoming Days rendered anytime tasks TWICE ([...SECTION_ORDER, "anytime"]).
+- Active Tasks never showed anytime tasks (BUILD_PLAN requires them always).
+- Flexible placement could oscillate forever with 2+ tasks sharing candidates
+  (load map computed once per pass) — planPlacements() now updates the map as
+  moves are accepted; +3 tests. "Delete for today" also clears
+  window/candidates/placed_date so the placement effect can't resurrect it.
+- Half-filled Window mode failed silently (constraint violation swallowed) —
+  client-side validation + addTask now throws + the form shows the error.
+- All-done jobs rendered "0 upcoming 0 active 0 overdue" — done/total was
+  computed and tested but never displayed. Now shown.
+- Skipped weekly cubes rendered identically to empty (one click on an invisible
+  skip marked it complete) — now dashed/struck, click restores.
+- CLAUDE.md loading-state rule: no skeleton existed anywhere; dashboard panels
+  asserted "nothing to do" while loading (false-empty flash), AuthGate was a
+  black screen, mobile BriefView blanked entirely during LLM brief generation.
+  SkeletonRows everywhere, AuthGate pulses the wordmark, BriefView gates only
+  on the task fetch.
+- Optimistic updates completed per CLAUDE.md: uncompleteDay/unplanDay/
+  updateWeeklyTask/updateJob/deleteJob/deleteTask now paint-then-persist with
+  rollback; updateReminder gained rollback.
+- useTasks.refresh bounded to open + last-30-days completed (was every task
+  ever, refetched after every mutation).
+- Jobs/Reminders tabs: hard xl:grid-cols-2 → auto-fit minmax per CLAUDE.md.
+- Modal consistency: Escape on every dialog (shared useEscape), standard
+  bg-void/85 backdrop-blur-sm z-50 backdrops, CategoryForm portalled + close X,
+  hud-button-primary on every primary CTA. ChatBar's voice preview deliberately
+  keeps NO Escape/click-outside (protects dictated content) — documented.
+- Server brief now mirrors the client's flexible-overdue rule (daily-brief v7
+  deployed); stale comments corrected (changedOn day model, carryover cron).
+- Polish: one 44px/20px checkbox size in mixed lists, job status chips at
+  legible size, DayNavigator not-today amber→signal, single-row Active Tasks
+  arrows hidden, Upcoming Days rows cursor-pointer, double-click tooltip hint,
+  copy fixes ("pencil menu"→current pattern, "No header"→"No company",
+  future-day empty wording, countdown label from lg), RingGauge stroke
+  tokenized.
+- Dead deps removed: @dnd-kit/sortable, @dnd-kit/utilities, zod (frontend;
+  edge functions use Deno's npm:zod@3 independently), @vite-pwa/assets-generator,
+  public/pwa-64x64.png. .env.example restored (deleted on disk during the Neon
+  experiments; HEAD's version was correct).
+
+**Claims REJECTED after verification:**
+- "Completing an overdue task deletes it" — completeTask is strictly an UPDATE;
+  19 completed rows live in the DB, 14 of them completed while overdue.
+- "job_id not attached at creation" — 7 tasks carry job_id; both create paths
+  attach it. The real bug was the missing done/total display (fixed above).
+- "Re-add the cursor glow (CLAUDE.md)" — the user explicitly ordered it removed;
+  CLAUDE.md's line is stale. NOT re-added.
+- "Hide arrows on single-row sections" — would have removed cross-section
+  movement in Today's Schedule; applied to Active Tasks only.
+- "Tokenize the #7FA89A fallbacks in JobsView" — they're concatenated with alpha
+  suffixes (`${hex}1f`), which var() can't do; left as hex.
+- "Double-click deviates from BUILD_PLAN's triple-click" — the user explicitly
+  ordered double-click; BUILD_PLAN line 38 is stale.
+
+**Known-and-deferred (documented, not fixed):**
+- DST fall-back (Nov 1 2026): the 1:30 view boundary is crossed twice, so the
+  page flips forward, back, and forward again across ~30 minutes. Self-corrects;
+  a robust fix needs UTC-anchored day math.
+- Reminder delivery race: the server cron stamps last_fired_at whether or not
+  the app was open to show the alert; missed occurrences never alert. Needs the
+  unbuilt reminder_fires model (BUILD_PLAN Phase 2 items: global toggle,
+  countdown ring, repeat-until-dismissed, sounds — all still unbuilt).
+- Dashboard remounts on tab switch (refetches brief/setup); enter/exit motion
+  spec item; saveOrder N+1 (bulk upsert candidate); jobStatus.ts + ranking.ts
+  kept deliberately (pre-built migration work / only executable spec of live
+  server scoring); weekly_task_checkins.note+duration columns kept (BUILD_PLAN
+  keeps duration_minutes as an editable field).
+- Taste items for Keenan: corner-bracket motif, dashboard type scale 13→14px,
+  Orbitron mixed-case greeting, Weekly-tab card grid at ultrawide, double-click
+  vs hover-"⋯" menu, Finance strip height.
+
+**Migration-ledger note:** two applied migrations have no on-disk file
+(reminder_tick_cron, carry_forward_cron_5am) and 20260814000001 was applied as
+two ledger entries — the disk set is not a faithful replay of the live DB.
