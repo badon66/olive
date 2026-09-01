@@ -31,9 +31,15 @@ export function useTasks() {
   const [loading, setLoading] = useState(true);
 
   const refresh = useCallback(async () => {
+    // Open tasks plus the last 30 days of completed ones. Every completed-task
+    // display needs at most 30 days (category panels show the 5 most recent,
+    // the Tasks tab 20, doneTodayCount only today) — without this bound the app
+    // fetched EVERY task ever written, after EVERY mutation, forever.
+    const cutoff = new Date(Date.now() - 30 * 86_400_000).toISOString();
     const { data, error } = await supabase
       .from("tasks")
       .select("*")
+      .or(`status.eq.open,completed_at.gte.${cutoff}`)
       .order("due_date", { ascending: true, nullsFirst: false })
       .order("priority_weight", { ascending: false });
     if (!error && data) setTasks(data);
@@ -51,7 +57,10 @@ export function useTasks() {
     loading,
     refresh,
     addTask: async (input: TaskInput) => {
-      await supabase.from("tasks").insert({ ...input, user_id: await userId() });
+      // Throw on failure — this used to swallow the error, so a constraint
+      // violation closed the modal with no task created and no message.
+      const { error } = await supabase.from("tasks").insert({ ...input, user_id: await userId() });
+      if (error) throw new Error(error.message);
       await refresh();
     },
     // Optimistic: paint the change immediately, then persist and reconcile.
@@ -92,7 +101,11 @@ export function useTasks() {
       await refresh();
     },
     deleteTask: async (id: string) => {
-      await supabase.from("tasks").delete().eq("id", id);
+      // Optimistic: the row leaves the screen immediately; rollback on error.
+      const before = tasks;
+      setTasks((prev) => prev.filter((t) => t.id !== id));
+      const { error } = await supabase.from("tasks").delete().eq("id", id);
+      if (error) setTasks(before);
       await refresh();
     },
   };

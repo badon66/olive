@@ -38,11 +38,19 @@ export function useJobs() {
       await refresh();
     },
     updateJob: async (id: string, patch: Partial<JobInput>) => {
-      await supabase.from("active_jobs").update(patch).eq("id", id);
+      // Optimistic: the status chips are a first-class dashboard action and
+      // used to wait UPDATE + full refetch before the pressed chip highlighted.
+      const before = jobs;
+      setJobs((prev) => prev.map((j) => (j.id === id ? { ...j, ...patch } : j)));
+      const { error } = await supabase.from("active_jobs").update(patch).eq("id", id);
+      if (error) setJobs(before);
       await refresh();
     },
     deleteJob: async (id: string) => {
-      await supabase.from("active_jobs").delete().eq("id", id);
+      const before = jobs;
+      setJobs((prev) => prev.filter((j) => j.id !== id));
+      const { error } = await supabase.from("active_jobs").delete().eq("id", id);
+      if (error) setJobs(before);
       await refresh();
     },
   };

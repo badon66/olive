@@ -71,7 +71,12 @@ export function useWeeklyTasks() {
       await refresh();
     },
     updateWeeklyTask: async (id: string, patch: Partial<WeeklyTaskInput>) => {
-      await supabase.from("weekly_tasks").update(patch).eq("id", id);
+      // Optimistic: cube-weekday toggles and drag-to-section paint immediately
+      // (a dropped weekly item used to snap back until the refetch landed).
+      const before = weeklyTasks;
+      setWeeklyTasks((prev) => prev.map((t) => (t.id === id ? { ...t, ...patch } : t)));
+      const { error } = await supabase.from("weekly_tasks").update(patch).eq("id", id);
+      if (error) setWeeklyTasks(before);
       await refresh();
     },
     // Ordering for weekly occurrences shown inside Today's Schedule / Active
@@ -98,21 +103,45 @@ export function useWeeklyTasks() {
     // Drag onto a day block (or tap a future cube): lights just that cube
     planDay: (id: string, date: string) => upsertStatus(id, date, "planned"),
     completeDay: (id: string, date: string) => upsertStatus(id, date, "completed"),
-    // Unplanning removes the row (fixed_days cubes fall back to their virtual planned state)
+    // Unplanning removes the row (fixed_days cubes fall back to their virtual planned state).
+    // Optimistic: the cube clears instantly; rollback on error.
     unplanDay: async (id: string, date: string) => {
-      await supabase.from("weekly_task_checkins").delete().eq("weekly_task_id", id).eq("date", date);
+      const before = checkins;
+      setCheckins((prev) => prev.filter((c) => !(c.weekly_task_id === id && c.date === date)));
+      const { error } = await supabase
+        .from("weekly_task_checkins")
+        .delete()
+        .eq("weekly_task_id", id)
+        .eq("date", date);
+      if (error) setCheckins(before);
       await refresh();
     },
-    // Un-completing: count-mode keeps the cube planned, fixed_days reverts to virtual planned
+    // Un-completing: count-mode keeps the cube planned, fixed_days reverts to
+    // virtual planned. Optimistic to match completeDay — un-checking used to
+    // wait a full round-trip while checking was instant, a felt asymmetry on
+    // the very same cube.
     uncompleteDay: async (task: WeeklyTask, date: string) => {
+      const before = checkins;
       if (task.recurrence_mode === "count") {
-        await supabase
+        setCheckins((prev) =>
+          prev.map((c) =>
+            c.weekly_task_id === task.id && c.date === date ? { ...c, status: "planned" as const } : c,
+          ),
+        );
+        const { error } = await supabase
           .from("weekly_task_checkins")
           .update({ status: "planned" })
           .eq("weekly_task_id", task.id)
           .eq("date", date);
+        if (error) setCheckins(before);
       } else {
-        await supabase.from("weekly_task_checkins").delete().eq("weekly_task_id", task.id).eq("date", date);
+        setCheckins((prev) => prev.filter((c) => !(c.weekly_task_id === task.id && c.date === date)));
+        const { error } = await supabase
+          .from("weekly_task_checkins")
+          .delete()
+          .eq("weekly_task_id", task.id)
+          .eq("date", date);
+        if (error) setCheckins(before);
       }
       await refresh();
     },

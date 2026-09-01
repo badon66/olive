@@ -43,8 +43,12 @@ export function useReminders() {
       await refresh();
     },
     updateReminder: async (id: string, patch: Partial<ReminderInput>) => {
+      // Optimistic WITH rollback — it painted instantly but a failed write left
+      // the UI lying until the trailing refresh corrected it.
+      const before = reminders;
       setReminders((prev) => prev.map((r) => (r.id === id ? { ...r, ...patch } : r)));
-      await supabase.from("reminders").update(patch).eq("id", id);
+      const { error } = await supabase.from("reminders").update(patch).eq("id", id);
+      if (error) setReminders(before);
       await refresh();
     },
     deleteReminder: async (id: string) => {
