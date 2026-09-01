@@ -58,7 +58,26 @@ function daysBetween(fromISO: string, toISO: string): number {
   return Math.round((Date.UTC(ty, tm - 1, td) - Date.UTC(fy, fm - 1, fd)) / 86_400_000);
 }
 
-type BriefTask = { id: string; due_date: string | null; priority_weight: number; created_at: string };
+type BriefTask = {
+  id: string;
+  due_date: string | null;
+  priority_weight: number;
+  created_at: string;
+  // Flexible-window fields (nullable; daily-brief selects them so overdue
+  // matches the client's rule).
+  window_end?: string | null;
+  candidate_dates?: string[] | null;
+};
+
+// Mirrors src/lib/sections.ts computeSections: a flexible task sitting on a
+// past day is NOT overdue while it still has candidate days left — the client
+// excludes it, and the brief must agree or the morning email calls something
+// overdue that the app says is merely waiting to be re-placed.
+function stillHasOptions(t: BriefTask, today: string): boolean {
+  if (t.candidate_dates && t.candidate_dates.length > 0) return t.candidate_dates.some((d) => d >= today);
+  if (t.window_end) return t.window_end >= today;
+  return false;
+}
 
 function score(t: BriefTask, today: string): number {
   if (!t.due_date) return t.priority_weight;
@@ -72,7 +91,9 @@ export function buildBrief(tasks: BriefTask[], today: string) {
   const dated = (pred: (d: number) => boolean) =>
     tasks.filter((t) => t.due_date && pred(daysBetween(today, t.due_date!))).map((t) => t.id);
   return {
-    overdue: dated((d) => d < 0),
+    overdue: tasks
+      .filter((t) => t.due_date && daysBetween(today, t.due_date) < 0 && !stillHasOptions(t, today))
+      .map((t) => t.id),
     today: dated((d) => d === 0),
     upcoming: dated((d) => d > 0 && d <= 7),
     suggested_order: [...tasks]

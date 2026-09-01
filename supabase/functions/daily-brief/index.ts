@@ -38,7 +38,7 @@ Deno.serve(async (req) => {
 
     const today = edmontonToday();
     const [{ data: tasks, error: terr }, { data: jobs, error: jerr }] = await Promise.all([
-      db.from("tasks").select("id,due_date,priority_weight,created_at").eq("user_id", userId).eq("status", "open"),
+      db.from("tasks").select("id,due_date,priority_weight,created_at,window_end,candidate_dates").eq("user_id", userId).eq("status", "open"),
       db.from("active_jobs").select("name,status,updated_at").eq("user_id", userId),
     ]);
     if (terr) throw terr;

@@ -39,7 +39,7 @@ export function groupByStatus<T extends JobLike>(jobs: T[]): { status: JobStatus
   })).filter((g) => g.jobs.length > 0);
 }
 
-// Jobs whose updated_at falls on the given Edmonton date (same 5 AM day model
+// Jobs whose updated_at falls on the given Edmonton date (the 1:30 AM VIEW day
 // as everything else) — used by the brief for "changed yesterday".
 export function changedOn<T extends JobLike>(jobs: T[], date: string): T[] {
   return jobs.filter((j) => edmontonToday(new Date(j.updated_at)) === date);
