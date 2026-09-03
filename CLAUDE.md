@@ -31,6 +31,11 @@ The phased spec is in `docs/BUILD_PLAN.md`. Build ONE phase at a time, then stop
 - **No capped-width containers.** Don't wrap the layout in a fixed `max-w-4xl`/`max-w-6xl`-style container that leaves large empty margins on a wide screen. The layout should genuinely use the full viewport width, with padding that scales, not a narrow column centered in empty space.
 - **Grid, not fixed columns.** Panels should use a responsive grid (CSS Grid `auto-fit`/`minmax`, not a hardcoded 2-column layout) so more columns appear as the viewport gets wider — a 2560px+ screen should show meaningfully more side-by-side content than a 1440px laptop, not the same layout stretched.
 - Add an explicit ultrawide breakpoint (e.g. `xl`/`2xl` around 1920–2560px) rather than relying only on Tailwind's default `lg` (1024px), which stops scaling far short of an actual ultrawide monitor.
+- **Third layout target: a 24" PORTRAIT (vertical) monitor** — the user runs Olive on a rotated second monitor (~1080×1920). This is neither the ultrawide layout nor the phone layout; it needs its own treatment:
+  - **Detect via orientation/aspect-ratio media queries** (portrait orientation at desktop-scale width, e.g. `(orientation: portrait) and (min-width: 700px)`) — distinguishing it from phones, which are also portrait but far narrower.
+  - **The three-column flanking layout does not fit here** — not enough width. Restructure as a vertical stack: orb at top (**smaller than the ultrawide version — explicitly fine to shrink the orb in this mode**), capture box under it, then panels stacked to exploit the abundant vertical space.
+  - **Today's Schedule is the biggest winner of portrait's vertical room** — give it generous height; it's naturally a tall list (all time sections) and portrait is the one format where it can breathe fully without competing for vertical space.
+  - Larger type/spacing than mobile — this is still a desktop monitor viewed at desk distance with a mouse, not a phone held close. Think "comfortable single column at desktop scale," not "big phone."
 - Backend: Supabase — Postgres, Auth, Edge Functions (Deno), pg_cron + pg_net for scheduled jobs.
 - LLM: Anthropic API from Edge Functions; `claude-sonnet-4-6` for parsing/routing unless quality demands escalation.
 - Single user: Supabase email auth, one account, RLS on all tables.
