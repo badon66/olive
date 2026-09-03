@@ -306,3 +306,68 @@ running browser before anything changed. 213 tests green before and after.
 **Migration-ledger note:** two applied migrations have no on-disk file
 (reminder_tick_cron, carry_forward_cron_5am) and 20260814000001 was applied as
 two ledger entries — the disk set is not a faithful replay of the live DB.
+
+## Portrait-monitor layout — third responsive target (built 2026-09-02)
+
+CLAUDE.md added a rotated 24" monitor (~1080×1920) as a layout target distinct
+from ultrawide and phone. Built and verified at exact viewports with a
+throwaway harness (real Sidebar + DesktopDashboard/BriefView, fake stores;
+deleted before commit).
+
+**Detection.** `(orientation: portrait) and (min-width: 700px)` — portrait
+alone would catch phones; the width floor keeps it to desktop-scale screens.
+Declared ONCE in each runtime and deliberately identical: `@custom-variant tall`
+in `src/styles/index.css` (styling) and `PORTRAIT_MONITOR_QUERY` in
+`src/hooks/useMediaQuery.ts` (DOM order + orb size). If one changes, change
+both. Below 1024px `isDesktop` is false and the phone BriefView renders
+regardless, so the portrait branch only ever applies to ≥1024-wide portrait
+screens (a 1080 rotated monitor; also a 1024×1366 tablet, which is the right
+layout for it).
+
+**Structure.** `DesktopDashboard` extracts every panel body into a shared
+element and renders one of two arrangements. The ultrawide branch is the
+BUILD_PLAN layout with its markup untouched; the portrait branch is a single
+column (`px-6 gap-4`, sidebar kept at 250px → ~815px content column).
+
+**Stacking order, and why** (a side monitor is a glance display: the top of a
+tall screen is where a glance lands, the bottom needs a deliberate look down —
+so most-frequent first, reference material last):
+1. Orb at 240px (ultrawide: 380) + greeting + insight + capture box. The spec
+   explicitly allows the shrink; it buys the actionable panels a place above the
+   fold — Active Tasks starts at y≈510 on a 1920-tall screen.
+2. Active Tasks — "what should I be doing right now": the shortest and most
+   time-sensitive list, so it earns the eye-level slot at little height cost.
+3. Today's Schedule — the panel the spec names as portrait's winner.
+   `min-h-[42vh]` (≈806px at 1920, ≈1075 at 2560 — scales with the monitor),
+   a MINIMUM not a cap: a packed day extends the panel (measured 1,124px with
+   the harness's 8-item day, body `scrollHeight === clientHeight`, no inner
+   scroll — on ultrawide the same day scrolls inside 640px). On a sparse day
+   the slot list becomes a flex column (`tall:flex tall:flex-col tall:flex-1`)
+   and each slot `tall:grow`s into the spare room (measured 157/117/117/157/117
+   on a day holding only two weekly items) — bigger drop targets, not a hollow
+   panel. `grow` (basis auto), never `flex-1` (basis 0), so a full slot is never
+   clipped by its `overflow-hidden`.
+4. Weekly Tasks — checked off a few times a day; compact 7-cube rows.
+5. Upcoming Days — planning horizon and the schedule's day-picker; it's a wide
+   element (three 240px day blocks) that needs the full column.
+6. Active Jobs | Reminders — change rarely, glance-only; side by side in an
+   auto-fit grid (two 376px cells at 1080).
+7. Finance (placeholder until Phase 6), then the category backlogs in the
+   existing auto-fit grid (two columns at 1080, three at 1440).
+
+**Verified, 2026-09-02 (harness, exact viewports):**
+- 1080×1920: `tall` true, `isDesktop` true; panel order exactly as above; orb
+  240; header single-row (65px = the 44px pencil + padding, same as ultrawide);
+  sticky header top=0 after scrolling; page ≈4,070px tall (~2 screens).
+- 1440×2560 (27" rotated): same order, orb 240, schedule ≥1075 min, categories
+  three columns.
+- 2560×1440 ultrawide: `tall` false; flank grid 852|520|852, row 640, orb 380,
+  original DOM order, schedule scrolls internally as before; the `tall:` slot
+  classes are inert (`display:block`, `flex-grow:0`).
+- 375×812 phone: `tall` false, BriefView + mobile header render, no horizontal
+  overflow. Code path untouched by this change.
+
+**Seen while verifying, NOT fixed (pre-existing, phone only):** in the mobile
+BriefView the Weekly Tasks rows overflow — seven cubes are wider than a 375px
+screen, so the recurrence/section chips overlap the Monday cube. Nothing in
+this change touches that path; it's a separate phone-layout fix.
