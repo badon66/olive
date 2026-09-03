@@ -507,7 +507,11 @@ export function TodaySchedulePanel({
       )}
 
       {!historical && (
-      <div className="space-y-2">
+      // `tall:` (portrait monitor, CLAUDE.md): the dashboard hands this panel a
+      // generous minimum height there, so the slot list becomes a flex column
+      // that fills it and each slot grows into the spare room — a busier
+      // drop target, not a hollow panel. No effect on any other layout.
+      <div className="space-y-2 tall:space-y-0 tall:flex tall:flex-col tall:gap-2 tall:flex-1">
         {SCHEDULE_SLOTS.map((slot) => {
           // Morning is emptied when the bedtime rule fires — its tasks move to the
           // prompt above rather than being listed here.
@@ -652,7 +656,7 @@ export function TodaySchedulePanel({
             <DropZone
               key={slot.key}
               id={`section:${slot.section}:${viewDate}`}
-              className={`relative overflow-hidden border rounded p-2 transition-colors duration-200 ${
+              className={`relative overflow-hidden border rounded p-2 tall:grow transition-colors duration-200 ${
                 isNow
                   ? "border-signal/60 bg-signal/[0.05] shadow-[0_0_12px_rgba(63,169,104,0.18)]"
                   : "border-signal-dim/15"

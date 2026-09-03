@@ -9,6 +9,7 @@ import { carryoverTasks } from "../lib/dayrules";
 import { candidatesFor, isFlexible, loadByDay, planPlacements } from "../lib/flexible";
 import { activeCount } from "../lib/jobs";
 import { useBrief } from "../hooks/useBrief";
+import { PORTRAIT_MONITOR_QUERY, useMediaQuery } from "../hooks/useMediaQuery";
 import { addDays, daysBetween, edmontonActiveDay, edmontonHour, edmontonMinutes, edmontonToday, fullDateLabel } from "../lib/dates";
 import { buildInsight } from "../lib/insight";
 import { computeSections, doneTodayCount } from "../lib/sections";
@@ -95,6 +96,10 @@ export function DesktopDashboard({
   const [now, setNow] = useState(() => new Date());
   // Previous-day navigation for Today's Schedule: 0 = today, down to -3.
   const [scheduleOffset, setScheduleOffset] = useState(0);
+  // Third layout target (CLAUDE.md): a desktop monitor rotated to portrait.
+  // Same query as the `tall:` CSS variant, so the DOM order chosen here and the
+  // styling chosen there always flip together.
+  const tall = useMediaQuery(PORTRAIT_MONITOR_QUERY);
 
   useEffect(() => {
     const iv = setInterval(() => setNow(new Date()), 30_000);
@@ -296,6 +301,183 @@ export function DesktopDashboard({
     };
   };
 
+  // Panel bodies shared by the two arrangements below. The ultrawide layout is
+  // the BUILD_PLAN one and renders exactly as it did before portrait existed;
+  // the portrait branch reuses these same bodies in a different order with
+  // different framing, so the two can never drift apart in content.
+  const activeTasksBody = (
+    <ActiveTasksPanel
+      section={nowSection}
+      dueToday={activeDue}
+      cardProps={activeCardProps}
+      weeklyBits={weeklyStore}
+      onSaveOrder={taskStore.saveOrder}
+      onSaveWeeklyOrder={weeklyStore.saveWeeklyOrder}
+      onWeeklyDoubleClick={(w, date) => setActionFor({ kind: "weekly", weekly: w, date })}
+      loading={loading || weeklyStore.loading}
+    />
+  );
+  const activeJobsHint = <span className="hud-chip">{activeCount(jobStore.jobs)}</span>;
+  const activeJobsBody = (
+    <ActiveJobsPanel
+      loading={jobStore.loading}
+      jobs={jobStore.jobs}
+      tasks={tasks}
+      today={today}
+      categoryStore={categoryStore}
+      onOpen={onOpenJobs}
+      onEditStatus={(id, status) => void jobStore.updateJob(id, { status })}
+      onAddTask={(jobId) => setAddTaskFor({ job_id: jobId })}
+      customize={customize}
+    />
+  );
+  // Orb + greeting + insight + capture box. Portrait shrinks the orb (the spec
+  // explicitly allows it) so the actionable panels start above the fold.
+  const centreInner = (
+    <>
+      <Orb size={tall ? 240 : 380} />
+      <p className="font-display text-[26px] font-medium tracking-wide text-hud -mt-3 text-center">
+        {greeting(edmontonHourNow)}
+      </p>
+      {/* What actually matters right now: next booking, else the top
+          item in this part of day, with a real progress stat */}
+      <p className="text-[15px] text-hud/90 leading-snug text-center max-w-[460px]">
+        {loading || briefLoading ? "Pulling up your day…" : insight.headline}
+      </p>
+      <p className="font-data text-[11px] text-dim tracking-wide text-center flex items-center gap-2">
+        {loading || briefLoading ? "" : insight.stat}
+        {/* Rehomed from the deleted Priorities header — the brief still
+            needs a regenerate control, it just has no panel of its own now. */}
+        <button
+          onClick={() => void regenerate()}
+          className="hud-chip hud-chip-signal cursor-pointer focus-visible:outline-2 focus-visible:outline-signal"
+          aria-label="Regenerate brief"
+        >
+          {briefLoading ? "…" : generatedAt ? `⟳ ${generatedAt}` : "⟳ generate"}
+        </button>
+      </p>
+      {error && <p className="text-amber text-xs">{error} — showing live data.</p>}
+      <div className="w-full max-w-[520px] mt-1">
+        <ChatBar
+          onActionDone={async () => {
+            await Promise.all([taskStore.refresh(), categoryStore.refresh(), jobStore.refresh()]);
+          }}
+          inline
+          taskTitleById={(id) => tasks.find((t) => t.id === id)?.title}
+        />
+      </div>
+    </>
+  );
+  const scheduleHint = (
+    <span className="flex items-center gap-2">
+      <span className="hud-chip">{scheduleDue.length}</span>
+      <DayNavigator nav={dayNav} />
+    </span>
+  );
+  const scheduleBody = (
+    <TodaySchedulePanel
+      bare
+      dueToday={scheduleDue}
+      openTasks={otherDay ? [] : open}
+      cardProps={cardProps}
+      // Weekly occurrences render for today AND future days; only
+      // genuinely-past (historical) days go without. Gating on
+      // otherDay stripped them from every non-today view — the exact
+      // regression the appearsOn() fix was meant to close.
+      weeklyBits={scheduleDate < activeDay ? undefined : weeklyStore}
+      carryover={otherDay ? [] : carryover}
+      dayNav={dayNav}
+      onMoveSection={(id, section) => taskStore.updateTask(id, { time_section: section })}
+      onSaveOrder={taskStore.saveOrder}
+      onSaveWeeklyOrder={weeklyStore.saveWeeklyOrder}
+      onWeeklyDoubleClick={(w, date) => setActionFor({ kind: "weekly", weekly: w, date })}
+      nowSection={nowSection}
+      nowMinutes={edmontonMinutes(now)}
+      activeDay={activeDay}
+      loading={loading || weeklyStore.loading}
+    />
+  );
+  // Finance — full width edge to edge, deliberately taller than a normal panel
+  const financeSection = (
+    <DashSection
+      title="Finance"
+      customize={customize}
+      hint={<span className="hud-chip">soon</span>}
+      className="min-h-[150px]"
+    >
+      <p className="text-dim text-xs py-1">Balance and spending land here in Phase 6.</p>
+    </DashSection>
+  );
+  const weeklySection = (
+    <DropZone id="weekly">
+      <DashSection
+        title="Weekly Tasks"
+        customize={customize}
+        onAdd={() => setAddWeekly(true)}
+        hint={<span className="hud-chip">{weeklyStore.weeklyTasks.length}</span>}
+      >
+        <WeeklyDropHint />
+        <WeeklyTasksView {...weeklyStore} bare customize={customize} />
+      </DashSection>
+    </DropZone>
+  );
+  const upcomingBody = (
+    <UpcomingDaysPanel
+      bare
+      tasks={tasks}
+      today={today}
+      onEdit={setEditing}
+      selectedDate={scheduleDate}
+      onSelectDay={selectDay}
+      weeklyTasks={weeklyStore.weeklyTasks}
+      checkins={weeklyStore.checkins}
+      categoryOf={cardProps.categoryOf}
+    />
+  );
+  // Compact and low-priority per spec — a glance at what's coming,
+  // never a core panel. Its own grid cell, so it can't overlap.
+  const remindersSection = (
+    <DashSection
+      title="Reminders"
+      customize={customize}
+      onAdd={onOpenReminders}
+      hint={<span className="hud-chip">{reminderStore.reminders.filter((r) => r.active).length}</span>}
+    >
+      <RemindersPanel store={reminderStore} onAdd={onOpenReminders} />
+    </DashSection>
+  );
+  // The category panels — bottom of the page in both arrangements
+  const categoryGrid = (
+    <div className="grid grid-cols-1 lg:grid-cols-[repeat(auto-fit,minmax(300px,1fr))] gap-3 items-start">
+      {categoryStore.categories.map((cat) => (
+        <DashSection
+          key={cat.id}
+          title={cat.name}
+          customize={customize}
+          onAdd={() => setAddTaskFor({ category_id: cat.id })}
+          className="border-l-[3px]"
+          hint={
+            <span className="flex items-center gap-1.5">
+              <span
+                className="w-2 h-2 rounded-full"
+                style={{ background: cat.color, boxShadow: `0 0 8px ${cat.color}` }}
+                aria-hidden="true"
+              />
+              <span className="hud-chip">{open.filter((t) => t.category_id === cat.id).length}</span>
+            </span>
+          }
+        >
+          <CategoryPanelBody
+            category={cat}
+            tasks={tasks}
+            cardProps={cardProps}
+            loading={loading}
+          />
+        </DashSection>
+      ))}
+    </div>
+  );
+
   return (
     <TaskDndProvider
       tasks={open}
@@ -326,8 +508,63 @@ export function DesktopDashboard({
           </div>
         </header>
 
-        {/* FIXED LAYOUT (BUILD_PLAN) — not user-rearrangeable. pt-5 gives the first
-            row clear breathing room below the sticky header. */}
+        {tall ? (
+          /* PORTRAIT MONITOR (CLAUDE.md third target) — a rotated 24" at ~1080
+             wide, where the three-column flank cannot fit. One column, ordered
+             by how often the eye comes back to each panel during a working day
+             on a SIDE monitor: the top of a tall screen is where a glance lands,
+             the bottom needs a deliberate look down.
+               1. orb (shrunk) + capture — identity, the one-line insight, input
+               2. Active Tasks — "what now": shortest, most time-sensitive list
+               3. Today's Schedule — the panel that wins the vertical room
+               4. Weekly Tasks — checked off a few times a day
+               5. Upcoming Days — planning horizon; also the schedule's day-picker
+               6. Active Jobs | Reminders — change rarely, glance-only
+               7. Finance (placeholder until Phase 6), then the category backlogs */
+          <div className="px-6 pt-4 pb-8 flex flex-col gap-4">
+            <div className="flex flex-col items-center gap-2">
+              {centreInner}
+            </div>
+
+            <DashSection title="Active Tasks" customize={customize}>
+              {activeTasksBody}
+            </DashSection>
+
+            {/* Generous height as a viewport share, so a taller monitor gives it
+                more, and a MIN rather than a cap: a packed day extends the panel
+                instead of scrolling inside it. The slots grow to fill the room
+                (TodaySchedulePanel's `tall:` classes) rather than sitting at the
+                top of a hollow panel — spare space becomes drop-target area. */}
+            <DashSection
+              title={scheduleTitle}
+              customize={customize}
+              onAdd={() => setAddTaskFor({ due_date: scheduleDate })}
+              hint={scheduleHint}
+              className="min-h-[42vh]"
+              bodyClassName="flex flex-col"
+            >
+              {scheduleBody}
+            </DashSection>
+
+            {weeklySection}
+
+            <DashSection title="Upcoming Days" customize={customize}>
+              {upcomingBody}
+            </DashSection>
+
+            <div className="grid grid-cols-[repeat(auto-fit,minmax(340px,1fr))] gap-4 items-start">
+              <DashSection title="Active Jobs" customize={customize} hint={activeJobsHint}>
+                {activeJobsBody}
+              </DashSection>
+              {remindersSection}
+            </div>
+
+            {financeSection}
+            {categoryGrid}
+          </div>
+        ) : (
+        /* FIXED LAYOUT (BUILD_PLAN) — not user-rearrangeable. pt-5 gives the first
+           row clear breathing room below the sticky header. */
         <div className="px-6 pt-5 pb-6 flex flex-col gap-3">
           {/* Flanking row: the left and right columns run the FULL height of the
               centre unit (orb + capture box together), not just the orb. */}
@@ -340,70 +577,21 @@ export function DesktopDashboard({
               {/* Firm 50/50 split — Active Jobs gets its own half, it doesn't
                   just absorb whatever Active Tasks leaves over. */}
               <DashSection title="Active Tasks" customize={customize} className="basis-1/2 grow-0 shrink-0 min-h-0">
-                <ActiveTasksPanel
-                  section={nowSection}
-                  dueToday={activeDue}
-                  cardProps={activeCardProps}
-                  weeklyBits={weeklyStore}
-                  onSaveOrder={taskStore.saveOrder}
-                  onSaveWeeklyOrder={weeklyStore.saveWeeklyOrder}
-                  onWeeklyDoubleClick={(w, date) => setActionFor({ kind: "weekly", weekly: w, date })}
-                  loading={loading || weeklyStore.loading}
-                />
+                {activeTasksBody}
               </DashSection>
               <DashSection
                 title="Active Jobs"
                 customize={customize}
-                hint={<span className="hud-chip">{activeCount(jobStore.jobs)}</span>}
+                hint={activeJobsHint}
                 className="basis-1/2 grow-0 shrink-0 min-h-0"
               >
-                <ActiveJobsPanel
-                  loading={jobStore.loading}
-                  jobs={jobStore.jobs}
-                  tasks={tasks}
-                  today={today}
-                  categoryStore={categoryStore}
-                  onOpen={onOpenJobs}
-                  onEditStatus={(id, status) => void jobStore.updateJob(id, { status })}
-                  onAddTask={(jobId) => setAddTaskFor({ job_id: jobId })}
-                  customize={customize}
-                />
+                {activeJobsBody}
               </DashSection>
             </div>
 
             {/* CENTRE unit — orb at full size, capture box directly beneath it */}
             <div className="flex flex-col items-center justify-center gap-2 h-full">
-              <Orb size={380} />
-              <p className="font-display text-[26px] font-medium tracking-wide text-hud -mt-3 text-center">
-                {greeting(edmontonHourNow)}
-              </p>
-              {/* What actually matters right now: next booking, else the top
-                  item in this part of day, with a real progress stat */}
-              <p className="text-[15px] text-hud/90 leading-snug text-center max-w-[460px]">
-                {loading || briefLoading ? "Pulling up your day…" : insight.headline}
-              </p>
-              <p className="font-data text-[11px] text-dim tracking-wide text-center flex items-center gap-2">
-                {loading || briefLoading ? "" : insight.stat}
-                {/* Rehomed from the deleted Priorities header — the brief still
-                    needs a regenerate control, it just has no panel of its own now. */}
-                <button
-                  onClick={() => void regenerate()}
-                  className="hud-chip hud-chip-signal cursor-pointer focus-visible:outline-2 focus-visible:outline-signal"
-                  aria-label="Regenerate brief"
-                >
-                  {briefLoading ? "…" : generatedAt ? `⟳ ${generatedAt}` : "⟳ generate"}
-                </button>
-              </p>
-              {error && <p className="text-amber text-xs">{error} — showing live data.</p>}
-              <div className="w-full max-w-[520px] mt-1">
-                <ChatBar
-                  onActionDone={async () => {
-                    await Promise.all([taskStore.refresh(), categoryStore.refresh(), jobStore.refresh()]);
-                  }}
-                  inline
-                  taskTitleById={(id) => tasks.find((t) => t.id === id)?.title}
-                />
-              </div>
+              {centreInner}
             </div>
 
             {/* RIGHT flank — Today's Schedule, full height of the centre unit */}
@@ -411,119 +599,31 @@ export function DesktopDashboard({
               title={scheduleTitle}
               customize={customize}
               onAdd={() => setAddTaskFor({ due_date: scheduleDate })}
-              hint={
-                <span className="flex items-center gap-2">
-                  <span className="hud-chip">{scheduleDue.length}</span>
-                  <DayNavigator nav={dayNav} />
-                </span>
-              }
+              hint={scheduleHint}
               className="h-full min-h-0"
             >
-              <TodaySchedulePanel
-                bare
-                dueToday={scheduleDue}
-                openTasks={otherDay ? [] : open}
-                cardProps={cardProps}
-                // Weekly occurrences render for today AND future days; only
-                // genuinely-past (historical) days go without. Gating on
-                // otherDay stripped them from every non-today view — the exact
-                // regression the appearsOn() fix was meant to close.
-                weeklyBits={scheduleDate < activeDay ? undefined : weeklyStore}
-                carryover={otherDay ? [] : carryover}
-                dayNav={dayNav}
-                onMoveSection={(id, section) => taskStore.updateTask(id, { time_section: section })}
-                onSaveOrder={taskStore.saveOrder}
-                onSaveWeeklyOrder={weeklyStore.saveWeeklyOrder}
-                onWeeklyDoubleClick={(w, date) => setActionFor({ kind: "weekly", weekly: w, date })}
-                nowSection={nowSection}
-                nowMinutes={edmontonMinutes(now)}
-                activeDay={activeDay}
-                loading={loading || weeklyStore.loading}
-              />
+              {scheduleBody}
             </DashSection>
           </div>
 
-          {/* Finance — full width edge to edge, deliberately taller than a normal panel */}
-          <DashSection
-            title="Finance"
-            customize={customize}
-            hint={<span className="hud-chip">soon</span>}
-            className="min-h-[150px]"
-          >
-            <p className="text-dim text-xs py-1">Balance and spending land here in Phase 6.</p>
-          </DashSection>
+          {financeSection}
 
           {/* Below Finance — Weekly Tasks (left) | Upcoming Days → Reminders (right) */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 items-start">
-            <DropZone id="weekly">
-              <DashSection
-                title="Weekly Tasks"
-                customize={customize}
-                onAdd={() => setAddWeekly(true)}
-                hint={<span className="hud-chip">{weeklyStore.weeklyTasks.length}</span>}
-              >
-                <WeeklyDropHint />
-                <WeeklyTasksView {...weeklyStore} bare customize={customize} />
-              </DashSection>
-            </DropZone>
+            {weeklySection}
 
             <div className="flex flex-col gap-3">
               <DashSection title="Upcoming Days" customize={customize}>
-                <UpcomingDaysPanel
-                  bare
-                  tasks={tasks}
-                  today={today}
-                  onEdit={setEditing}
-                  selectedDate={scheduleDate}
-                  onSelectDay={selectDay}
-                  weeklyTasks={weeklyStore.weeklyTasks}
-                  checkins={weeklyStore.checkins}
-                  categoryOf={cardProps.categoryOf}
-                />
+                {upcomingBody}
               </DashSection>
-              {/* Compact and low-priority per spec — a glance at what's coming,
-                  never a core panel. Its own grid cell, so it can't overlap. */}
-              <DashSection
-                title="Reminders"
-                customize={customize}
-                onAdd={onOpenReminders}
-                hint={<span className="hud-chip">{reminderStore.reminders.filter((r) => r.active).length}</span>}
-              >
-                <RemindersPanel store={reminderStore} onAdd={onOpenReminders} />
-              </DashSection>
+              {remindersSection}
             </div>
           </div>
 
           {/* Row 6 — the category panels, bottom of the page */}
-          <div className="grid grid-cols-1 lg:grid-cols-[repeat(auto-fit,minmax(300px,1fr))] gap-3 items-start">
-            {categoryStore.categories.map((cat) => (
-              <DashSection
-                key={cat.id}
-                title={cat.name}
-                customize={customize}
-                onAdd={() => setAddTaskFor({ category_id: cat.id })}
-                className="border-l-[3px]"
-                hint={
-                  <span className="flex items-center gap-1.5">
-                    <span
-                      className="w-2 h-2 rounded-full"
-                      style={{ background: cat.color, boxShadow: `0 0 8px ${cat.color}` }}
-                      aria-hidden="true"
-                    />
-                    <span className="hud-chip">{open.filter((t) => t.category_id === cat.id).length}</span>
-                  </span>
-                }
-              >
-                <CategoryPanelBody
-                  category={cat}
-                  tasks={tasks}
-                  cardProps={cardProps}
-                  loading={loading}
-                />
-              </DashSection>
-            ))}
-          </div>
+          {categoryGrid}
         </div>
+        )}
 
         {actionFor && (
           <TaskActionPopup

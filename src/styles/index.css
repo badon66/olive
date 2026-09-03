@@ -7,6 +7,14 @@
 @import "@fontsource/ibm-plex-mono/400.css";
 @import "@fontsource/ibm-plex-mono/500.css";
 
+/* Third layout target (CLAUDE.md): a desktop monitor rotated to PORTRAIT
+   (~1080×1920). Portrait alone would also catch phones, so the width floor
+   keeps this to desktop-scale screens. `tall:` utilities restack the dashboard
+   into one column. Must stay identical to PORTRAIT_MONITOR_QUERY in
+   src/hooks/useMediaQuery.ts — the JS side picks the orb size and DOM order,
+   this side does the styling, and they have to flip together. */
+@custom-variant tall (@media (orientation: portrait) and (min-width: 700px));
+
 @theme {
   /* v3 direction: darker, richer forest/emerald — muted, not neon */
   --color-void: #070d0a;
