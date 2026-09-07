@@ -1,8 +1,8 @@
 import { useMemo, useState, type FormEvent, type ReactNode } from "react";
 import type { WeeklyCheckin, WeeklyStore, WeeklyTask } from "../hooks/useWeeklyTasks";
 import { edmontonToday, weekRangeLabel } from "../lib/dates";
-import { SECTION_ORDER } from "../lib/sections";
-import { cubeStates, progress, weekDates, type CubeState } from "../lib/weekly";
+import { SECTION_ORDER, sectionOptionLabel } from "../lib/sections";
+import { cubeClickAction, cubeStates, progress, weekDates, type CubeState } from "../lib/weekly";
 import { DraggableWeekly } from "./board/TaskDnd";
 import { Portal } from "./Portal";
 import { SkeletonRows } from "./Skeleton";
@@ -45,7 +45,6 @@ export function WeeklyTasksView({
   planDay,
   completeDay,
   unplanDay,
-  uncompleteDay,
   bare = false,
   draggable = false,
   customize = false,
@@ -65,7 +64,8 @@ export function WeeklyTasksView({
   }, [checkins]);
 
   // Cube tap, gated by the top-corner pencil (BUILD_PLAN):
-  //  • pencil OFF (default): click marks that day complete (toggle).
+  //  • pencil OFF (default): a two-stage cycle — empty → planned → completed →
+  //    back to empty. One click never jumps straight to completed.
   //  • pencil ON (add/edit mode): click edits/moves — fixed-days toggles that
   //    weekday in/out of scheduled_days; count-mode plans/unplans that day.
   const onCube = async (t: WeeklyTask, date: string, state: CubeState, weekday: number) => {
@@ -81,14 +81,14 @@ export function WeeklyTasksView({
       }
       return;
     }
-    // Pencil OFF: mark this day complete (or undo it). Instant — no follow-up
-    // note/duration prompt (BUILD_PLAN: checking off is one tap, nothing else).
-    // A SKIPPED day restores to unset instead of completing: it used to render
-    // identically to empty, so one click on an invisible skip silently marked
-    // the day complete.
-    if (state === "completed") await uncompleteDay(t, date);
-    else if (state === "skipped") await unplanDay(t.id, date);
-    else await completeDay(t.id, date);
+    // Pencil OFF: the two-stage cycle, decided by cubeClickAction (tested).
+    // "clear" deletes the row — a count-mode day goes back to empty, a fixed
+    // scheduled day falls back to its virtual planned baseline, a skipped day
+    // is restored. Instant on every step — no follow-up note/duration prompt.
+    const action = cubeClickAction(state);
+    if (action === "plan") await planDay(t.id, date);
+    else if (action === "complete") await completeDay(t.id, date);
+    else await unplanDay(t.id, date);
   };
 
   if (loading) return <SkeletonRows count={4} />;
@@ -136,7 +136,11 @@ export function WeeklyTasksView({
                                 : `${DAY_ABBRS[i]} — click to plan / unplan`
                               : state === "skipped"
                                 ? `${DAY_ABBRS[i]} — skipped; click to restore`
-                                : `${DAY_ABBRS[i]} — click to mark ${state === "completed" ? "not done" : "done"}`
+                                : state === "completed"
+                                  ? `${DAY_ABBRS[i]} — done; click to clear`
+                                  : state === "planned"
+                                    ? `${DAY_ABBRS[i]} — planned; click to mark done`
+                                    : `${DAY_ABBRS[i]} — click to plan`
                           }
                           className={`w-14 h-14 shrink-0 rounded-md flex flex-col items-center justify-center gap-0.5 font-data cursor-pointer transition duration-150 border ${
                             state === "completed"
@@ -369,7 +373,7 @@ export function WeeklyTaskForm({
             <option value="" className="bg-void">—</option>
             {SECTION_ORDER.map((s) => (
               <option key={s} value={s} className="bg-void">
-                {s}
+                {sectionOptionLabel(s)}
               </option>
             ))}
           </select>

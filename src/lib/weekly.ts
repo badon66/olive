@@ -71,3 +71,16 @@ export function appearsOn(task: WeeklyTaskLike, checkins: CheckinLike[], date: s
   const completedThisWeek = checkins.filter((c) => c.status === "completed" && week.has(c.date)).length;
   return completedThisWeek < (task.target_per_week ?? 0);
 }
+
+// Pencil OFF, a cube click walks a two-stage cycle (BUILD_PLAN, 2026-09-04):
+// empty → planned → completed → back to empty. One click never jumps straight
+// to completed. "clear" removes the day's row: a count-mode day returns to
+// empty, a fixed scheduled day falls back to its virtual planned baseline, and
+// a skipped day is restored (unchanged behaviour).
+export type CubeClickAction = "plan" | "complete" | "clear";
+
+export function cubeClickAction(state: CubeState): CubeClickAction {
+  if (state === "empty") return "plan";
+  if (state === "planned") return "complete";
+  return "clear";
+}

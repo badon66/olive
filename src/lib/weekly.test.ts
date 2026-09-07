@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { appearsOn, cubeStates, mondayIndex, progress, weekDates } from "./weekly";
+import { appearsOn, cubeClickAction, cubeStates, mondayIndex, progress, weekDates } from "./weekly";
 
 // 2026-07-07 is a Tuesday; its week runs Mon 2026-07-06 … Sun 2026-07-12
 const TODAY = "2026-07-07";
@@ -96,4 +96,13 @@ describe("appearsOn", () => {
       appearsOn(countMode(2), [checkin("2026-07-06", "completed"), checkin("2026-07-07", "completed")], TODAY),
     ).toBe(false);
   });
+});
+
+// Pencil OFF, a cube click walks a two-stage cycle: empty → planned →
+// completed → back to empty. One click never jumps straight to completed.
+describe("cubeClickAction — the pencil-OFF click cycle", () => {
+  it("empty → plan", () => expect(cubeClickAction("empty")).toBe("plan"));
+  it("planned → complete", () => expect(cubeClickAction("planned")).toBe("complete"));
+  it("completed → clear (back to empty)", () => expect(cubeClickAction("completed")).toBe("clear"));
+  it("skipped → clear (restore, unchanged behaviour)", () => expect(cubeClickAction("skipped")).toBe("clear"));
 });
