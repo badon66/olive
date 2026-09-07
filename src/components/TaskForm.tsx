@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from "react";
 import type { Task, TaskInput } from "../hooks/useTasks";
 import type { CategoryRow } from "../hooks/useCategories";
-import { SECTION_ORDER, type TimeSection } from "../lib/sections";
+import { SECTION_ORDER, sectionOptionLabel, type TimeSection } from "../lib/sections";
 import { DatePickerPopup } from "./DatePickerPopup";
 import { CandidateDatesGrid } from "./CandidateDatesGrid";
 import { Portal } from "./Portal";
@@ -215,7 +215,7 @@ export function TaskForm({ initial, categories, onSubmit, onClose, onDelete, def
               <option value="" className="bg-void">—</option>
               {SECTION_ORDER.map((s) => (
                 <option key={s} value={s} className="bg-void">
-                  {s}
+                  {sectionOptionLabel(s)}
                 </option>
               ))}
             </select>

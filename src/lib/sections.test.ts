@@ -349,3 +349,24 @@ describe("computeSections — a flexible task isn't overdue while options remain
     expect(out.overdue.map((t: { id: string }) => t.id)).toEqual(["a"]);
   });
 });
+
+import { sectionOptionLabel } from "./sections";
+
+// Every time_section picker shows the clock range beside the name — the same
+// ranges Today's Schedule headers use (one shared table), in a compact form.
+describe("sectionOptionLabel — picker labels with clock ranges", () => {
+  it("fixed sections show their range once, with the meridiem shared", () => {
+    expect(sectionOptionLabel("midday")).toBe("Midday (12–4 PM)");
+    expect(sectionOptionLabel("afternoon")).toBe("Afternoon (4–6 PM)");
+    expect(sectionOptionLabel("evening")).toBe("Evening (6–11 PM)");
+  });
+  it("a range crossing midnight spells out both meridiems", () => {
+    expect(sectionOptionLabel("night")).toBe("Night (11 PM–5 AM)");
+  });
+  it("morning is wake-relative, so it says so rather than guessing a wake time", () => {
+    expect(sectionOptionLabel("morning")).toBe("Morning (wake–12 PM)");
+  });
+  it("anytime has no range", () => {
+    expect(sectionOptionLabel("anytime")).toBe("Anytime");
+  });
+});

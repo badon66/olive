@@ -31,6 +31,28 @@ export function sectionClockLabel(section: TimeSection, wakeTime = "11:00"): str
   return r ? `${to12h(r[0])} – ${to12h(r[1])}` : null;
 }
 
+// Compact hour for picker labels: "12" / "4" / "7:30", plus its meridiem.
+function compactClock(hhmm: string): { num: string; sfx: "AM" | "PM" } {
+  const [h, m] = hhmm.split(":").map(Number);
+  const h12 = h % 12 === 0 ? 12 : h % 12;
+  return { num: m === 0 ? String(h12) : `${h12}:${String(m).padStart(2, "0")}`, sfx: h < 12 ? "AM" : "PM" };
+}
+
+// Label for every time_section picker (BUILD_PLAN, 2026-09-04): the section
+// name with its clock range, e.g. "Midday (12–4 PM)". Reads the SAME
+// SECTION_CLOCK table as the Today's Schedule headers, so the two cannot
+// disagree. Morning is wake-relative and the forms don't know the day's wake
+// time, so it says "wake" instead of guessing one.
+export function sectionOptionLabel(section: TimeSection): string {
+  const name = section.charAt(0).toUpperCase() + section.slice(1);
+  if (section === "morning") return `${name} (wake–12 PM)`;
+  const r = SECTION_CLOCK[section];
+  if (!r) return name;
+  const a = compactClock(r[0]);
+  const b = compactClock(r[1]);
+  return a.sfx === b.sfx ? `${name} (${a.num}–${b.num} ${a.sfx})` : `${name} (${a.num} ${a.sfx}–${b.num} ${b.sfx})`;
+}
+
 // Today's Schedule ribbon — a plain chronological sequence:
 // Morning → Midday → Afternoon → Evening → Night, plus Anytime for the
 // section-less leftovers.

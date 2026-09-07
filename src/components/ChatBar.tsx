@@ -1,7 +1,7 @@
 import { useRef, useState, type FormEvent } from "react";
 import { commitAssistant, previewAssistant, sendToAssistant, type AssistantAction, type JobContext } from "../lib/api";
 import { JOB_STATUSES, JOB_STATUS_LABELS } from "../lib/jobs";
-import { SECTION_ORDER } from "../lib/sections";
+import { SECTION_ORDER, sectionOptionLabel } from "../lib/sections";
 import { Portal } from "./Portal";
 import { SectionPencil } from "./SectionPencil";
 
@@ -226,7 +226,7 @@ export function ChatBar({
                             <select className="hud-input !min-h-[38px] text-sm cursor-pointer" value={a.time_section ?? ""} onChange={(e) => patchAction(idx, { time_section: e.target.value || null })}>
                               <option value="" className="bg-void">any part of day</option>
                               {SECTION_ORDER.map((s) => (
-                                <option key={s} value={s} className="bg-void">{s}</option>
+                                <option key={s} value={s} className="bg-void">{sectionOptionLabel(s)}</option>
                               ))}
                             </select>
                             <select className="hud-input !min-h-[38px] text-sm cursor-pointer" value={a.priority_weight ?? 3} onChange={(e) => patchAction(idx, { priority_weight: Number(e.target.value) })}>
