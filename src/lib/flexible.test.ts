@@ -212,3 +212,64 @@ describe("planPlacements — one pass, no oscillation", () => {
     ]);
   });
 });
+
+// The live "Sept 6 / Sept 7" flicker (2026-09-04). The dashboard builds its load
+// map from EVERY open task — including the flexible task itself, sitting on its
+// current day. A 60-minute task alone in its window therefore saw "my day: 60,
+// next day: 0", beat the 45-minute slack, moved, saw the mirror image, moved
+// back. Its own weight must never count as a reason to leave.
+describe("a task's own weight never counts against its current day", () => {
+  const solo = (due: string): FlexibleTask & { duration_minutes: number } => ({
+    ...t({ due_date: due, placed_date: due, window_start: "2026-08-16", window_end: "2026-08-18" }),
+    duration_minutes: 60,
+  });
+  const horizon = ["2026-08-16", "2026-08-17", "2026-08-18"];
+
+  it("a lone 60-minute task stays where it is", () => {
+    const task = solo("2026-08-16");
+    const l = loadByDay([task], horizon); // exactly what the dashboard feeds it
+    expect(replacementFor(task, TODAY, l)).toBeNull();
+  });
+
+  it("…and is just as stable from the neighbouring day (no oscillation)", () => {
+    const task = solo("2026-08-17");
+    const l = loadByDay([task], horizon);
+    expect(replacementFor(task, TODAY, l)).toBeNull();
+  });
+
+  it("replaying the dashboard's re-render loop converges instead of alternating", () => {
+    let state = [solo("2026-08-16")];
+    const seen: string[] = [];
+    for (let pass = 0; pass < 6; pass++) {
+      const l = loadByDay(state, horizon);
+      const moves = planPlacements(state, TODAY, l);
+      if (moves.length === 0) break;
+      state = state.map((x) => (x.id === moves[0].id ? { ...x, due_date: moves[0].target, placed_date: moves[0].target } : x));
+      seen.push(moves[0].target);
+    }
+    // At most one settling move, never a ping-pong.
+    expect(seen.length).toBeLessThanOrEqual(1);
+    expect(new Set(seen).size).toBe(seen.length);
+  });
+
+  it("still leaves a day that OTHER work has genuinely filled", () => {
+    const task = solo("2026-08-16");
+    const others = [{ due_date: "2026-08-16", status: "open", duration_minutes: 120 }];
+    const l = loadByDay([task, ...others], horizon);
+    expect(replacementFor(task, TODAY, l)).toBe("2026-08-17");
+  });
+});
+
+// Second live finding: a window task whose due_date lies OUTSIDE its own window
+// (due the 19th, window 16th–18th) was never placed — a day missing from the
+// load map read as "0 minutes busy", so staying put always looked fine.
+describe("a task sitting outside its window is placed onto a candidate", () => {
+  it("moves onto the least-busy candidate day", () => {
+    const task = {
+      ...t({ due_date: "2026-08-19", placed_date: null, window_start: "2026-08-16", window_end: "2026-08-18" }),
+      duration_minutes: 35,
+    };
+    const l = load([["2026-08-16", 60], ["2026-08-17", 0], ["2026-08-18", 0]]);
+    expect(replacementFor(task, TODAY, l)).toBe("2026-08-17");
+  });
+});

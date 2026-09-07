@@ -18,6 +18,10 @@ export type FlexibleTask = {
   window_start: string | null;
   window_end: string | null;
   candidate_dates: string[] | null;
+  // Needed to subtract the task's OWN weight from its current day when deciding
+  // whether to leave it (see replacementFor). Optional so callers that only
+  // ask "is this flexible / overdue" need not supply it.
+  duration_minutes?: number | null;
 };
 
 export function isFlexible(t: Pick<FlexibleTask, "window_start" | "candidate_dates">): boolean {
@@ -101,6 +105,23 @@ export function bestPlacement(
 // two nearly-equal days.
 const SLACK_MINUTES = 45;
 
+// CONTRACT: `load` is built from EVERY open task — this one included, sitting on
+// its current day — exactly as the dashboard's loadByDay(open, horizon) does.
+//
+// The task's own weight must not count as a reason to leave. Without this, a
+// 60-minute task alone in its window read "my day: 60, next day: 0", beat the
+// slack, moved, saw the mirror image on the new day, and moved back — forever.
+// That was the live "Sept 6 / Sept 7" flicker (2026-09-04): every one of the 60
+// minutes it was fleeing from was itself.
+function withoutSelf(t: FlexibleTask, load: Map<string, DayLoad>, current: string): Map<string, DayLoad> {
+  const slot = load.get(current);
+  if (!slot) return load;
+  const own = t.duration_minutes ?? ASSUMED_MINUTES;
+  const view = new Map(load);
+  view.set(current, { ...slot, minutes: Math.max(0, slot.minutes - own), count: Math.max(0, slot.count - 1) });
+  return view;
+}
+
 export function replacementFor(
   t: FlexibleTask,
   today: string,
@@ -108,16 +129,22 @@ export function replacementFor(
   slackMinutes = SLACK_MINUTES,
 ): string | null {
   if (t.status !== "open" || !isFlexible(t)) return null;
-  const target = bestPlacement(t, today, load);
-  if (target === null) return null; // exhausted — it's overdue, not movable
   const current = t.placed_date ?? t.due_date;
+  // Decide against the world WITHOUT this task's own weight on its current day.
+  const view = current === null ? load : withoutSelf(t, load, current);
+  const target = bestPlacement(t, today, view);
+  if (target === null) return null; // exhausted — it's overdue, not movable
   if (current === null) return target; // never placed
   if (current === target) return null;
+  // A day outside the task's own options is not a placement at all — the task
+  // was created or edited with a due_date its window doesn't contain (seen
+  // live: due the 9th, window 6th–8th). Any candidate beats it.
+  if (!candidatesFor(t).includes(current)) return target;
   // Staying put is fine unless the current day is meaningfully busier, or the
   // current day has already passed (then any remaining option beats it).
   if (current < today) return target;
-  const currentLoad = load.get(current)?.minutes ?? 0;
-  const targetLoad = load.get(target)?.minutes ?? 0;
+  const currentLoad = view.get(current)?.minutes ?? 0;
+  const targetLoad = view.get(target)?.minutes ?? 0;
   return currentLoad - targetLoad > slackMinutes ? target : null;
 }
 
