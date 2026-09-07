@@ -1,6 +1,7 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import type { Reminder, ReminderInput } from "../hooks/useReminders";
 import { RECURRENCE_LABELS, RECURRENCE_TYPES, type RecurrenceType } from "../lib/reminders";
+import { clampVolume, DEFAULT_SOUND_ID, playSound, SOUNDS, stopSound } from "../lib/sounds";
 import { Portal } from "./Portal";
 import { useEscape } from "./useEscape";
 
@@ -26,7 +27,14 @@ export function ReminderForm({
   const [days, setDays] = useState<number[]>(initial?.days_of_week ?? []);
   const [dayOfMonth, setDayOfMonth] = useState(String(initial?.day_of_month ?? 1));
   const [timeOfDay, setTimeOfDay] = useState(initial?.time_of_day?.slice(0, 5) ?? "09:00");
+  // Alert policy (BUILD_PLAN): sound, volume, and how insistently it repeats.
+  const [soundId, setSoundId] = useState(initial?.sound_id ?? DEFAULT_SOUND_ID);
+  const [volume, setVolume] = useState(clampVolume(initial?.volume));
+  const [maxRepeats, setMaxRepeats] = useState(String(initial?.max_repeats ?? 10));
+  const [repeatSeconds, setRepeatSeconds] = useState(String(initial?.repeat_interval_seconds ?? 20));
   const [busy, setBusy] = useState(false);
+  // A preview left ringing after the modal closes would be a bug, not a feature.
+  useEffect(() => () => stopSound(soundId), [soundId]);
   useEscape(onClose);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
 
@@ -51,6 +59,12 @@ export function ReminderForm({
       days_of_week: type === "weekly" ? [...days].sort((a, b) => a - b) : null,
       day_of_month: type === "monthly" ? Math.min(31, Math.max(1, Number(dayOfMonth))) : null,
       time_of_day: type === "daily" || type === "weekly" || type === "monthly" ? timeOfDay : null,
+      sound_id: soundId,
+      volume: clampVolume(volume),
+      // Clamped to the same range the DB check constraint enforces, so a typed
+      // value can never fail the insert silently.
+      max_repeats: Math.min(100, Math.max(1, Number(maxRepeats) || 10)),
+      repeat_interval_seconds: Math.min(3600, Math.max(1, Number(repeatSeconds) || 20)),
     });
     setBusy(false);
     onClose();
@@ -167,6 +181,78 @@ export function ReminderForm({
               <input className="hud-input" type="time" value={timeOfDay} onChange={(e) => setTimeOfDay(e.target.value)} required />
             </label>
           )}
+
+          {/* ── Alert policy ────────────────────────────────────────────── */}
+          <fieldset className="space-y-1.5 pt-1 border-t border-panel-border">
+            <legend className="font-data text-xs text-dim uppercase tracking-wider pt-2">Sound</legend>
+            <div className="flex flex-col gap-1.5" role="radiogroup" aria-label="Notification sound">
+              {SOUNDS.map((s) => (
+                <div
+                  key={s.id}
+                  className={`flex items-center gap-2 rounded border pl-3 pr-1.5 py-1 transition-colors duration-200 ${
+                    soundId === s.id ? "border-signal bg-signal/10" : "border-signal-dim/40"
+                  }`}
+                >
+                  <button
+                    type="button"
+                    role="radio"
+                    aria-checked={soundId === s.id}
+                    onClick={() => setSoundId(s.id)}
+                    className={`flex-1 text-left min-h-[38px] font-body text-[15px] cursor-pointer ${
+                      soundId === s.id ? "text-signal" : "text-dim hover:text-hud"
+                    }`}
+                  >
+                    {s.label}
+                  </button>
+                  {/* Hear it before committing to it (BUILD_PLAN). Plays at the
+                      volume actually configured, so the slider is auditioned too. */}
+                  <button
+                    type="button"
+                    onClick={() => playSound(s.id, volume)}
+                    aria-label={`Preview ${s.label}`}
+                    title={`Preview ${s.label}`}
+                    className="shrink-0 w-9 h-9 grid place-items-center rounded border border-signal/40 text-signal cursor-pointer hover:bg-signal/15 focus-visible:outline-2 focus-visible:outline-signal"
+                  >
+                    <svg viewBox="0 0 24 24" className="w-3.5 h-3.5" fill="currentColor" aria-hidden="true">
+                      <path d="M8 5v14l11-7z" />
+                    </svg>
+                  </button>
+                </div>
+              ))}
+            </div>
+          </fieldset>
+
+          <label className="block space-y-1">
+            {label(`Volume — ${Math.round(volume * 100)}%`)}
+            <input
+              type="range"
+              min="0"
+              max="1"
+              step="0.05"
+              value={volume}
+              onChange={(e) => setVolume(Number(e.target.value))}
+              // Committing the drag auditions the new level, rather than making
+              // the user guess what 40% sounds like.
+              onMouseUp={() => playSound(soundId, volume)}
+              onTouchEnd={() => playSound(soundId, volume)}
+              aria-label="Notification volume"
+              className="w-full h-11 cursor-pointer accent-[var(--color-signal)]"
+            />
+          </label>
+
+          <div className="flex gap-3">
+            <label className="flex-1 block space-y-1">
+              {label("Repeat times")}
+              <input className="hud-input" type="number" min="1" max="100" value={maxRepeats} onChange={(e) => setMaxRepeats(e.target.value)} />
+            </label>
+            <label className="flex-1 block space-y-1">
+              {label("Seconds apart")}
+              <input className="hud-input" type="number" min="1" max="3600" value={repeatSeconds} onChange={(e) => setRepeatSeconds(e.target.value)} />
+            </label>
+          </div>
+          <p className="text-dim/70 text-xs -mt-1">
+            Re-alerts until dismissed, then gives up quietly until the next occurrence.
+          </p>
 
           <div className="flex gap-3">
             {initial && onDelete && (
