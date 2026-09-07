@@ -371,3 +371,101 @@ so most-frequent first, reference material last):
 BriefView the Weekly Tasks rows overflow — seven cubes are wider than a 375px
 screen, so the recurrence/section chips overlap the Monday cube. Nothing in
 this change touches that path; it's a separate phone-layout fix.
+
+## Phase 2 — Reminders, full feature build (2026-09-06)
+
+BUILD_PLAN's Reminders section was specified but only partly built: the five
+recurrence types, the sidebar tab, the mini-panel and a beeping in-app alert
+existed; everything below is new.
+
+**Schema** (`20260906000001_reminders_full_build.sql`, applied live):
+- `reminders` gains `sound_id text` (default 'double_ding'), `volume numeric`
+  (0.7, CHECK 0–1), `max_repeats int` (10), `repeat_interval_seconds int` (20),
+  with a CHECK keeping the repeat policy sane. `sound_id` is deliberately free
+  TEXT, not an enum, so another file in `public/sounds/` needs only a line in
+  `src/lib/sounds.ts` — no migration (an explicit BUILD_PLAN requirement).
+- `reminder_fires` — one row per OCCURRENCE that came due. BUILD_PLAN's column
+  list plus `occurrence_at`, which is load-bearing: it is the idempotency key
+  (`unique (reminder_id, occurrence_at)`). BOTH the pg_cron tick and an open
+  browser raise fires — the cron's 5-minute cadence is far too coarse for an
+  "every 1 minute" reminder — so without it the same alert would fire twice.
+- `app_settings (user_id pk, reminders_globally_enabled)` — the master switch.
+  BUILD_PLAN says it "doesn't need its own table"; it does need a row somewhere,
+  because the CRON has to honour it server-side, and it must be RLS-scoped. One
+  row per user is that simple version.
+
+**Architecture — this also closes the audit's "reminder delivery race".** The
+old tick stamped `last_fired_at` whether or not anyone was watching, so an
+occurrence that came due while the app was closed was silently swallowed and
+never alerted. Now the tick RECORDS the occurrence as a fire row and the client
+ALERTS from pending rows, so a missed occurrence still alerts when the app
+reopens. The anchor advances to the OCCURRENCE, not to "now", so a late tick
+cannot drag the cadence progressively later.
+
+**Built:**
+- `src/lib/sounds.ts` — the four sounds, with an unknown-id fallback, clamped
+  volume, and a cached `<audio>` per sound so rapid re-alerts don't reallocate.
+  Autoplay rejection is swallowed: the visual alert is the real signal.
+- `CountdownRing.tsx` — the live ring. Per-frame updates are written straight to
+  the DOM through refs inside rAF; React never re-renders for them.
+  `stroke-dashoffset` is paint-only (no layout), the loop stops entirely while
+  the tab is hidden, and reduced-motion degrades to a 1 Hz tick. Turns amber
+  inside the last minute.
+- `lib/reminders.ts` — `dueOccurrence`, `attemptDueAt`/`needsAttempt`/
+  `isExhausted` (the repeat cadence), `secondsUntil`/`countdownLabel`, and
+  `cycleSeconds`, which spans the REAL gap between consecutive occurrences
+  (computed per recurrence shape, so a DST day is 23 or 25 hours and Mon/Wed/Fri
+  reports its uneven gaps) rather than a nominal window.
+- Repeat-until-dismissed: attempt N is due at `fired_at + N·interval`, so the
+  first alert is immediate and the 10th still fires. Once spent it stops and the
+  popup disappears — BUILD_PLAN is explicit that it must not linger as an
+  unresolved notification.
+- `ReminderForm` — sound picker with a per-sound preview button, volume slider
+  (auditioned on release), and repeat-policy fields clamped to the DB's own
+  CHECK bounds. Preview audio is stopped on unmount.
+- `RemindersView` — the master toggle (labelled with its state, transform-only
+  knob), cards carrying ring + recurrence + sound/volume/repeat, click-to-edit
+  via the standard modal. Mini-panel rows now carry a small ring and the
+  recurrence at a glance, and open the same modal on click.
+
+**Bug found and fixed BY the verification** (not before it): `dueOccurrence`
+originally returned the OLDEST outstanding occurrence. One alert either way, but
+the anchor landed one slot behind, so a reminder that missed several slots
+crawled forward one per tick — a 30-minute reminder idle for 90 minutes came
+back at the first missed slot, not the current one. It now returns the MOST
+RECENT due occurrence, with an arithmetic fast path for `interval` (a 1-minute
+reminder after a week of downtime costs one calculation, not ten thousand) and a
+400-step bound for date-based shapes. Client and Deno mirror both updated.
+
+**Tested (2026-09-06).** 248 unit tests pass (48 in reminders.test.ts, 20 new).
+Live firing, via the real pg_cron command so the secret stayed in the vault:
+- One reminder of EACH of the five recurrence types, each seeded with a genuinely
+  past-due occurrence → the tick raised exactly 5 fire rows, and every
+  `occurrence_at` was the correct SCHEDULED slot rather than "now" (daily/weekly/
+  monthly at their 20:34 time, interval at created+30m, one-time at its exact
+  `fire_at`). `last_fired_at = occurrence_at` on all five; the one-time
+  deactivated itself.
+- A second tick re-fired NOTHING for the four recurring types (idempotent), and
+  raised exactly one row for an interval rewound 3 hours — at its most recent
+  slot, proving the catch-up fix.
+- Master switch OFF → the tick returned `{"skipped":"reminders globally
+  disabled"}`, banked no rows, and left the anchor untouched, so nothing is
+  consumed while disabled and nothing floods back when it returns.
+Browser (throwaway harness mounting the real components, since the sign-in gate
+can't be passed in-session):
+- The ring genuinely animates: `stroke-dashoffset` climbed 44.5 → 59.9
+  monotonically over 5.2s at ~2.57/sec, against a mathematically exact
+  circumference/cycle of 153.938/60 = 2.566.
+- All five recurrence types render their pattern at a glance; 5 rings plus one
+  "—" for the paused reminder; all four mp3s fetched and played (206, correct
+  byte sizes); dismiss clears the alert; the master toggle flips every card and
+  the mini-panel to their off state.
+
+**Verification note:** the Browser pane runs HIDDEN and browsers fire no rAF
+callbacks in a hidden tab, so the ring initially measured frozen for
+environmental reasons. The harness swapped ONLY the frame scheduler for a
+timer-driven equivalent; `CountdownRing` itself ran unmodified.
+
+**Still Phase 8, not faked:** delivery when the app is closed. The fire rows are
+the durable record the Telegram bot will read; browser push was deliberately not
+used as a stand-in.
