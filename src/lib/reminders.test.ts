@@ -1,5 +1,19 @@
 import { describe, expect, it } from "vitest";
-import { describeRecurrence, dueReminders, isDue, nextFireAt, type ReminderLike } from "./reminders";
+import {
+  attemptDueAt,
+  countdownLabel,
+  cycleSeconds,
+  describeRecurrence,
+  dueOccurrence,
+  dueReminders,
+  isDue,
+  isExhausted,
+  needsAttempt,
+  nextFireAt,
+  secondsUntil,
+  type FireLike,
+  type ReminderLike,
+} from "./reminders";
 
 // July = MDT (UTC-6): 09:00 local = 15:00Z. January = MST (UTC-7): 09:00 = 16:00Z.
 const base = (over: Partial<ReminderLike>): ReminderLike => ({
@@ -167,5 +181,167 @@ describe("describeRecurrence", () => {
     expect(describeRecurrence(base({ recurrence_type: "monthly", time_of_day: "12:00", day_of_month: 3 }))).toBe(
       "Day 3 at 12:00 PM",
     );
+  });
+});
+
+// ── Firing instances (BUILD_PLAN: the reminder_fires model) ─────────────────
+// A fire row is the durable record that one OCCURRENCE came due. It is what
+// makes an alert survive the app being closed, and what the repeat-until-
+// dismissed cadence counts against.
+
+describe("dueOccurrence — WHICH slot came due, not just whether one did", () => {
+  // Anchored on the last firing, so the slot under test is today’s, not the
+  // backlog stretching to created_at.
+  const r = base({ recurrence_type: "daily", time_of_day: "09:00", last_fired_at: "2026-07-09T15:00:00Z" });
+
+  it("returns the exact occurrence instant, so it can key a fire row", () => {
+    const at = dueOccurrence(r, new Date("2026-07-10T15:30:00Z"));
+    expect(at?.toISOString()).toBe("2026-07-10T15:00:00.000Z");
+  });
+
+  it("returns null before the slot arrives", () => {
+    expect(dueOccurrence(r, new Date("2026-07-10T14:59:00Z"))).toBeNull();
+  });
+
+  it("an inactive reminder never has a due occurrence", () => {
+    expect(dueOccurrence({ ...r, active: false }, new Date("2026-07-10T15:30:00Z"))).toBeNull();
+  });
+
+  it("agrees with isDue on every case (one rule, two shapes)", () => {
+    for (const now of ["2026-07-10T14:59:00Z", "2026-07-10T15:00:00Z", "2026-07-11T20:00:00Z"]) {
+      expect(dueOccurrence(r, new Date(now)) !== null).toBe(isDue(r, new Date(now)));
+    }
+  });
+
+  it("after firing, the SAME occurrence is not due again — it advances", () => {
+    const fired = { ...r, last_fired_at: "2026-07-10T15:00:00Z" };
+    expect(dueOccurrence(fired, new Date("2026-07-10T15:30:00Z"))).toBeNull();
+    // …and the next day's slot is the next one offered.
+    expect(dueOccurrence(fired, new Date("2026-07-11T16:00:00Z"))?.toISOString()).toBe(
+      "2026-07-11T15:00:00.000Z",
+    );
+  });
+
+  it("a long outage catches up ONCE, on the MOST RECENT slot", () => {
+    const stale = { ...r, last_fired_at: "2026-07-01T15:00:00Z" };
+    // Ten days of missed 09:00s produce ONE alert — today's, not the oldest —
+    // so stamping it leaves the schedule fully caught up rather than nine slots
+    // behind, crawling forward one per tick.
+    expect(dueOccurrence(stale, new Date("2026-07-11T20:00:00Z"))?.toISOString()).toBe(
+      "2026-07-11T15:00:00.000Z",
+    );
+  });
+
+  it("an interval reminder also lands on its most recent slot after an outage", () => {
+    const every30 = base({
+      recurrence_type: "interval",
+      interval_minutes: 30,
+      created_at: "2026-07-01T00:00:00Z",
+      last_fired_at: "2026-07-01T00:30:00Z",
+    });
+    // 90 minutes of silence: the 02:00 slot, not the 01:00 one.
+    expect(dueOccurrence(every30, new Date("2026-07-01T02:05:00Z"))?.toISOString()).toBe(
+      "2026-07-01T02:00:00.000Z",
+    );
+  });
+
+  it("a single missed slot is returned unchanged", () => {
+    const fired = { ...r, last_fired_at: "2026-07-09T15:00:00Z" };
+    expect(dueOccurrence(fired, new Date("2026-07-10T15:30:00Z"))?.toISOString()).toBe(
+      "2026-07-10T15:00:00.000Z",
+    );
+  });
+});
+
+describe("repeat-until-dismissed cadence", () => {
+  // BUILD_PLAN default policy: 10 attempts, 20 seconds apart, then quiet.
+  const policy = { max_repeats: 10, repeat_interval_seconds: 20 };
+  const fire = (over: Partial<FireLike> = {}): FireLike => ({
+    fired_at: "2026-07-10T15:00:00Z",
+    dismissed: false,
+    repeat_count: 0,
+    ...over,
+  });
+
+  it("the first attempt is due immediately, not one interval later", () => {
+    expect(attemptDueAt(fire(), policy).toISOString()).toBe("2026-07-10T15:00:00.000Z");
+  });
+
+  it("each subsequent attempt is one interval further out", () => {
+    expect(attemptDueAt(fire({ repeat_count: 1 }), policy).toISOString()).toBe("2026-07-10T15:00:20.000Z");
+    expect(attemptDueAt(fire({ repeat_count: 9 }), policy).toISOString()).toBe("2026-07-10T15:03:00.000Z");
+  });
+
+  it("waits for the interval before re-alerting", () => {
+    const f = fire({ repeat_count: 1 });
+    expect(needsAttempt(f, policy, new Date("2026-07-10T15:00:10Z"))).toBe(false);
+    expect(needsAttempt(f, policy, new Date("2026-07-10T15:00:20Z"))).toBe(true);
+  });
+
+  it("gives up quietly after exactly 10 attempts", () => {
+    const spent = fire({ repeat_count: 10 });
+    expect(isExhausted(spent, policy)).toBe(true);
+    // Long past the last attempt's slot, it still must not alert again.
+    expect(needsAttempt(spent, policy, new Date("2026-07-10T18:00:00Z"))).toBe(false);
+  });
+
+  it("the 10th attempt itself still fires — the cap is attempts, not intervals", () => {
+    expect(isExhausted(fire({ repeat_count: 9 }), policy)).toBe(false);
+    expect(needsAttempt(fire({ repeat_count: 9 }), policy, new Date("2026-07-10T15:03:00Z"))).toBe(true);
+  });
+
+  it("a dismissed fire never alerts again, however few attempts it used", () => {
+    const done = fire({ dismissed: true, repeat_count: 1 });
+    expect(needsAttempt(done, policy, new Date("2026-07-10T16:00:00Z"))).toBe(false);
+  });
+
+  it("honours a per-reminder policy that differs from the default", () => {
+    const brisk = { max_repeats: 2, repeat_interval_seconds: 5 };
+    expect(attemptDueAt(fire({ repeat_count: 1 }), brisk).toISOString()).toBe("2026-07-10T15:00:05.000Z");
+    expect(isExhausted(fire({ repeat_count: 2 }), brisk)).toBe(true);
+  });
+});
+
+describe("countdown ring inputs", () => {
+  it("reports the whole seconds left until the next fire", () => {
+    expect(secondsUntil(new Date("2026-07-10T15:00:30Z"), new Date("2026-07-10T15:00:00Z"))).toBe(30);
+  });
+
+  it("never goes negative once the moment has passed", () => {
+    expect(secondsUntil(new Date("2026-07-10T15:00:00Z"), new Date("2026-07-10T15:05:00Z"))).toBe(0);
+  });
+
+  it("has nothing to count down to when there is no next fire", () => {
+    expect(secondsUntil(null, new Date("2026-07-10T15:00:00Z"))).toBeNull();
+  });
+
+  it("compact labels stay readable at every scale", () => {
+    expect(countdownLabel(0)).toBe("now");
+    expect(countdownLabel(45)).toBe("45s");
+    expect(countdownLabel(90)).toBe("1m 30s");
+    expect(countdownLabel(3600)).toBe("1h 00m");
+    expect(countdownLabel(86_400 * 2 + 3600)).toBe("2d 1h");
+  });
+
+  // The ring depletes over the gap between the PREVIOUS occurrence and the next,
+  // so a 30-minute interval sweeps a full circle every 30 minutes rather than
+  // jumping about with an arbitrary fixed span.
+  it("the ring spans the gap between consecutive occurrences", () => {
+    const r = base({ recurrence_type: "interval", interval_minutes: 30, created_at: "2026-07-10T15:00:00Z" });
+    expect(cycleSeconds(r, new Date("2026-07-10T15:10:00Z"))).toBe(30 * 60);
+  });
+
+  it("a daily reminder's ring spans a day", () => {
+    const r = base({ recurrence_type: "daily", time_of_day: "09:00" });
+    expect(cycleSeconds(r, new Date("2026-07-10T12:00:00Z"))).toBe(24 * 3600);
+  });
+
+  it("a one-time reminder counts down from when it was created", () => {
+    const r = base({
+      recurrence_type: "one_time",
+      fire_at: "2026-07-10T15:00:00Z",
+      created_at: "2026-07-10T14:00:00Z",
+    });
+    expect(cycleSeconds(r, new Date("2026-07-10T14:30:00Z"))).toBe(3600);
   });
 });
