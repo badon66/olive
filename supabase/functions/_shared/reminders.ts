@@ -119,3 +119,31 @@ export function isDue(r: ReminderLike, now: Date): boolean {
 export function dueReminders<T extends ReminderLike>(reminders: T[], now: Date): T[] {
   return reminders.filter((r) => isDue(r, now));
 }
+
+// Mirrors dueOccurrence in src/lib/reminders.ts — the tick needs the instant
+// itself, not just a boolean, because it is the idempotency key for the
+// reminder_fires row. Returns the MOST RECENT due occurrence so one alert
+// clears a whole outage and the anchor lands in the present.
+const MAX_CATCHUP_STEPS = 400;
+
+export function dueOccurrence(r: ReminderLike, now: Date): Date | null {
+  if (!r.active) return null;
+  const anchor = new Date(r.last_fired_at ?? r.created_at);
+  const first = nextFireAt(r, anchor);
+  if (first === null || first.getTime() > now.getTime()) return null;
+
+  if (r.recurrence_type === "interval" && r.interval_minutes && r.interval_minutes > 0) {
+    const base = new Date(r.created_at).getTime();
+    const step = r.interval_minutes * 60_000;
+    const latest = new Date(base + Math.floor((now.getTime() - base) / step) * step);
+    return latest.getTime() > first.getTime() ? latest : first;
+  }
+
+  let due = first;
+  for (let i = 0; i < MAX_CATCHUP_STEPS; i++) {
+    const next = nextFireAt(r, due);
+    if (next === null || next.getTime() > now.getTime()) break;
+    due = next;
+  }
+  return due;
+}
