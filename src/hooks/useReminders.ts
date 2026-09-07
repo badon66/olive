@@ -4,6 +4,7 @@ import type { Database } from "../lib/database.types";
 import type { RecurrenceType } from "../lib/reminders";
 
 export type Reminder = Database["public"]["Tables"]["reminders"]["Row"];
+export type ReminderFire = Database["public"]["Tables"]["reminder_fires"]["Row"];
 export type ReminderInput = {
   name: string;
   message?: string | null;
@@ -14,17 +15,36 @@ export type ReminderInput = {
   day_of_month?: number | null;
   time_of_day?: string | null;
   active?: boolean;
+  // Alert policy (BUILD_PLAN): which sound, how loud, and how insistently.
+  // NOT NULL with defaults in the schema — omitted, never explicitly null.
+  sound_id?: string;
+  volume?: number;
+  max_repeats?: number;
+  repeat_interval_seconds?: number;
 };
 
 export type ReminderStore = ReturnType<typeof useReminders>;
 
 export function useReminders() {
   const [reminders, setReminders] = useState<Reminder[]>([]);
+  // Undismissed firing instances — the alert queue. A row here outlives a page
+  // reload, which is what lets an occurrence that came due while the app was
+  // closed still raise its alert when the app comes back.
+  const [fires, setFires] = useState<ReminderFire[]>([]);
+  // The global "Reminders Active" master switch. Defaults to ON so a missing
+  // settings row can never silently disable every reminder.
+  const [globallyEnabled, setGloballyEnabledState] = useState(true);
   const [loading, setLoading] = useState(true);
 
   const refresh = useCallback(async () => {
-    const { data, error } = await supabase.from("reminders").select("*").order("created_at");
+    const [{ data, error }, { data: fireRows }, { data: settings }] = await Promise.all([
+      supabase.from("reminders").select("*").order("created_at"),
+      supabase.from("reminder_fires").select("*").eq("dismissed", false).order("occurrence_at"),
+      supabase.from("app_settings").select("reminders_globally_enabled").maybeSingle(),
+    ]);
     if (!error && data) setReminders(data);
+    if (fireRows) setFires(fireRows);
+    if (settings) setGloballyEnabledState(settings.reminders_globally_enabled);
     setLoading(false);
   }, []);
 
@@ -36,10 +56,15 @@ export function useReminders() {
 
   return {
     reminders,
+    fires,
+    globallyEnabled,
     loading,
     refresh,
+
     addReminder: async (input: ReminderInput) => {
-      await supabase.from("reminders").insert({ ...input, user_id: await userId() });
+      const { error } = await supabase.from("reminders").insert({ ...input, user_id: await userId() });
+      // Surfaced so a constraint violation can't close the form over nothing.
+      if (error) throw error;
       await refresh();
     },
     updateReminder: async (id: string, patch: Partial<ReminderInput>) => {
@@ -52,14 +77,72 @@ export function useReminders() {
       await refresh();
     },
     deleteReminder: async (id: string) => {
-      await supabase.from("reminders").delete().eq("id", id);
+      const before = reminders;
+      setReminders((prev) => prev.filter((r) => r.id !== id));
+      const { error } = await supabase.from("reminders").delete().eq("id", id); // fires cascade
+      if (error) setReminders(before);
       await refresh();
     },
-    // Stamped when an alert is actually shown, so catch-up stays idempotent.
-    markFired: async (id: string, when: Date = new Date()) => {
-      const iso = when.toISOString();
-      setReminders((prev) => prev.map((r) => (r.id === id ? { ...r, last_fired_at: iso } : r)));
-      await supabase.from("reminders").update({ last_fired_at: iso }).eq("id", id);
+
+    // The master switch. Written to the DATABASE rather than localStorage
+    // because the pg_cron tick has to honour it server-side — otherwise fire
+    // rows accumulate while it is off and all alert at once when it returns.
+    setGloballyEnabled: async (on: boolean) => {
+      const before = globallyEnabled;
+      setGloballyEnabledState(on);
+      const { error } = await supabase
+        .from("app_settings")
+        .upsert(
+          { user_id: await userId(), reminders_globally_enabled: on, updated_at: new Date().toISOString() },
+          { onConflict: "user_id" },
+        );
+      if (error) setGloballyEnabledState(before);
+    },
+
+    // Record that an occurrence came due. Idempotent by (reminder_id,
+    // occurrence_at): the pg_cron tick and this open browser both raise fires,
+    // and whichever arrives second is a no-op rather than a duplicate alert.
+    raiseFire: async (reminderId: string, occurrenceAt: Date) => {
+      const { data, error } = await supabase
+        .from("reminder_fires")
+        .upsert(
+          {
+            user_id: await userId(),
+            reminder_id: reminderId,
+            occurrence_at: occurrenceAt.toISOString(),
+            fired_at: new Date().toISOString(),
+          },
+          { onConflict: "reminder_id,occurrence_at", ignoreDuplicates: true },
+        )
+        .select("*");
+      if (error) return null;
+      const row = data?.[0] ?? null;
+      if (row) setFires((prev) => (prev.some((f) => f.id === row.id) ? prev : [...prev, row]));
+      // Advance the schedule anchor to the OCCURRENCE, not to "now", so a late
+      // tick cannot drag the cadence later and later.
+      await supabase
+        .from("reminders")
+        .update({ last_fired_at: occurrenceAt.toISOString() })
+        .eq("id", reminderId);
+      setReminders((prev) =>
+        prev.map((r) => (r.id === reminderId ? { ...r, last_fired_at: occurrenceAt.toISOString() } : r)),
+      );
+      return row;
+    },
+
+    // One re-alert attempt spent. Optimistic so the cadence timer can key off
+    // the new count immediately.
+    recordAttempt: async (fireId: string, nextCount: number) => {
+      setFires((prev) => prev.map((f) => (f.id === fireId ? { ...f, repeat_count: nextCount } : f)));
+      await supabase.from("reminder_fires").update({ repeat_count: nextCount }).eq("id", fireId);
+    },
+
+    // Explicitly dismissed in the app — the alert stops for good.
+    dismissFire: async (fireId: string) => {
+      const before = fires;
+      setFires((prev) => prev.filter((f) => f.id !== fireId));
+      const { error } = await supabase.from("reminder_fires").update({ dismissed: true }).eq("id", fireId);
+      if (error) setFires(before);
     },
   };
 }
