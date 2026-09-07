@@ -65,6 +65,32 @@ export type Database = {
           },
         ]
       }
+      app_settings: {
+        Row: {
+          reminders_globally_enabled: boolean
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          reminders_globally_enabled?: boolean
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          reminders_globally_enabled?: boolean
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "app_settings_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: true
+            referencedRelation: "app_user"
+            referencedColumns: ["user_id"]
+          },
+        ]
+      }
       categories: {
         Row: {
           color: string
@@ -211,6 +237,51 @@ export type Database = {
           },
         ]
       }
+      reminder_fires: {
+        Row: {
+          dismissed: boolean
+          fired_at: string
+          id: string
+          occurrence_at: string
+          reminder_id: string
+          repeat_count: number
+          user_id: string
+        }
+        Insert: {
+          dismissed?: boolean
+          fired_at?: string
+          id?: string
+          occurrence_at: string
+          reminder_id: string
+          repeat_count?: number
+          user_id: string
+        }
+        Update: {
+          dismissed?: boolean
+          fired_at?: string
+          id?: string
+          occurrence_at?: string
+          reminder_id?: string
+          repeat_count?: number
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "reminder_fires_reminder_id_fkey"
+            columns: ["reminder_id"]
+            isOneToOne: false
+            referencedRelation: "reminders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reminder_fires_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "app_user"
+            referencedColumns: ["user_id"]
+          },
+        ]
+      }
       reminders: {
         Row: {
           active: boolean
@@ -221,11 +292,15 @@ export type Database = {
           id: string
           interval_minutes: number | null
           last_fired_at: string | null
+          max_repeats: number
           message: string | null
           name: string
           recurrence_type: Database["public"]["Enums"]["reminder_recurrence"]
+          repeat_interval_seconds: number
+          sound_id: string
           time_of_day: string | null
           user_id: string
+          volume: number
         }
         Insert: {
           active?: boolean
@@ -236,11 +311,15 @@ export type Database = {
           id?: string
           interval_minutes?: number | null
           last_fired_at?: string | null
+          max_repeats?: number
           message?: string | null
           name: string
           recurrence_type: Database["public"]["Enums"]["reminder_recurrence"]
+          repeat_interval_seconds?: number
+          sound_id?: string
           time_of_day?: string | null
           user_id: string
+          volume?: number
         }
         Update: {
           active?: boolean
@@ -251,11 +330,15 @@ export type Database = {
           id?: string
           interval_minutes?: number | null
           last_fired_at?: string | null
+          max_repeats?: number
           message?: string | null
           name?: string
           recurrence_type?: Database["public"]["Enums"]["reminder_recurrence"]
+          repeat_interval_seconds?: number
+          sound_id?: string
           time_of_day?: string | null
           user_id?: string
+          volume?: number
         }
         Relationships: [
           {
