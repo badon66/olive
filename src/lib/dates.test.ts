@@ -1,14 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  daysBetween,
-  edmontonActiveDay,
-  edmontonToday,
-  formatCountdown,
-  formatDue,
-  fullDateLabel,
-  secondsUntilRollover,
-  weekRangeLabel,
-} from "./dates";
+import { daysBetween, edmontonActiveDay, edmontonToday, formatClock, formatCompleted, formatCountdown, formatDue, fullDateLabel, secondsUntilRollover, weekRangeLabel } from "./dates";
 
 // July → MDT (UTC-6), so local = UTC-6. The night of Jul 7 → Jul 8 throughout.
 const at = (localHHMM: string) => new Date(`2026-07-08T${localHHMM}:00Z`);
@@ -157,5 +148,55 @@ describe("weekRangeLabel", () => {
   });
   it("crossing a month boundary spells both months", () => {
     expect(weekRangeLabel("2026-07-27", "2026-08-02")).toBe("Week of July 27 – August 2");
+  });
+});
+
+// ── Global display rules (CLAUDE.md) ───────────────────────────────────────
+
+describe("formatClock — 12-hour with AM/PM, never 24-hour", () => {
+  it("morning hours lose their leading zero", () => {
+    expect(formatClock("09:00")).toBe("9:00 AM");
+    expect(formatClock("06:45")).toBe("6:45 AM");
+  });
+  it("afternoon hours wrap to 12-hour", () => {
+    expect(formatClock("13:05")).toBe("1:05 PM");
+    expect(formatClock("18:30")).toBe("6:30 PM");
+    expect(formatClock("23:59")).toBe("11:59 PM");
+  });
+  it("both noons are 12, not 0", () => {
+    expect(formatClock("12:00")).toBe("12:00 PM");
+    expect(formatClock("00:00")).toBe("12:00 AM");
+    expect(formatClock("00:30")).toBe("12:30 AM");
+  });
+  it("accepts the HH:MM:SS Postgres time columns actually return", () => {
+    expect(formatClock("14:30:00")).toBe("2:30 PM");
+  });
+  it("passes through anything that isn't a clock time rather than mangling it", () => {
+    expect(formatClock("")).toBe("");
+    expect(formatClock("not a time")).toBe("not a time");
+  });
+});
+
+describe("formatCompleted — a finished task is never 'overdue'", () => {
+  const TODAY = "2026-07-10";
+  // Uses the same 1:30 AM view-day rule as the rest of the app, so a task ticked
+  // off at 1 AM reads as finished on the page it was ticked off on.
+  it("today", () => {
+    expect(formatCompleted("2026-07-10T18:00:00Z", TODAY)).toBe("Completed today");
+  });
+  it("yesterday", () => {
+    expect(formatCompleted("2026-07-09T18:00:00Z", TODAY)).toBe("Completed yesterday");
+  });
+  it("several days back", () => {
+    expect(formatCompleted("2026-07-07T18:00:00Z", TODAY)).toBe("Completed 3 days ago");
+  });
+  it("a long time back", () => {
+    expect(formatCompleted("2026-06-10T18:00:00Z", TODAY)).toBe("Completed 30 days ago");
+  });
+  it("never says 'overdue', however late the task was finished", () => {
+    expect(formatCompleted("2026-07-07T18:00:00Z", TODAY)).not.toMatch(/overdue/i);
+  });
+  it("falls back gracefully when nothing was recorded", () => {
+    expect(formatCompleted(null, TODAY)).toBe("Completed");
   });
 });

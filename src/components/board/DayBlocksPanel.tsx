@@ -1,7 +1,7 @@
 import { useState } from "react";
 import type { Task } from "../../hooks/useTasks";
 import type { WeeklyCheckin, WeeklyTask } from "../../hooks/useWeeklyTasks";
-import { addDays } from "../../lib/dates";
+import { addDays, formatClock } from "../../lib/dates";
 import { orderBySortOrder, SECTION_ORDER, type TimeSection } from "../../lib/sections";
 import { appearsOn } from "../../lib/weekly";
 import { DraggableTask, DropZone } from "./TaskDnd";
@@ -185,7 +185,7 @@ export function UpcomingDaysPanel({
                             )}
                             {!isWeekly && t.scheduled_time && (
                               <span className="font-data text-[10px] text-dim shrink-0 ml-auto">
-                                {t.scheduled_time.slice(0, 5)}
+                                {formatClock(t.scheduled_time)}
                               </span>
                             )}
                           </span>

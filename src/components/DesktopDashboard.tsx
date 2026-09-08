@@ -116,11 +116,13 @@ export function DesktopDashboard({
   const sections = useMemo(() => computeSections(open, today), [open, today]);
   const doneToday = useMemo(() => doneTodayCount(tasks, today), [tasks, today]);
 
+  // 12-hour with AM/PM everywhere Olive renders a time (CLAUDE.md) — this
+  // header clock was the last 24-hour holdout.
   const timeStr = new Intl.DateTimeFormat("en-US", {
     timeZone: "America/Edmonton",
-    hour: "2-digit",
+    hour: "numeric",
     minute: "2-digit",
-    hour12: false,
+    hour12: true,
   }).format(now);
   const dateStr = new Intl.DateTimeFormat("en-US", {
     timeZone: "America/Edmonton",

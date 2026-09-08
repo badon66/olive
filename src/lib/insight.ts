@@ -1,4 +1,5 @@
 import type { TimeSection } from "./sections";
+import { formatClock } from "./dates";
 
 // The line under the greeting. Aims to answer "what actually matters right
 // now" rather than restating counts: the next booked appointment, else the
@@ -45,7 +46,7 @@ export function buildInsight(args: {
     .sort((a, b) => b.priority_weight - a.priority_weight || a.created_at.localeCompare(b.created_at))[0];
 
   let headline: string;
-  if (nextBooking) headline = `Next: ${nextBooking.title} at ${hhmm(nextBooking.scheduled_time!)}`;
+  if (nextBooking) headline = `Next: ${nextBooking.title} at ${formatClock(nextBooking.scheduled_time!)}`;
   else if (nowTask) headline = `Now: ${nowTask.title}`;
   // Still-due work outranks overdue here: it's what's actionable today.
   else if (dueToday > 0) headline = `${dueToday} due today, nothing timed`;

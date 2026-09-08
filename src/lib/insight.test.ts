@@ -27,7 +27,9 @@ describe("buildInsight", () => {
       t({ id: "a", title: "Dentist", scheduled_time: "15:30:00" }),
       t({ id: "b", title: "Standup", scheduled_time: "09:00:00" }), // already passed
     ];
-    expect(buildInsight({ ...base, open }).headline).toBe("Next: Dentist at 15:30");
+    // 12-hour with AM/PM, never 24-hour (CLAUDE.md) — this expectation used to
+    // encode the violation.
+    expect(buildInsight({ ...base, open }).headline).toBe("Next: Dentist at 3:30 PM");
   });
 
   it("ignores bookings that have already passed", () => {

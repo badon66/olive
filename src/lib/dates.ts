@@ -144,3 +144,38 @@ export function formatDue(dateISO: string, todayISO: string): string {
     new Date(Date.UTC(y, m - 1, day)),
   );
 }
+
+// ── Global display rules (CLAUDE.md) ───────────────────────────────────────
+
+// Every time Olive RENDERS is 12-hour with AM/PM — "6:00 PM", never "18:00".
+// Takes the "HH:MM" / "HH:MM:SS" shapes that Postgres time columns and <input
+// type="time"> both produce. Anything that isn't a clock time is returned
+// untouched rather than mangled into a fake time.
+//
+// This is display only. Storage, comparison and sorting all stay on the 24-hour
+// string, which is what makes them lexicographically orderable.
+export function formatClock(hhmm: string): string {
+  const m = /^(\d{1,2}):(\d{2})/.exec(hhmm);
+  if (!m) return hhmm;
+  const h = Number(m[1]);
+  const min = m[2];
+  if (h > 23 || Number(min) > 59) return hhmm;
+  const ampm = h < 12 ? "AM" : "PM";
+  const h12 = h % 12 === 0 ? 12 : h % 12;
+  return `${h12}:${min} ${ampm}`;
+}
+
+// A completed task is COMPLETED, full stop — never "overdue", however long
+// after its due date it was finished (CLAUDE.md). This is the label that
+// replaces the due chip once a task is done.
+//
+// Uses the same 1:30 AM view-day rule as everything else, so a task ticked off
+// at 1 AM reads as finished on the page it was ticked off on.
+export function formatCompleted(completedAtISO: string | null, todayISO: string): string {
+  if (!completedAtISO) return "Completed";
+  const day = edmontonToday(new Date(completedAtISO));
+  const d = daysBetween(day, todayISO);
+  if (d <= 0) return "Completed today";
+  if (d === 1) return "Completed yesterday";
+  return `Completed ${d} days ago`;
+}

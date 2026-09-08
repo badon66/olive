@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { supabase } from "../lib/supabase";
 import { submitScheduleSetup, type BlockedWindow } from "../lib/api";
-import { addDays, edmontonToday } from "../lib/dates";
+import { addDays, edmontonToday, formatClock } from "../lib/dates";
 import { ChatBar } from "./ChatBar";
 import { Portal } from "./Portal";
 import { useEscape } from "./useEscape";
@@ -154,7 +154,7 @@ export function ScheduleSetupButton({ onTasksChanged }: { onTasksChanged?: () =>
               <div className="border border-panel-border rounded-lg p-3 space-y-1">
                 <p className="font-data text-[11px] text-dim uppercase tracking-wider">Currently set for {tomorrow}</p>
                 <p className="flex flex-wrap gap-1.5">
-                  <span className="hud-chip hud-chip-signal">wake {done.wake_time.slice(0, 5)}</span>
+                  <span className="hud-chip hud-chip-signal">wake {formatClock(done.wake_time)}</span>
                   {done.bedtime && <span className="hud-chip hud-chip-signal">bed {done.bedtime.slice(0, 5)}</span>}
                   {done.going_selling && <span className="hud-chip hud-chip-signal">selling</span>}
                   {done.blocked_windows.map((w, i) => (

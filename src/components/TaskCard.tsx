@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { Task } from "../hooks/useTasks";
-import { formatDue } from "../lib/dates";
+import { formatClock, formatCompleted, formatDue } from "../lib/dates";
 import { useDoubleClick } from "./TaskActionPopup";
 
 type Props = {
@@ -85,13 +85,21 @@ export function TaskCard({
             )}
           </p>
           <p className="flex items-center gap-2 mt-0.5">
-            {task.due_date && (
-              <span className={`hud-chip ${overdue ? "hud-chip-amber" : ""}`}>
-                {formatDue(task.due_date, today)}
-              </span>
+            {/* A completed task is COMPLETED, full stop — never "overdue",
+                however long after its due date it was finished (CLAUDE.md).
+                The styling already guarded on `done`, but the chip still
+                rendered the words "5d overdue" for a task finished late. */}
+            {done ? (
+              <span className="hud-chip">{formatCompleted(task.completed_at, today)}</span>
+            ) : (
+              task.due_date && (
+                <span className={`hud-chip ${overdue ? "hud-chip-amber" : ""}`}>
+                  {formatDue(task.due_date, today)}
+                </span>
+              )
             )}
             {task.scheduled_time && (
-              <span className="hud-chip hud-chip-signal">⏱ {task.scheduled_time.slice(0, 5)}</span>
+              <span className="hud-chip hud-chip-signal">⏱ {formatClock(task.scheduled_time)}</span>
             )}
             {/* BUILD_PLAN: scheduled / not-scheduled indicator on every task */}
             <span className={`hud-chip ${task.due_date ? "hud-chip-signal" : "!border-dim/30 !text-dim/70"}`}>

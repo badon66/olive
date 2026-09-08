@@ -4,6 +4,7 @@ import { JOB_STATUSES, JOB_STATUS_LABELS } from "../lib/jobs";
 import { SECTION_ORDER, sectionOptionLabel } from "../lib/sections";
 import { Portal } from "./Portal";
 import { SectionPencil } from "./SectionPencil";
+import { formatClock } from "../lib/dates";
 
 type Toast = { kind: "ok" | "error"; text: string };
 
@@ -204,7 +205,7 @@ export function ChatBar({
                         {a.category_name && <span className="hud-chip">{a.category_name}</span>}
                         {a.description && <span className="hud-chip">desc</span>}
                         {a.due_date && <span className="hud-chip">due {a.due_date}</span>}
-                        {a.scheduled_time && <span className="hud-chip">⏱ {a.scheduled_time}</span>}
+                        {a.scheduled_time && <span className="hud-chip">⏱ {formatClock(a.scheduled_time)}</span>}
                         {a.time_section && <span className="hud-chip">{a.time_section}</span>}
                         {typeof a.priority_weight === "number" && <span className="hud-chip">p{a.priority_weight}</span>}
                         {a.duration_minutes != null && <span className="hud-chip">{a.duration_minutes} min</span>}
