@@ -40,6 +40,8 @@ The phased spec is in `docs/BUILD_PLAN.md`. Build ONE phase at a time, then stop
 - LLM: Anthropic API from Edge Functions; `claude-sonnet-4-6` for parsing/routing unless quality demands escalation.
 - Single user: Supabase email auth, one account, RLS on all tables.
 - Timezone: America/Edmonton for ALL scheduling logic. Cron runs in UTC — convert explicitly.
+- **Always display times in 12-hour format with AM/PM — never 24-hour/military time.** "6:00 PM," not "18:00." This applies everywhere without exception: section clock ranges, scheduled_time on tasks, reminder times, the setup form, Upcoming Days, everywhere a time is rendered.
+- **Never label a completed task "overdue."** Once a task is completed, its status is completed, full stop — even if it was finished long after its due date. Display it as completed with a relative timestamp ("Completed 3 days ago"), never with overdue styling or wording. Overdue applies only to tasks that are still incomplete past their due date.
 - **Two separate rollover boundaries, deliberately different — not a bug, don't collapse these into one (an earlier version of this rule tried that and was wrong):**
   - **The Today's Schedule page/view flips at 1:30 AM.** This decides which day's full schedule (header, arrows, navigation) is showing by default. Before 1:30 AM, you're still looking at yesterday's page; at 1:30 AM sharp, the default view moves to today's page.
   - **Which day's Night counts as "active" (Active Tasks, the current-section highlight in Today's Schedule) is independent of the page-flip above.** Night (11 PM–5 AM) stays attributed to whichever day it started on until it's actually over at 5:00 AM — regardless of whether the page itself has already flipped forward at 1:30.
