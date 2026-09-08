@@ -468,7 +468,7 @@ export function TodaySchedulePanel({
       {morningCleared && (
         <div className="mb-2 border border-amber/30 rounded p-2 space-y-1.5">
           <p className="font-data text-[11px] text-amber uppercase tracking-wider">
-            Morning cleared — bedtime was {prevBedtime?.slice(0, 5)}
+            Morning cleared — bedtime was {prevBedtime ? formatClock(prevBedtime) : "late"}
           </p>
           {displacedMorning.length === 0 ? (
             <p className="text-dim text-xs">Nothing was scheduled for this morning.</p>

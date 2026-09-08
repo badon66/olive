@@ -155,11 +155,13 @@ export function ScheduleSetupButton({ onTasksChanged }: { onTasksChanged?: () =>
                 <p className="font-data text-[11px] text-dim uppercase tracking-wider">Currently set for {tomorrow}</p>
                 <p className="flex flex-wrap gap-1.5">
                   <span className="hud-chip hud-chip-signal">wake {formatClock(done.wake_time)}</span>
-                  {done.bedtime && <span className="hud-chip hud-chip-signal">bed {done.bedtime.slice(0, 5)}</span>}
+                  {done.bedtime && (
+                    <span className="hud-chip hud-chip-signal">bed {formatClock(done.bedtime)}</span>
+                  )}
                   {done.going_selling && <span className="hud-chip hud-chip-signal">selling</span>}
                   {done.blocked_windows.map((w, i) => (
                     <span key={i} className="hud-chip hud-chip-amber">
-                      ⛔ {w.start}–{w.end} {w.label}
+                      ⛔ {formatClock(w.start)}–{formatClock(w.end)} {w.label}
                     </span>
                   ))}
                   {done.blocked_windows.length === 0 && <span className="hud-chip">no blocked windows</span>}
