@@ -561,3 +561,63 @@ can't be passed in-session):
 callbacks in a hidden tab, so the ring measures frozen for environmental
 reasons. The harness swapped ONLY the frame scheduler for a timer-driven
 equivalent; CountdownRing itself ran unmodified.
+
+## Exhaustive global-rules audit (2026-09-08)
+
+Items 1–3 of this request (weekly-task pause, conditional anytime, the two global
+display rules) were already built and pushed in the previous session
+(93c0498…9aae46a) — re-verified, not rebuilt. The new instruction was to audit
+EVERY render site rather than the obvious ones, so the rules genuinely hold app-wide.
+
+**Method.** Seven independent read-only sweeps, each searching a deliberately
+different way so no single angle's blind spot could hide a violation: by
+formatting API (Intl/toLocale*/manual hour math), by data source (every column
+holding a time, traced forward to render), by rendered JSX (including title/
+aria-label/placeholder, where a 24-hour time is still user-visible), by literal
+string pattern, plus dedicated sweeps for the overdue rule, the pause feature and
+the anytime rule. Each dimension's findings then went to an adversarial verifier
+told to REFUTE them and to default to "not real" when uncertain.
+
+**Result: all seven sweeps independently converged on the same four sites** — good
+evidence the set is complete rather than a lucky single pass. Three additional
+candidates were raised by one sweep each and all three were killed on
+verification. 14 agents, 573 tool calls.
+
+**Confirmed and fixed (4):**
+- `ScheduleSetup.tsx:162` — blocked-window chips rendered raw `{w.start}–{w.end}`.
+  The schedule-setup edge function's own prompt asks Claude for "HH:MM 24h"
+  ("dentist 2 to 3:30" → 14:00-15:30), so the chip read "⛔ 14:00–15:30 dentist".
+  The identical data was ALREADY formatted correctly one file over in
+  TodaySchedulePanel — the earlier pass fixed that copy and missed this one.
+- `ScheduleSetup.tsx:158` — `bed {done.bedtime.slice(0, 5)}` → "bed 23:30",
+  sitting directly beside the wake chip that the earlier pass had fixed.
+- `TodaySchedulePanel.tsx:471` — "Morning cleared — bedtime was {…slice(0,5)}".
+  Worth noting this one is ALWAYS wrong when visible: isLateBedtime only fires the
+  banner for times after 11 PM or before 5 AM, so every render is a late-night
+  value like "23:45" or "01:30" — never coincidentally 12-hour-safe.
+- `DatePickerPopup.tsx:61` — the overdue rule leaking past the task card. The chip
+  on a completed card was fixed earlier, but the EDIT MODAL that card opens still
+  annotated its due date via formatDue, so a task due Aug 30 and finished Sep 5
+  opened reading "2026-08-30 (9d overdue)". Reachable from the completed lists in
+  CategoryPanelBody and TaskList, and from the double-click Reschedule popup. New
+  tested `dueAnnotation()` picks formatCompleted for a completed task; an OPEN
+  overdue task still reads "9d overdue", since the rule covers completed work only.
+
+**Refuted (3), with reasons worth keeping:**
+- `supabase/functions/_shared/actions.ts:94` — a tool-parameter description, not a
+  render; speculative.
+- `DesktopDashboard.tsx:419` — claimed paused weekly tasks inflate the header
+  count. Refuted: the chip and the panel body below it show the same set.
+- `ActiveTasksPanel.tsx:69` — claimed an anytime double-count. Refuted as
+  unreachable: it needs `section === 'anytime'`, and the single call site derives
+  section from currentSection(), which can never return anytime.
+
+The paused and anytime sweeps found no real defects in their own dimensions, so
+items 1 and 2 are complete as built.
+
+**Tested.** 277 unit tests (5 new for dueAnnotation). In a running browser via a
+throwaway harness: "bed 11:30 PM", "⛔ 2:00 PM–3:30 PM dentist", "Morning cleared —
+bedtime was 1:30 AM", and the completed task's picker reading "2026-08-30
+(Completed 3 days ago)" both standalone and inside the real edit modal — while the
+open-task picker still correctly reads "9d overdue". A regex sweep of the whole
+rendered page found zero 24-hour leaks.
