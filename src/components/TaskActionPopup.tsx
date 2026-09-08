@@ -96,6 +96,9 @@ export function TaskActionPopup({
             <div>
               <p className="font-data text-[11px] uppercase tracking-widest text-dim mb-2">Reschedule to</p>
               <DatePickerPopup
+                completedAt={
+                  target.kind === "task" && target.task.status === "completed" ? target.task.completed_at : null
+                }
                 value={target.kind === "task" ? target.task.due_date : null}
                 onChange={(d) => {
                   if (target.kind === "task") onReschedule(target.task.id, d);

@@ -175,7 +175,11 @@ export function TaskForm({ initial, categories, onSubmit, onClose, onDelete, def
             ))}
           </div>
           {mode === "fixed" && (
-            <DatePickerPopup value={dueDate || null} onChange={(d) => setDueDate(d ?? "")} />
+            <DatePickerPopup
+              value={dueDate || null}
+              onChange={(d) => setDueDate(d ?? "")}
+              completedAt={initial?.status === "completed" ? initial.completed_at : null}
+            />
           )}
           {mode === "range" && (
             <div className="flex items-center gap-2">

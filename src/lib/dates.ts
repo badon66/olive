@@ -171,6 +171,19 @@ export function formatClock(hhmm: string): string {
 //
 // Uses the same 1:30 AM view-day rule as everything else, so a task ticked off
 // at 1 AM reads as finished on the page it was ticked off on.
+// The annotation beside a due date. Overdue wording is forbidden on a COMPLETED
+// task wherever it appears (CLAUDE.md) — not only on the task card — so the
+// picker that the edit modal opens has to obey the rule as well. Found by the
+// global audit: a task due Aug 30 and finished Sep 5 opened its editor reading
+// "2026-08-30 (9d overdue)".
+export function dueAnnotation(
+  dateISO: string,
+  todayISO: string,
+  completedAtISO?: string | null,
+): string {
+  return completedAtISO ? formatCompleted(completedAtISO, todayISO) : formatDue(dateISO, todayISO);
+}
+
 export function formatCompleted(completedAtISO: string | null, todayISO: string): string {
   if (!completedAtISO) return "Completed";
   const day = edmontonToday(new Date(completedAtISO));

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { addDays, edmontonToday, formatDue } from "../lib/dates";
+import { addDays, dueAnnotation, edmontonToday } from "../lib/dates";
 
 // Popup mini calendar (BUILD_PLAN: not a native date input, no prominent year
 // selector — everything defaults to the current year). Month grid, Mon-first.
@@ -14,7 +14,17 @@ function iso(year: number, month: number, day: number): string {
   return `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
 }
 
-export function DatePickerPopup({ value, onChange }: { value: string | null; onChange: (d: string | null) => void }) {
+export function DatePickerPopup({
+  value,
+  onChange,
+  completedAt,
+}: {
+  value: string | null;
+  onChange: (d: string | null) => void;
+  // Set when the task being edited is already completed, so the annotation
+  // reads "Completed 3 days ago" instead of "9d overdue".
+  completedAt?: string | null;
+}) {
   const [open, setOpen] = useState(false);
   const today = edmontonToday();
   const anchor = value ?? today;
@@ -58,7 +68,9 @@ export function DatePickerPopup({ value, onChange }: { value: string | null; onC
         aria-expanded={open}
         className="hud-input text-left cursor-pointer flex items-center justify-between gap-2"
       >
-        <span className={value ? "" : "text-dim"}>{value ? `${value} (${formatDue(value, today)})` : "No due date"}</span>
+        <span className={value ? "" : "text-dim"}>
+          {value ? `${value} (${dueAnnotation(value, today, completedAt)})` : "No due date"}
+        </span>
         <svg viewBox="0 0 24 24" className="w-4 h-4 text-dim shrink-0" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true">
           <rect x="3" y="4" width="18" height="17" rx="2" />
           <path d="M3 9h18M8 3v3M16 3v3" />

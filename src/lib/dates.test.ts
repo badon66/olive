@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { daysBetween, edmontonActiveDay, edmontonToday, formatClock, formatCompleted, formatCountdown, formatDue, fullDateLabel, secondsUntilRollover, weekRangeLabel } from "./dates";
+import { daysBetween, dueAnnotation, edmontonActiveDay, edmontonToday, formatClock, formatCompleted, formatCountdown, formatDue, fullDateLabel, secondsUntilRollover, weekRangeLabel } from "./dates";
 
 // July → MDT (UTC-6), so local = UTC-6. The night of Jul 7 → Jul 8 throughout.
 const at = (localHHMM: string) => new Date(`2026-07-08T${localHHMM}:00Z`);
@@ -198,5 +198,33 @@ describe("formatCompleted — a finished task is never 'overdue'", () => {
   });
   it("falls back gracefully when nothing was recorded", () => {
     expect(formatCompleted(null, TODAY)).toBe("Completed");
+  });
+});
+
+describe("dueAnnotation — the due-date annotation obeys the completed rule too", () => {
+  const TODAY = "2026-09-08";
+
+  it("an open task overdue by days still says so — the rule only covers COMPLETED work", () => {
+    expect(dueAnnotation("2026-08-30", TODAY, null)).toBe("9d overdue");
+  });
+
+  it("an open task due today or ahead reads normally", () => {
+    expect(dueAnnotation(TODAY, TODAY, null)).toBe("Today");
+    expect(dueAnnotation("2026-09-09", TODAY, null)).toBe("Tomorrow");
+  });
+
+  it("a COMPLETED task never says overdue, however late it was finished", () => {
+    // Due Aug 30, finished Sep 5, opened Sep 8 — the old text was "9d overdue".
+    const label = dueAnnotation("2026-08-30", TODAY, "2026-09-05T18:00:00Z");
+    expect(label).toBe("Completed 3 days ago");
+    expect(label).not.toMatch(/overdue/i);
+  });
+
+  it("a completed task finished before its due date also reads as completed", () => {
+    expect(dueAnnotation("2026-09-20", TODAY, "2026-09-07T18:00:00Z")).toBe("Completed yesterday");
+  });
+
+  it("a completed task with no recorded timestamp degrades to a bare 'Completed'", () => {
+    expect(dueAnnotation("2026-08-30", TODAY, undefined)).toBe("9d overdue");
   });
 });
