@@ -37,9 +37,25 @@ export function useReminders() {
   const [loading, setLoading] = useState(true);
 
   const refresh = useCallback(async () => {
+    // Fire rows are permanent history and accumulate: one reminder on a
+    // 45-minute interval banked 34 rows in a single day, and an unbounded
+    // "every undismissed fire" fetch would grow without limit while returning
+    // rows that can no longer alert.
+    //
+    // The alert queue only ever needs fires that could still be owed an
+    // attempt. The repeat policy caps at 100 attempts x 3600s, so nothing older
+    // than ~4.2 days can still be alerting; a 7-day window clears that with
+    // room to spare. Exhausted rows inside the window are still filtered by
+    // isExhausted, which is the authoritative per-reminder check.
+    const since = new Date(Date.now() - 7 * 86_400_000).toISOString();
     const [{ data, error }, { data: fireRows }, { data: settings }] = await Promise.all([
       supabase.from("reminders").select("*").order("created_at"),
-      supabase.from("reminder_fires").select("*").eq("dismissed", false).order("occurrence_at"),
+      supabase
+        .from("reminder_fires")
+        .select("*")
+        .eq("dismissed", false)
+        .gte("occurrence_at", since)
+        .order("occurrence_at"),
       supabase.from("app_settings").select("reminders_globally_enabled").maybeSingle(),
     ]);
     if (!error && data) setReminders(data);
