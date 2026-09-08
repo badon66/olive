@@ -289,3 +289,16 @@ export function overdueFirst<T extends { due_date: string | null; status?: strin
     t.status !== "completed" && t.due_date !== null && t.due_date < today;
   return [...items.filter(isOverdue), ...items.filter((t) => !isOverdue(t))];
 }
+
+// Active Tasks handles `anytime` CONDITIONALLY (BUILD_PLAN), refining the
+// earlier "always show them" rule:
+//   • the current part of day has nothing of its own → anytime work is shown
+//     directly, so the panel is never empty when there IS something valid to do;
+//   • the section already has its own work → anytime folds into a collapsible
+//     dropdown beneath it, available on click but not competing with what is
+//     actually scheduled for now.
+export function splitAnytime<T>(sectionItems: T[], anytimeItems: T[]): { primary: T[]; dropdown: T[] } {
+  return sectionItems.length === 0
+    ? { primary: anytimeItems, dropdown: [] }
+    : { primary: sectionItems, dropdown: anytimeItems };
+}

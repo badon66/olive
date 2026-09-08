@@ -370,3 +370,27 @@ describe("sectionOptionLabel — picker labels with clock ranges", () => {
     expect(sectionOptionLabel("anytime")).toBe("Anytime");
   });
 });
+
+import { splitAnytime } from "./sections";
+
+// Active Tasks (BUILD_PLAN): anytime tasks are CONDITIONAL — they fill an empty
+// panel, but never compete with work actually scheduled for now.
+describe("splitAnytime — anytime tasks fill an empty section, else fold away", () => {
+  const a = ["anytime-1", "anytime-2"];
+
+  it("an empty section shows anytime work directly, so the panel is never needlessly empty", () => {
+    expect(splitAnytime([], a)).toEqual({ primary: a, dropdown: [] });
+  });
+
+  it("a section with its own work keeps anytime in the dropdown", () => {
+    expect(splitAnytime(["midday-1"], a)).toEqual({ primary: ["midday-1"], dropdown: a });
+  });
+
+  it("nothing anywhere stays empty rather than inventing a dropdown", () => {
+    expect(splitAnytime([], [])).toEqual({ primary: [], dropdown: [] });
+  });
+
+  it("a section with work and no anytime has no dropdown", () => {
+    expect(splitAnytime(["midday-1"], [])).toEqual({ primary: ["midday-1"], dropdown: [] });
+  });
+});
