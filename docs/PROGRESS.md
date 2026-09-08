@@ -469,3 +469,95 @@ timer-driven equivalent; `CountdownRing` itself ran unmodified.
 **Still Phase 8, not faked:** delivery when the app is closed. The fire rows are
 the durable record the Telegram bot will read; browser push was deliberately not
 used as a stand-in.
+
+## Weekly-task pause, conditional anytime, global display rules (2026-09-07)
+
+Reminders (BUILD_PLAN Phase 2) was already built, verified and pushed in the
+previous session (commits affd5e9…eecaa65) — re-verified here, not rebuilt.
+
+### Pause a weekly task (`20260907000001_weekly_task_paused.sql`, applied)
+`weekly_tasks.paused boolean not null default false`, plus a partial index on
+the not-paused rows since every schedule read filters by it. A flag on the row
+rather than an archive table, so the recurrence pattern survives untouched and
+unpausing resumes exactly as before.
+
+`appearsOn()` returns false for a paused task FIRST, before any mode branch can
+hand a day back — that one guard removes it from Today's Schedule on every day
+(past, present and future) and from Active Tasks, since both read through it.
+The "Unplanned Weekly Tasks" nudge moved to a new `needsPlanning()` — count-mode
+only, never paused — so the nudge and the schedule now share one tested rule
+instead of an inline expression. On the Weekly Tasks tab a paused task stays
+visible, dimmed, with a "Paused" chip, a one-click Pause/Resume button on its
+row, a matching checkbox in the edit modal, and a note replacing the progress
+line ("Paused — not scheduled anywhere until resumed. Pattern kept.").
+
+Distinct from "Skip today", which is one occurrence on one day and still lives
+in `weekly_task_checkins` — covered by a test asserting the difference.
+
+### Active Tasks: anytime is conditional
+Supersedes the earlier "always show them" rule. `splitAnytime()` is the whole
+decision, tested in isolation: an empty section promotes anytime work into the
+main list (with a line saying why, so a glance doesn't misread it as belonging
+to now); a section with its own work folds anytime into a collapsible "Anytime"
+dropdown carrying a count. Arrows reorder the primary list only — parked work
+shouldn't compete for ordering. The panel was restructured to keep the two
+groups apart from the source data rather than merging and re-separating them.
+
+### Two global display rules (CLAUDE.md), applied everywhere
+- **12-hour with AM/PM, never 24-hour.** New `formatClock()`. Eight real
+  violations fixed: the dashboard header clock (`hour12: false` → "22:34"),
+  scheduled_time on task cards and in Upcoming Days, the voice-preview
+  breakdown, wake time and blocked windows in both Today's Schedule and the
+  setup summary, and the greeting insight ("Next: Dentist at 15:30"). An
+  existing insight test asserted the 24-hour output — it encoded the violation
+  and was updated to the rule. Deliberately NOT changed: `hourCycle: "h23"` in
+  date math, and `<input type="time">` / `datetime-local` values, which require
+  24-hour and are not display.
+- **A completed task is never "overdue."** The styling already guarded on
+  `done`, but the chip still rendered the words "5d overdue" for anything
+  finished after its due date. Completed cards now show `formatCompleted()` —
+  "Completed today" / "yesterday" / "N days ago" — on the same 1:30 AM view-day
+  rule as the rest of the app.
+
+### Found in live data and fixed
+The one real reminder in the database ("Claude Check", every 45 minutes) had
+banked 34 fire rows in a day: 31 already spent and silent, 2 still alertable.
+The design held up — a day of accumulation produces 2 alerts, not 33 — but
+`useReminders.refresh` fetched EVERY undismissed row unboundedly. Now bounded to
+a 7-day window, which clears the worst-case repeat policy (100 attempts ×
+3600s ≈ 4.2 days) with room to spare; `isExhausted` remains the authoritative
+per-reminder filter. Those rows are the user's own data and were left alone.
+
+**Known and not addressed:** fire rows have no retention policy — they are
+permanent history and grow indefinitely. Harmless at single-user scale now that
+the read is bounded, but a cleanup job is worth having eventually.
+
+### Tested (2026-09-07) — 272 unit tests pass (26 new)
+Server, via the real pg_cron command so the secret stayed in the vault: one
+reminder of each of the five recurrence types, each with a past-due occurrence
+→ the tick raised exactly 5 fire rows, each `occurrence_at` the correct
+scheduled slot (daily/weekly/monthly at their time, interval at its most recent
+slot, one-time at its exact moment), every anchor equal to its occurrence, and
+the one-time deactivated itself.
+
+Browser (throwaway harness mounting the real components, since the sign-in gate
+can't be passed in-session):
+- Countdown ring genuinely animates — stroke-dashoffset climbed monotonically at
+  ~2.56/sec against an exact circumference/cycle of 153.938/60 = 2.566.
+- Sound picker: all four files load (206, byte sizes matching disk) and audio
+  genuinely plays — 0.47s into a 1.96s file at the configured 0.4 volume.
+- Active Tasks, both branches: a populated midday section keeps anytime in a
+  collapsed "Anytime 2" dropdown that expands to both items; an empty section
+  shows them inline under "Nothing set for midday — showing anytime work", with
+  no dropdown.
+- A task due Sept 2 and completed Sept 4 renders "Completed 3 days ago" with no
+  amber chip and the word "overdue" absent.
+- Paused weekly task: listed, dimmed, "Paused" chip, Resume button
+  (aria-pressed), and clicking Resume cleared it.
+- A regex sweep of the whole rendered page found five 12-hour timestamps and
+  ZERO 24-hour leaks.
+
+**Verification note:** the Browser pane runs HIDDEN and browsers fire no rAF
+callbacks in a hidden tab, so the ring measures frozen for environmental
+reasons. The harness swapped ONLY the frame scheduler for a timer-driven
+equivalent; CountdownRing itself ran unmodified.
