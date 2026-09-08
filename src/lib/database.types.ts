@@ -494,6 +494,7 @@ export type Database = {
           created_at: string
           id: string
           name: string
+          paused: boolean
           recurrence_mode: Database["public"]["Enums"]["recurrence_mode"]
           scheduled_days: number[] | null
           sort_order: number | null
@@ -505,6 +506,7 @@ export type Database = {
           created_at?: string
           id?: string
           name: string
+          paused?: boolean
           recurrence_mode?: Database["public"]["Enums"]["recurrence_mode"]
           scheduled_days?: number[] | null
           sort_order?: number | null
@@ -516,6 +518,7 @@ export type Database = {
           created_at?: string
           id?: string
           name?: string
+          paused?: boolean
           recurrence_mode?: Database["public"]["Enums"]["recurrence_mode"]
           scheduled_days?: number[] | null
           sort_order?: number | null
