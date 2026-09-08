@@ -11,6 +11,9 @@ type WeeklyTaskLike = {
   recurrence_mode: "count" | "fixed_days";
   scheduled_days: number[] | null;
   target_per_week: number | null;
+  // Paused indefinitely (BUILD_PLAN). Optional so callers that only care about
+  // the recurrence pattern need not supply it.
+  paused?: boolean | null;
 };
 type CheckinLike = { date: string; status: "planned" | "completed" | "skipped" };
 
@@ -60,6 +63,11 @@ export function progress(task: WeeklyTaskLike, states: CubeState[]): Progress {
 // True when this weekly task belongs to `date`. Date-generic on purpose — it is
 // what lets any viewed day (not just today) render its weekly tasks inline.
 export function appearsOn(task: WeeklyTaskLike, checkins: CheckinLike[], date: string): boolean {
+  // Paused: claims no day at all, in either mode, on every date — past, present
+  // and future. Checked FIRST so no later branch can hand it a day back. The
+  // recurrence pattern itself is untouched, so unpausing resumes exactly as
+  // before; this is a pause, not an archive. Distinct from a per-day skip.
+  if (task.paused) return false;
   // Explicitly skipped for this day -> don't offer it again, whichever mode it
   // is. Checked FIRST: a fixed-days task returns early below, so a skip test
   // placed after that branch would silently never apply to fixed-days tasks.
@@ -83,4 +91,13 @@ export function cubeClickAction(state: CubeState): CubeClickAction {
   if (state === "empty") return "plan";
   if (state === "planned") return "complete";
   return "clear";
+}
+
+// Does this task still need days planned this week? The "Unplanned Weekly
+// Tasks" nudge, as one testable rule. Only count-mode tasks can be unplanned —
+// a fixed-days pattern plans itself — and a paused task is never nudged.
+export function needsPlanning(task: WeeklyTaskLike, checkins: CheckinLike[], today: string): boolean {
+  if (task.paused) return false;
+  if (task.recurrence_mode !== "count") return false;
+  return progress(task, cubeStates(task, checkins, today)).toPlan > 0;
 }

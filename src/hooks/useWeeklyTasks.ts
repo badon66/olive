@@ -11,6 +11,8 @@ export type WeeklyTaskInput = {
   target_per_week: number | null; // count mode
   scheduled_days: number[] | null; // fixed_days mode, 0=Monday..6=Sunday
   time_section?: WeeklyTask["time_section"];
+  // Indefinite pause (BUILD_PLAN) — hides the task everywhere but its own tab.
+  paused?: boolean;
 };
 
 export function useWeeklyTasks() {

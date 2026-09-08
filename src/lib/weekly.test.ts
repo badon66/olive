@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { appearsOn, cubeClickAction, cubeStates, mondayIndex, progress, weekDates } from "./weekly";
+import { appearsOn, cubeClickAction, cubeStates, mondayIndex, needsPlanning, progress, weekDates } from "./weekly";
 
 // 2026-07-07 is a Tuesday; its week runs Mon 2026-07-06 … Sun 2026-07-12
 const TODAY = "2026-07-07";
@@ -105,4 +105,65 @@ describe("cubeClickAction — the pencil-OFF click cycle", () => {
   it("planned → complete", () => expect(cubeClickAction("planned")).toBe("complete"));
   it("completed → clear (back to empty)", () => expect(cubeClickAction("completed")).toBe("clear"));
   it("skipped → clear (restore, unchanged behaviour)", () => expect(cubeClickAction("skipped")).toBe("clear"));
+});
+
+// ── Pause (BUILD_PLAN): indefinite, pattern untouched ───────────────────────
+describe("a paused weekly task disappears from everywhere it would normally show", () => {
+  const gymFixed = { ...fixedDays([0, 2, 4]), paused: true };
+  const gymCount = { recurrence_mode: "count" as const, scheduled_days: null, target_per_week: 3, paused: true };
+
+  it("a paused fixed-days task claims no day, even one it is scheduled for", () => {
+    // 2026-07-06 is a Monday — index 0, which IS in scheduled_days.
+    expect(appearsOn({ ...gymFixed, paused: false }, [], "2026-07-06")).toBe(true);
+    expect(appearsOn(gymFixed, [], "2026-07-06")).toBe(false);
+  });
+
+  it("a paused count-mode task claims no day, even with its target unmet", () => {
+    expect(appearsOn({ ...gymCount, paused: false }, [], "2026-07-08")).toBe(true);
+    expect(appearsOn(gymCount, [], "2026-07-08")).toBe(false);
+  });
+
+  it("holds on EVERY day, not just today — past, present and future", () => {
+    for (const d of ["2026-07-06", "2026-07-08", "2026-07-10", "2026-08-03"]) {
+      expect(appearsOn(gymFixed, [], d)).toBe(false);
+    }
+  });
+
+  it("leaves the recurrence pattern untouched, so unpausing resumes exactly as before", () => {
+    // Same object, pause flipped off — the cubes light exactly as they did.
+    expect(cubeStates(gymFixed, [], TODAY)).toEqual(cubeStates({ ...gymFixed, paused: false }, [], TODAY));
+    expect(progress(gymFixed, cubeStates(gymFixed, [], TODAY))).toEqual(
+      progress({ ...gymFixed, paused: false }, cubeStates(gymFixed, [], TODAY)),
+    );
+  });
+
+  it("is distinct from skipping a single day", () => {
+    const skipped = [{ date: "2026-07-06", status: "skipped" as const }];
+    const live = { ...gymFixed, paused: false };
+    // Skip removes ONE day; the rest of the pattern still shows.
+    expect(appearsOn(live, skipped, "2026-07-06")).toBe(false);
+    expect(appearsOn(live, skipped, "2026-07-08")).toBe(true);
+    // Pause removes every day.
+    expect(appearsOn(gymFixed, skipped, "2026-07-08")).toBe(false);
+  });
+});
+
+describe("needsPlanning — the Unplanned Weekly Tasks nudge", () => {
+  const count = (target: number, paused = false) => ({
+    recurrence_mode: "count" as const, scheduled_days: null, target_per_week: target, paused,
+  });
+
+  it("a count task with days left to plan is nudged", () => {
+    expect(needsPlanning(count(3), [], TODAY)).toBe(true);
+  });
+  it("a fully planned count task is not", () => {
+    const planned = [0, 1, 2].map((i) => ({ date: weekDates(TODAY)[i], status: "planned" as const }));
+    expect(needsPlanning(count(3), planned, TODAY)).toBe(false);
+  });
+  it("a PAUSED task is never nudged, however unplanned", () => {
+    expect(needsPlanning(count(3, true), [], TODAY)).toBe(false);
+  });
+  it("fixed-days tasks are never nudged — their pattern plans itself", () => {
+    expect(needsPlanning(fixedDays([0, 2, 4]), [], TODAY)).toBe(false);
+  });
 });

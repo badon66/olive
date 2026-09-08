@@ -3,7 +3,7 @@ import { supabase } from "../../lib/supabase";
 import type { Task } from "../../hooks/useTasks";
 import type { WeeklyCheckin, WeeklyTask } from "../../hooks/useWeeklyTasks";
 import type { BlockedWindow } from "../../lib/api";
-import { addDays, formatDue } from "../../lib/dates";
+import { addDays, formatClock, formatDue } from "../../lib/dates";
 import { isLateBedtime } from "../../lib/dayrules";
 import {
   nextSectionFor,
@@ -17,7 +17,7 @@ import {
   type TimeSection,
 } from "../../lib/sections";
 import { pullForward } from "../../lib/suggest";
-import { appearsOn, cubeStates, progress } from "../../lib/weekly";
+import { appearsOn, needsPlanning } from "../../lib/weekly";
 import { SkeletonRows } from "../Skeleton";
 import { TaskCard } from "../TaskCard";
 import { useDoubleClick } from "../TaskActionPopup";
@@ -243,11 +243,11 @@ export function TodaySchedulePanel({
 
   // Count-mode weekly tasks still needing days planned this week — surfaced as a
   // nudge here too (BUILD_PLAN Phase 2), disappearing once fully planned.
+  // needsPlanning is the single tested rule — count-mode only, and never a
+  // paused task, which must not nag from a nudge it can't be planned into.
   const countNudges = historical
     ? []
-    : (weeklyBits?.weeklyTasks ?? []).filter(
-        (t) => t.recurrence_mode === "count" && progress(t, cubeStates(t, checkinsFor(t.id), today)).toPlan > 0,
-      );
+    : (weeklyBits?.weeklyTasks ?? []).filter((t) => needsPlanning(t, checkinsFor(t.id), today));
 
   // Pull-forward suggestions: unscheduled tasks filling sparse, unblocked
   // sections. Recomputes when tasks or blocked windows change; the result is a
@@ -407,10 +407,10 @@ export function TodaySchedulePanel({
 
       {!historical && setup && (
         <p className="flex flex-wrap gap-1.5 mb-2">
-          <span className="hud-chip hud-chip-signal">wake {setup.wake_time.slice(0, 5)}</span>
+          <span className="hud-chip hud-chip-signal">wake {formatClock(setup.wake_time)}</span>
           {setup.blocked_windows.map((w, i) => (
             <span key={i} className="hud-chip hud-chip-amber">
-              ⛔ {w.start}–{w.end} {w.label}
+              ⛔ {formatClock(w.start)}–{formatClock(w.end)} {w.label}
             </span>
           ))}
         </p>

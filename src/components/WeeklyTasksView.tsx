@@ -105,7 +105,10 @@ export function WeeklyTasksView({
             const rowsFor = checkinsByTask.get(t.id) ?? [];
             const states = cubeStates(t, rowsFor, today);
             const body = (
-              <div className="py-2.5">
+              // Paused (BUILD_PLAN): dimmed and labelled, but still HERE — this
+              // is the one place a paused task stays visible, so it can be found
+              // and switched back on.
+              <div className={`py-2.5 ${t.paused ? "opacity-55" : ""}`}>
                 {/* Single row: name (+ chips) on the left, the 7 square cubes on
                     the right. Cubes stay large but genuinely square (w-14 h-14). */}
                 <div className="flex items-center gap-3">
@@ -118,8 +121,27 @@ export function WeeklyTasksView({
                       <p className="font-body font-semibold text-base leading-snug truncate">{t.name}</p>
                     </button>
                     <span className="hud-chip shrink-0">{recurrenceLabel(t)}</span>
-                    {t.time_section && <span className="hud-chip hud-chip-signal shrink-0">{t.time_section}</span>}
+                    {t.time_section && (
+                      <span className="hud-chip hud-chip-signal shrink-0">{sectionOptionLabel(t.time_section)}</span>
+                    )}
+                    {t.paused && <span className="hud-chip hud-chip-amber shrink-0">Paused</span>}
                   </div>
+
+                  {/* Reversible from the row itself, not only the edit modal —
+                      finding a paused task and resuming it is a one-click job. */}
+                  <button
+                    onClick={() => void updateWeeklyTask(t.id, { paused: !t.paused })}
+                    aria-pressed={!!t.paused}
+                    title={t.paused ? `Resume ${t.name}` : `Pause ${t.name} indefinitely`}
+                    aria-label={t.paused ? `Resume ${t.name}` : `Pause ${t.name}`}
+                    className={`shrink-0 h-9 px-2.5 rounded border font-data text-[10px] tracking-wide cursor-pointer transition-colors duration-200 focus-visible:outline-2 focus-visible:outline-signal ${
+                      t.paused
+                        ? "border-amber/50 text-amber hover:bg-amber/10"
+                        : "border-signal-dim/40 text-dim hover:border-signal-dim hover:text-hud"
+                    }`}
+                  >
+                    {t.paused ? "Resume" : "Pause"}
+                  </button>
 
                   <div className="flex gap-1.5 shrink-0" role="group" aria-label={`${t.name} week`}>
                     {week.map((date, i) => {
@@ -161,7 +183,11 @@ export function WeeklyTasksView({
                 </div>
 
                 {/* Progress note: numbers always add up (planned + completed + to-plan = target) */}
-                <p className="font-data text-[11px] text-dim mt-1">{progressNote(t, states)}</p>
+                <p className="font-data text-[11px] text-dim mt-1">
+                  {t.paused
+                    ? "Paused — not scheduled anywhere until resumed. Pattern kept."
+                    : progressNote(t, states)}
+                </p>
 
               </div>
             );
@@ -216,6 +242,7 @@ export function WeeklyTaskForm({
     target_per_week: number | null;
     scheduled_days: number[] | null;
     time_section: WeeklyTask["time_section"];
+    paused: boolean;
   }) => Promise<void>;
   onClose: () => void;
   onDelete?: () => void;
@@ -225,6 +252,7 @@ export function WeeklyTaskForm({
   const [target, setTarget] = useState(initial?.target_per_week ?? 3);
   const [days, setDays] = useState<number[]>(initial?.scheduled_days ?? []);
   const [section, setSection] = useState<WeeklyTask["time_section"] | "">(initial?.time_section ?? "");
+  const [paused, setPaused] = useState(!!initial?.paused);
   const [busy, setBusy] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   useEscape(onClose);
@@ -244,6 +272,7 @@ export function WeeklyTaskForm({
       target_per_week: mode === "count" ? target : null,
       scheduled_days: mode === "fixed_days" ? days : null,
       time_section: section || null,
+      paused,
     });
     setBusy(false);
     onClose();
@@ -377,6 +406,23 @@ export function WeeklyTaskForm({
               </option>
             ))}
           </select>
+        </label>
+
+        {/* Pause is indefinite and reversible; delete is neither. Keeping them
+            apart on the form makes that difference obvious. */}
+        <label className="flex items-center gap-3 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={paused}
+            onChange={(e) => setPaused(e.target.checked)}
+            className="w-5 h-5 accent-[var(--color-amber)] cursor-pointer"
+          />
+          <span className="min-w-0">
+            <span className="block font-body text-[15px] text-hud">Paused</span>
+            <span className="block text-dim text-xs">
+              Hidden from the schedule and nudges until resumed. The pattern is kept.
+            </span>
+          </span>
         </label>
 
         <div className="flex gap-3">
