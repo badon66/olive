@@ -1,4 +1,5 @@
 /// <reference types="vite/client" />
+/// <reference types="vite-plugin-pwa/client" />
 
 // Typed so a missing/renamed variable is a compile error rather than `any`
 // silently flowing into createClient at runtime.

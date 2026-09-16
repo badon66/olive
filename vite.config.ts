@@ -10,6 +10,9 @@ export default defineConfig({
     tailwindcss(),
     VitePWA({
       registerType: "autoUpdate",
+      // We register the worker ourselves in main.tsx so a new build can reload
+      // the page. Do not also inject the plugin bare registration script.
+      injectRegister: null,
       manifest: {
         name: "Olive",
         short_name: "Olive",
