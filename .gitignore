@@ -41,3 +41,5 @@ supabase/.temp
 Database password.txt
 *password*.txt
 *credentials*.txt
+
+.vercel
