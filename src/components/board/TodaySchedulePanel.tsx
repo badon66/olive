@@ -17,12 +17,25 @@ import {
   type TimeSection,
 } from "../../lib/sections";
 import { pullForward } from "../../lib/suggest";
-import { appearsOn, needsPlanning } from "../../lib/weekly";
+import {
+  appearsOn,
+  type DayOverrideLike,
+  needsPlanning,
+  type OverrideField,
+  resolveWeeklyDay,
+} from "../../lib/weekly";
 import { SkeletonRows } from "../Skeleton";
 import { TaskCard } from "../TaskCard";
 import { useDoubleClick } from "../TaskActionPopup";
 import { combineRows, liftRows, ScheduleRow, splitOrderWrites, type ScheduleItem } from "./ScheduleRow";
 import { DraggableTask, DraggableWeekly, DropZone } from "./TaskDnd";
+
+// What a per-day override actually changed, for the "just this day" tooltip.
+const OVERRIDE_LABELS: Record<OverrideField, string> = {
+  name: "name",
+  time_section: "part of day",
+  scheduled_time: "time",
+};
 
 const SECTION_LABELS: Record<TimeSection, string> = {
   morning: "Morning",
@@ -112,9 +125,16 @@ type CardProps = {
 type WeeklyBits = {
   weeklyTasks: WeeklyTask[];
   checkins: WeeklyCheckin[];
+  // One-day-only occurrence tweaks (name / part of day / clock time).
+  dayOverrides?: DayOverrideLike[];
   completeDay: (id: string, date: string) => Promise<WeeklyCheckin | null>;
   uncompleteDay: (task: WeeklyTask, date: string) => Promise<void>;
 };
+
+// A weekly occurrence already resolved for the day on screen: its name and
+// section may come from a one-day override, plus any clock time pinned for that
+// day. Distinct from WeeklyTask, which is always the recurring pattern itself.
+type ResolvedWeekly = WeeklyTask & { scheduled_time: string | null; overridden: OverrideField[] };
 
 // One Carryover Tasks row: a checkbox to complete it inline, single-click to
 // edit, double-click for the action popup — the same gesture set as the other
@@ -239,7 +259,12 @@ export function TodaySchedulePanel({
   // count-mode task on any day its weekly target isn't met yet. `appearsOn` was
   // always date-generic — it was simply being called with `today` every time,
   // which is why future days showed nothing.
-  const weeklyToday = (weeklyBits?.weeklyTasks ?? []).filter((t) => appearsOn(t, checkinsFor(t.id), viewDate));
+  const weeklyToday = (weeklyBits?.weeklyTasks ?? [])
+    .filter((t) => appearsOn(t, checkinsFor(t.id), viewDate))
+    // Resolve each occurrence FOR THE DAY BEING SHOWN, so a per-day rename,
+    // section move or pinned time flows into placement and display for free —
+    // every reader below just sees `.name` / `.time_section`.
+    .map((t) => resolveWeeklyDay(t, weeklyBits?.dayOverrides ?? [], viewDate));
 
   // Count-mode weekly tasks still needing days planned this week — surfaced as a
   // nudge here too (BUILD_PLAN Phase 2), disappearing once fully planned.
@@ -278,9 +303,9 @@ export function TodaySchedulePanel({
   // Overdue lifts to the top AFTER combining — combineRows re-sorts placed rows
   // by sort_order, so a pre-combine lift never survived for any row that had
   // been nudged (the previous "applied AFTER … so it wins" comment was false).
-  const rowsFor = (slotKey: string, weekly: WeeklyTask[]) =>
+  const rowsFor = (slotKey: string, weekly: ResolvedWeekly[]) =>
     liftRows(
-      combineRows<Task, WeeklyTask>(
+      combineRows<Task, ResolvedWeekly>(
         orderedFor(slotKey).map((t) => ({
           kind: "task" as const,
           id: t.id,
@@ -295,7 +320,7 @@ export function TodaySchedulePanel({
 
   const moveRow = (
     slotKey: string,
-    rows: ScheduleItem<Task, WeeklyTask>[],
+    rows: ScheduleItem<Task, ResolvedWeekly>[],
     index: number,
     dir: -1 | 1,
   ) => {
@@ -598,6 +623,25 @@ export function TodaySchedulePanel({
                                 <span className={`flex-1 min-w-0 truncate font-body text-[15px] ${checked ? "opacity-50 line-through" : ""}`}>
                                   {w.name}
                                 </span>
+                                {/* A one-day override is visible as itself: the pinned
+                                    time is shown, and the amber chip says the change is
+                                    scoped to this day so nobody mistakes it for an edit
+                                    to the recurring pattern. */}
+                                {w.scheduled_time && (
+                                  <span className="hud-chip hud-chip-signal shrink-0">
+                                    {formatClock(w.scheduled_time)}
+                                  </span>
+                                )}
+                                {w.overridden.length > 0 && (
+                                  <span
+                                    className="hud-chip hud-chip-amber shrink-0"
+                                    title={`Changed for this day only (${w.overridden
+                                      .map((f) => OVERRIDE_LABELS[f])
+                                      .join(", ")}). The weekly pattern is unchanged.`}
+                                  >
+                                    just this day
+                                  </span>
+                                )}
                                 <span className="hud-chip shrink-0">weekly</span>
                               </div>
                             </DraggableWeekly>

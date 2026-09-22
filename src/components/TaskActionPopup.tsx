@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import type { Task } from "../hooks/useTasks";
 import type { WeeklyTask } from "../hooks/useWeeklyTasks";
-import { addDays } from "../lib/dates";
+import { addDays, fullDateLabel } from "../lib/dates";
+import { SECTION_ORDER, sectionOptionLabel, type TimeSection } from "../lib/sections";
+import { findDayOverride, type DayOverrideLike, type OverridePatch } from "../lib/weekly";
 import { DatePickerPopup } from "./DatePickerPopup";
 import { Portal } from "./Portal";
 
@@ -49,6 +51,9 @@ export function TaskActionPopup({
   onUnschedule,
   onReschedule,
   onSkipWeekly,
+  dayOverrides = [],
+  onSetWeeklyOverride,
+  onClearWeeklyOverride,
 }: {
   target: ActionTarget;
   today: string;
@@ -56,8 +61,20 @@ export function TaskActionPopup({
   onUnschedule: (id: string) => void;
   onReschedule: (id: string, date: string | null) => void;
   onSkipWeekly: (task: WeeklyTask, date: string) => void;
+  // One-day-only occurrence tweaks. Optional so the popup still works anywhere
+  // the override store isn't wired up.
+  dayOverrides?: DayOverrideLike[];
+  onSetWeeklyOverride?: (taskId: string, date: string, patch: OverridePatch) => void | Promise<void>;
+  onClearWeeklyOverride?: (taskId: string, date: string) => void | Promise<void>;
 }) {
   const [picking, setPicking] = useState(false);
+  const [editingDay, setEditingDay] = useState(false);
+
+  const existing =
+    target.kind === "weekly" ? findDayOverride(target.weekly.id, dayOverrides, target.date) : null;
+  const [dayName, setDayName] = useState(existing?.name ?? "");
+  const [daySection, setDaySection] = useState<TimeSection | "">(existing?.time_section ?? "");
+  const [dayTime, setDayTime] = useState(existing?.scheduled_time?.slice(0, 5) ?? "");
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
@@ -65,7 +82,8 @@ export function TaskActionPopup({
     return () => document.removeEventListener("keydown", onKey);
   }, [onClose]);
 
-  const label = target.kind === "task" ? target.task.title : target.weekly.name;
+  // Show what this occurrence is actually called on this day, override included.
+  const label = target.kind === "task" ? target.task.title : (existing?.name ?? target.weekly.name);
 
   // "Skip for the day" pushes a regular task to tomorrow. Explicitly a no-op if
   // it is already sitting on tomorrow — skipping twice shouldn't march it into
@@ -110,27 +128,118 @@ export function TaskActionPopup({
               </button>
             </div>
           ) : target.kind === "weekly" ? (
-            <div className="flex flex-col gap-2">
-              {/* Deliberately the ONLY action for a weekly occurrence: it doesn't
-                  own a due_date, so "delete for today" and "reschedule" have no
-                  meaning here. Skipping marks just this day and leaves the
-                  recurring pattern untouched. */}
-              <button
-                className="hud-button w-full"
-                onClick={() => {
-                  onSkipWeekly(target.weekly, target.date);
-                  onClose();
-                }}
-              >
-                Skip today
-              </button>
-              <p className="font-data text-[10px] text-dim/70 -mt-1 mb-1">
-                Doesn't count as missed, and leaves the schedule unchanged.
-              </p>
-              <button className="hud-button w-full !border-signal-dim/40 !text-dim" onClick={onClose}>
-                Cancel
-              </button>
-            </div>
+            editingDay ? (
+              /* One-day-only edit. Everything here writes to
+                 weekly_task_day_overrides for this date alone — the recurrence
+                 pattern, every other day, and the week's totals are untouched. */
+              <div className="flex flex-col gap-3">
+                <p className="font-data text-[10px] uppercase tracking-widest text-amber/80">
+                  Just for {fullDateLabel(target.date)}
+                </p>
+                <label className="block space-y-1">
+                  <span className="font-data text-xs text-dim uppercase tracking-wider">Name</span>
+                  <input
+                    className="hud-input"
+                    value={dayName}
+                    onChange={(e) => setDayName(e.target.value)}
+                    placeholder={target.weekly.name}
+                    aria-label="Name for this day only"
+                  />
+                </label>
+                <div className="flex gap-2">
+                  <label className="flex-1 block space-y-1">
+                    <span className="font-data text-xs text-dim uppercase tracking-wider">Part of day</span>
+                    <select
+                      className="hud-input cursor-pointer"
+                      value={daySection}
+                      onChange={(e) => setDaySection(e.target.value as TimeSection | "")}
+                      aria-label="Part of day for this day only"
+                    >
+                      <option value="" className="bg-void">As usual</option>
+                      {SECTION_ORDER.map((s) => (
+                        <option key={s} value={s} className="bg-void">
+                          {sectionOptionLabel(s)}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="flex-1 block space-y-1">
+                    <span className="font-data text-xs text-dim uppercase tracking-wider">Time</span>
+                    <input
+                      className="hud-input"
+                      type="time"
+                      value={dayTime}
+                      onChange={(e) => setDayTime(e.target.value)}
+                      aria-label="Exact time for this day only"
+                    />
+                  </label>
+                </div>
+                <p className="font-data text-[10px] text-dim/70 -mt-1">
+                  Leave a field blank to keep it as normal. This day only — the weekly pattern is untouched.
+                </p>
+                <button
+                  className="hud-button w-full"
+                  onClick={() => {
+                    void onSetWeeklyOverride?.(target.weekly.id, target.date, {
+                      name: dayName,
+                      time_section: daySection || null,
+                      scheduled_time: dayTime || null,
+                    });
+                    onClose();
+                  }}
+                >
+                  Save for this day
+                </button>
+                {existing && (
+                  <button
+                    className="hud-button w-full !border-amber/40 !text-amber"
+                    onClick={() => {
+                      void onClearWeeklyOverride?.(target.weekly.id, target.date);
+                      onClose();
+                    }}
+                  >
+                    Reset to normal
+                  </button>
+                )}
+                <button
+                  className="hud-button w-full !border-signal-dim/40 !text-dim"
+                  onClick={() => setEditingDay(false)}
+                >
+                  Back
+                </button>
+              </div>
+            ) : (
+              <div className="flex flex-col gap-2">
+                {/* A weekly occurrence owns no due_date, so "delete for today" and
+                    "reschedule" have no meaning here. What it does support is
+                    skipping the day, or tweaking just this one occurrence. */}
+                <button
+                  className="hud-button w-full"
+                  onClick={() => {
+                    onSkipWeekly(target.weekly, target.date);
+                    onClose();
+                  }}
+                >
+                  Skip today
+                </button>
+                <p className="font-data text-[10px] text-dim/70 -mt-1 mb-1">
+                  Doesn't count as missed, and leaves the schedule unchanged.
+                </p>
+                {onSetWeeklyOverride && (
+                  <>
+                    <button className="hud-button w-full" onClick={() => setEditingDay(true)}>
+                      {existing ? "Edit this day's version" : "Change just for this day"}
+                    </button>
+                    <p className="font-data text-[10px] text-dim/70 -mt-1 mb-1">
+                      Rename it, move it to another part of the day, or pin a time — for this day only.
+                    </p>
+                  </>
+                )}
+                <button className="hud-button w-full !border-signal-dim/40 !text-dim" onClick={onClose}>
+                  Cancel
+                </button>
+              </div>
+            )
           ) : (
             <div className="flex flex-col gap-2">
               <button

@@ -178,6 +178,12 @@ export function DesktopDashboard({
 
   const dueToday = [...sections.overdue, ...sections.today];
 
+  // The panels hand back weekly occurrences already RESOLVED for their day. The
+  // action popup needs the pattern's own row instead, so its "usual name"
+  // placeholder and its reset-to-normal refer to the real task, not to the
+  // override currently in force.
+  const baseWeekly = (w: WeeklyTask) => weeklyStore.weeklyTasks.find((t) => t.id === w.id) ?? w;
+
   // Active Tasks answers "what should I be doing right now", so it runs off
   // `activeDay`, not the page day. Identical to `dueToday` except in the 1:30–5:00
   // AM window, where the page has flipped but the previous day's Night is still on.
@@ -315,7 +321,7 @@ export function DesktopDashboard({
       weeklyBits={weeklyStore}
       onSaveOrder={taskStore.saveOrder}
       onSaveWeeklyOrder={weeklyStore.saveWeeklyOrder}
-      onWeeklyDoubleClick={(w, date) => setActionFor({ kind: "weekly", weekly: w, date })}
+      onWeeklyDoubleClick={(w, date) => setActionFor({ kind: "weekly", weekly: baseWeekly(w), date })}
       loading={loading || weeklyStore.loading}
     />
   );
@@ -392,7 +398,7 @@ export function DesktopDashboard({
       onMoveSection={(id, section) => taskStore.updateTask(id, { time_section: section })}
       onSaveOrder={taskStore.saveOrder}
       onSaveWeeklyOrder={weeklyStore.saveWeeklyOrder}
-      onWeeklyDoubleClick={(w, date) => setActionFor({ kind: "weekly", weekly: w, date })}
+      onWeeklyDoubleClick={(w, date) => setActionFor({ kind: "weekly", weekly: baseWeekly(w), date })}
       nowSection={nowSection}
       nowMinutes={edmontonMinutes(now)}
       activeDay={activeDay}
@@ -487,7 +493,21 @@ export function DesktopDashboard({
       deps={{
         today,
         updateTask: taskStore.updateTask,
-        setWeeklySection: (id, s) => weeklyStore.updateWeeklyTask(id, { time_section: s }),
+        // Dragging an occurrence whose DAY has been pinned to a section moves that
+        // pin, not the recurring pattern — otherwise the day override keeps winning
+        // and the item visibly snaps back. Unpinned days behave exactly as before.
+        setWeeklySection: (id, s) => {
+          const pinned = weeklyStore.dayOverrides.find(
+            (o) => o.weekly_task_id === id && o.date === scheduleDate && o.time_section !== null,
+          );
+          return pinned
+            ? weeklyStore.setDayOverride(id, scheduleDate, {
+                name: pinned.name,
+                scheduled_time: pinned.scheduled_time,
+                time_section: s,
+              })
+            : weeklyStore.updateWeeklyTask(id, { time_section: s });
+        },
         planWeeklyDay: (id, date) => weeklyStore.planDay(id, date),
         convertTaskToWeekly,
         convertWeeklyToTask,
@@ -632,6 +652,17 @@ export function DesktopDashboard({
             target={actionFor}
             today={today}
             onSkipWeekly={(w, date) => void weeklyStore.skipDay(w.id, date)}
+            dayOverrides={weeklyStore.dayOverrides}
+            // Gated on the table actually existing, so the per-day editor never
+            // appears somewhere it could not save.
+            onSetWeeklyOverride={
+              weeklyStore.overridesReady
+                ? (id, date, patch) => weeklyStore.setDayOverride(id, date, patch)
+                : undefined
+            }
+            onClearWeeklyOverride={
+              weeklyStore.overridesReady ? (id, date) => weeklyStore.clearDayOverride(id, date) : undefined
+            }
             onClose={() => setActionFor(null)}
             // "Delete for today" = off today's schedule, not destroyed. The task
             // drops back to its category's backlog with no due date.

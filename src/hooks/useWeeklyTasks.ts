@@ -2,9 +2,11 @@ import { useCallback, useEffect, useState } from "react";
 import { supabase } from "../lib/supabase";
 import type { Database } from "../lib/database.types";
 import { addDays, edmontonToday } from "../lib/dates";
+import { normalizeOverridePatch, overrideIsEmpty, type OverridePatch } from "../lib/weekly";
 
 export type WeeklyTask = Database["public"]["Tables"]["weekly_tasks"]["Row"];
 export type WeeklyCheckin = Database["public"]["Tables"]["weekly_task_checkins"]["Row"];
+export type WeeklyDayOverride = Database["public"]["Tables"]["weekly_task_day_overrides"]["Row"];
 export type WeeklyTaskInput = {
   name: string;
   recurrence_mode: "count" | "fixed_days";
@@ -18,12 +20,15 @@ export type WeeklyTaskInput = {
 export function useWeeklyTasks() {
   const [weeklyTasks, setWeeklyTasks] = useState<WeeklyTask[]>([]);
   const [checkins, setCheckins] = useState<WeeklyCheckin[]>([]);
+  const [dayOverrides, setDayOverrides] = useState<WeeklyDayOverride[]>([]);
+  // False until the overrides table answers — see refresh().
+  const [overridesReady, setOverridesReady] = useState(false);
   const [loading, setLoading] = useState(true);
 
   const refresh = useCallback(async () => {
     // ~4 weeks of history is plenty for the current-week cubes
     const since = addDays(edmontonToday(), -28);
-    const [w, c] = await Promise.all([
+    const [w, c, o] = await Promise.all([
       // Manual order first; never-nudged rows (sort_order null) keep creation order
       supabase
         .from("weekly_tasks")
@@ -31,9 +36,25 @@ export function useWeeklyTasks() {
         .order("sort_order", { ascending: true, nullsFirst: false })
         .order("created_at"),
       supabase.from("weekly_task_checkins").select("*").gte("date", since),
+      // Per-day name/section/time tweaks. Read the near future too — the
+      // schedule can be stepped forward a week, and an override set for a
+      // coming day has to travel with it.
+      supabase.from("weekly_task_day_overrides").select("*").gte("date", since),
     ]);
     if (!w.error && w.data) setWeeklyTasks(w.data);
     if (!c.error && c.data) setCheckins(c.data);
+    // Tolerated rather than required: if weekly_task_day_overrides has not been
+    // migrated yet the query 404s, and the app must still work — every
+    // occurrence simply falls back to its own name, section and no clock time.
+    // `overridesReady` then gates the UI, so the per-day editor stays hidden
+    // rather than appearing and failing on save. It lights up on its own once
+    // the migration lands; no redeploy needed.
+    if (!o.error && o.data) {
+      setDayOverrides(o.data);
+      setOverridesReady(true);
+    } else if (o.error) {
+      setOverridesReady(false);
+    }
     setLoading(false);
   }, []);
 
@@ -63,11 +84,47 @@ export function useWeeklyTasks() {
     return data ?? null;
   };
 
+  const removeDayOverride = async (weeklyTaskId: string, date: string) => {
+    const before = dayOverrides;
+    setDayOverrides((prev) => prev.filter((o) => !(o.weekly_task_id === weeklyTaskId && o.date === date)));
+    const { error } = await supabase
+      .from("weekly_task_day_overrides")
+      .delete()
+      .eq("weekly_task_id", weeklyTaskId)
+      .eq("date", date);
+    if (error) setDayOverrides(before);
+    await refresh();
+  };
+
+  // One-day-only tweak to a single occurrence (rename / move part of day / pin a
+  // clock time). Writes nothing to weekly_tasks, so the recurring pattern — and
+  // every other day — is untouched. A patch that overrides nothing deletes the
+  // row rather than storing a meaningless one.
+  const writeDayOverride = async (weeklyTaskId: string, date: string, patch: OverridePatch) => {
+    const next = normalizeOverridePatch(patch);
+    if (overrideIsEmpty(next)) return removeDayOverride(weeklyTaskId, date);
+
+    const before = dayOverrides;
+    setDayOverrides((prev) => {
+      const rest = prev.filter((o) => !(o.weekly_task_id === weeklyTaskId && o.date === date));
+      return [...rest, { id: `optimistic-${weeklyTaskId}-${date}`, weekly_task_id: weeklyTaskId, date, ...next } as WeeklyDayOverride];
+    });
+    const { error } = await supabase
+      .from("weekly_task_day_overrides")
+      .upsert({ weekly_task_id: weeklyTaskId, date, ...next, user_id: await userId() }, { onConflict: "weekly_task_id,date" });
+    if (error) setDayOverrides(before);
+    await refresh();
+  };
+
   return {
     weeklyTasks,
     checkins,
+    dayOverrides,
+    overridesReady,
     loading,
     refresh,
+    setDayOverride: writeDayOverride,
+    clearDayOverride: removeDayOverride,
     addWeeklyTask: async (input: WeeklyTaskInput) => {
       await supabase.from("weekly_tasks").insert({ ...input, user_id: await userId() });
       await refresh();

@@ -1,8 +1,9 @@
 import { useState } from "react";
 import type { Task } from "../../hooks/useTasks";
 import type { WeeklyCheckin, WeeklyTask } from "../../hooks/useWeeklyTasks";
+import { formatClock } from "../../lib/dates";
 import { orderBySortOrder, scheduleSort, splitAnytime, type TimeSection } from "../../lib/sections";
-import { appearsOn } from "../../lib/weekly";
+import { appearsOn, type DayOverrideLike, type OverrideField, resolveWeeklyDay } from "../../lib/weekly";
 import { SkeletonRows } from "../Skeleton";
 import { TaskCard } from "../TaskCard";
 import { combineRows, liftRows, ScheduleRow, splitOrderWrites, type ScheduleItem } from "./ScheduleRow";
@@ -29,9 +30,15 @@ type CardProps = {
 type WeeklyBits = {
   weeklyTasks: WeeklyTask[];
   checkins: WeeklyCheckin[];
+  // One-day-only occurrence tweaks (name / part of day / clock time).
+  dayOverrides?: DayOverrideLike[];
   completeDay?: (id: string, date: string) => Promise<WeeklyCheckin | null>;
   uncompleteDay?: (task: WeeklyTask, date: string) => Promise<void>;
 };
+
+// A weekly occurrence resolved for the day on screen — name/section may come
+// from a one-day override, plus any clock time pinned for that day.
+type ResolvedWeekly = WeeklyTask & { scheduled_time: string | null; overridden: OverrideField[] };
 
 // Live snapshot of ONLY the current part of the day (midday tasks at midday,
 // afternoon tasks in the afternoon) — distinct from the fuller Today's Schedule.
@@ -70,9 +77,13 @@ export function ActiveTasksPanel({
 
   const checkinsFor = (id: string) => (weeklyBits?.checkins ?? []).filter((c) => c.weekly_task_id === id);
   const weeklyIn = (want: string) =>
-    (weeklyBits?.weeklyTasks ?? []).filter(
-      (t) => sectionOf(t.time_section) === want && appearsOn(t, checkinsFor(t.id), today),
-    );
+    (weeklyBits?.weeklyTasks ?? [])
+      .filter((t) => appearsOn(t, checkinsFor(t.id), today))
+      // Resolved BEFORE the section filter: a day override can move an
+      // occurrence into a different part of the day, which decides whether it
+      // belongs in this panel at all.
+      .map((t) => resolveWeeklyDay(t, weeklyBits?.dayOverrides ?? [], today))
+      .filter((t) => sectionOf(t.time_section) === want);
   const sectionWeekly = weeklyIn(section);
   const anytimeWeekly = section === "anytime" ? [] : weeklyIn("anytime");
 
@@ -80,9 +91,9 @@ export function ActiveTasksPanel({
   // — so the arrows move an item relative to what is actually on screen, not
   // just its own kind. Overdue lifted AFTER combining, because combineRows
   // re-sorts placed rows by sort_order and would discard a pre-combine lift.
-  const build = (tasks: Task[], weekly: WeeklyTask[]) =>
+  const build = (tasks: Task[], weekly: ResolvedWeekly[]) =>
     liftRows(
-      combineRows<Task, WeeklyTask>(
+      combineRows<Task, ResolvedWeekly>(
         orderBySortOrder(tasks).map((t) => ({ kind: "task" as const, id: t.id, label: t.title, sort: t.sort_order, task: t })),
         weekly.map((w) => ({ kind: "weekly" as const, id: w.id, label: w.name, sort: w.sort_order, weekly: w })),
       ),
@@ -112,7 +123,7 @@ export function ActiveTasksPanel({
 
   // Both kinds go through one renderer, so the row body is written once and
   // serves the main list and the dropdown identically.
-  const renderRow = (row: ScheduleItem<Task, WeeklyTask>) =>
+  const renderRow = (row: ScheduleItem<Task, ResolvedWeekly>) =>
     row.kind === "task" ? (
       <DraggableTask zone="active" task={row.task} className="py-1">
         <TaskCard
@@ -150,6 +161,19 @@ export function ActiveTasksPanel({
             <span className={`flex-1 min-w-0 truncate font-body text-base ${done ? "opacity-50 line-through" : ""}`}>
               {w.name}
             </span>
+            {/* Same treatment as Today's Schedule: a one-day override shows its
+                pinned time and says plainly that it is scoped to this day. */}
+            {w.scheduled_time && (
+              <span className="hud-chip hud-chip-signal shrink-0">{formatClock(w.scheduled_time)}</span>
+            )}
+            {w.overridden.length > 0 && (
+              <span
+                className="hud-chip hud-chip-amber shrink-0"
+                title="Changed for this day only. The weekly pattern is unchanged."
+              >
+                just this day
+              </span>
+            )}
             <span className="hud-chip shrink-0">weekly</span>
           </div>
         );
