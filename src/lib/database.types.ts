@@ -489,6 +489,47 @@ export type Database = {
           },
         ]
       }
+      weekly_task_day_overrides: {
+        Row: {
+          created_at: string
+          date: string
+          id: string
+          name: string | null
+          scheduled_time: string | null
+          time_section: Database["public"]["Enums"]["time_section"] | null
+          user_id: string
+          weekly_task_id: string
+        }
+        Insert: {
+          created_at?: string
+          date: string
+          id?: string
+          name?: string | null
+          scheduled_time?: string | null
+          time_section?: Database["public"]["Enums"]["time_section"] | null
+          user_id: string
+          weekly_task_id: string
+        }
+        Update: {
+          created_at?: string
+          date?: string
+          id?: string
+          name?: string | null
+          scheduled_time?: string | null
+          time_section?: Database["public"]["Enums"]["time_section"] | null
+          user_id?: string
+          weekly_task_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "weekly_task_day_overrides_weekly_task_id_fkey"
+            columns: ["weekly_task_id"]
+            isOneToOne: false
+            referencedRelation: "weekly_tasks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       weekly_tasks: {
         Row: {
           created_at: string
