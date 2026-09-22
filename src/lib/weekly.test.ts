@@ -1,5 +1,17 @@
 import { describe, expect, it } from "vitest";
-import { appearsOn, cubeClickAction, cubeStates, mondayIndex, needsPlanning, progress, weekDates } from "./weekly";
+import {
+  appearsOn,
+  cubeClickAction,
+  cubeStates,
+  type DayOverrideLike,
+  mondayIndex,
+  needsPlanning,
+  normalizeOverridePatch,
+  overrideIsEmpty,
+  progress,
+  resolveWeeklyDay,
+  weekDates,
+} from "./weekly";
 
 // 2026-07-07 is a Tuesday; its week runs Mon 2026-07-06 … Sun 2026-07-12
 const TODAY = "2026-07-07";
@@ -165,5 +177,108 @@ describe("needsPlanning — the Unplanned Weekly Tasks nudge", () => {
   });
   it("fixed-days tasks are never nudged — their pattern plans itself", () => {
     expect(needsPlanning(fixedDays([0, 2, 4]), [], TODAY)).toBe(false);
+  });
+});
+
+// --- Per-day overrides -----------------------------------------------------
+
+const base = {
+  id: "wt1",
+  name: "Gym",
+  time_section: "morning" as const,
+  recurrence_mode: "fixed_days" as const,
+  scheduled_days: [0, 2, 4],
+  target_per_week: null,
+};
+const ov = (patch: Partial<DayOverrideLike> = {}): DayOverrideLike => ({
+  weekly_task_id: "wt1",
+  date: TODAY,
+  name: null,
+  time_section: null,
+  scheduled_time: null,
+  ...patch,
+});
+
+describe("resolveWeeklyDay", () => {
+  it("returns the task untouched when no override exists", () => {
+    const r = resolveWeeklyDay(base, [], TODAY);
+    expect(r.name).toBe("Gym");
+    expect(r.time_section).toBe("morning");
+    expect(r.scheduled_time).toBeNull();
+    expect(r.overridden).toEqual([]);
+  });
+
+  it("renames for that day only, inheriting everything else", () => {
+    const r = resolveWeeklyDay(base, [ov({ name: "Gym — legs" })], TODAY);
+    expect(r.name).toBe("Gym — legs");
+    expect(r.time_section).toBe("morning"); // inherited
+    expect(r.overridden).toEqual(["name"]);
+  });
+
+  it("moves it to another part of the day, keeping the name", () => {
+    const r = resolveWeeklyDay(base, [ov({ time_section: "evening" })], TODAY);
+    expect(r.name).toBe("Gym");
+    expect(r.time_section).toBe("evening");
+    expect(r.overridden).toEqual(["time_section"]);
+  });
+
+  it("pins an exact clock time", () => {
+    const r = resolveWeeklyDay(base, [ov({ scheduled_time: "15:00" })], TODAY);
+    expect(r.scheduled_time).toBe("15:00");
+    expect(r.overridden).toEqual(["scheduled_time"]);
+  });
+
+  it("applies all three at once", () => {
+    const r = resolveWeeklyDay(base, [ov({ name: "Physio", time_section: "evening", scheduled_time: "18:30" })], TODAY);
+    expect([r.name, r.time_section, r.scheduled_time]).toEqual(["Physio", "evening", "18:30"]);
+    expect(r.overridden).toEqual(["name", "time_section", "scheduled_time"]);
+  });
+
+  it("is scoped to its own date — the next day is untouched", () => {
+    const overrides = [ov({ name: "Gym — legs" })];
+    expect(resolveWeeklyDay(base, overrides, "2026-07-08").name).toBe("Gym");
+    expect(resolveWeeklyDay(base, overrides, "2026-07-08").overridden).toEqual([]);
+  });
+
+  it("is scoped to its own task", () => {
+    const other = { ...base, id: "wt2" };
+    expect(resolveWeeklyDay(other, [ov({ name: "Gym — legs" })], TODAY).name).toBe("Gym");
+  });
+});
+
+// The whole reason overrides live in their own table rather than on a checkin.
+describe("overrides never disturb the recurrence or the week's maths", () => {
+  const overrides = [ov({ name: "Renamed", time_section: "night", scheduled_time: "23:30" })];
+
+  it("appearsOn is unchanged", () => {
+    const before = appearsOn(base, [], TODAY);
+    const resolved = resolveWeeklyDay(base, overrides, TODAY);
+    expect(appearsOn(resolved, [], TODAY)).toBe(before);
+  });
+
+  it("cubeStates and progress are unchanged", () => {
+    const statesBefore = cubeStates(base, [], TODAY);
+    const resolved = resolveWeeklyDay(base, overrides, TODAY);
+    expect(cubeStates(resolved, [], TODAY)).toEqual(statesBefore);
+    expect(progress(resolved, cubeStates(resolved, [], TODAY))).toEqual(progress(base, statesBefore));
+  });
+});
+
+describe("normalizeOverridePatch / overrideIsEmpty", () => {
+  it("trims a name", () => expect(normalizeOverridePatch({ name: "  Physio  " }).name).toBe("Physio"));
+  it("treats a blank name as no rename", () => {
+    expect(normalizeOverridePatch({ name: "   " }).name).toBeNull();
+    expect(normalizeOverridePatch({ name: "" }).name).toBeNull();
+  });
+  it("treats an empty clock time as unset", () =>
+    expect(normalizeOverridePatch({ scheduled_time: "" }).scheduled_time).toBeNull());
+  it("an all-blank patch overrides nothing", () => {
+    expect(overrideIsEmpty({})).toBe(true);
+    expect(overrideIsEmpty({ name: "  ", time_section: null, scheduled_time: "" })).toBe(true);
+  });
+  it("any one field makes it non-empty", () => {
+    expect(overrideIsEmpty({ name: "x" })).toBe(false);
+    expect(overrideIsEmpty({ time_section: "evening" })).toBe(false);
+    expect(overrideIsEmpty({ scheduled_time: "09:00" })).toBe(false);
   });
 });

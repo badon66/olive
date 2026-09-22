@@ -1,4 +1,5 @@
 import { addDays } from "./dates";
+import type { TimeSection } from "./sections";
 
 // Weekly task cube model (BUILD_PLAN Phase 2): 7 cubes Monday-first, each
 // day's state independent. fixed_days tasks auto-light their scheduled
@@ -100,4 +101,88 @@ export function needsPlanning(task: WeeklyTaskLike, checkins: CheckinLike[], tod
   if (task.paused) return false;
   if (task.recurrence_mode !== "count") return false;
   return progress(task, cubeStates(task, checkins, today)).toPlan > 0;
+}
+
+// ---------------------------------------------------------------------------
+// Per-day overrides
+// ---------------------------------------------------------------------------
+// A weekly occurrence can be tweaked for ONE day — renamed, moved to a different
+// part of the day, or pinned to an exact clock time — without touching the
+// recurring pattern. Stored per (weekly_task_id, date); a null column inherits
+// from the parent task for that day.
+//
+// Deliberately kept OUT of cubeStates / progress / appearsOn. An override changes
+// how a day's occurrence looks, never whether it is due or how the week counts.
+// Renaming today's gym session must not quietly alter the week's target.
+
+export type OverrideField = "name" | "time_section" | "scheduled_time";
+
+export type DayOverrideLike = {
+  weekly_task_id: string;
+  date: string;
+  name: string | null;
+  time_section: TimeSection | null;
+  scheduled_time: string | null;
+};
+
+export type WeeklyNameable = { id: string; name: string; time_section: TimeSection | null };
+
+// The override in force for one task on one day, if any.
+export function findDayOverride(
+  taskId: string,
+  overrides: DayOverrideLike[],
+  date: string,
+): DayOverrideLike | null {
+  return overrides.find((o) => o.weekly_task_id === taskId && o.date === date) ?? null;
+}
+
+// What this occurrence actually looks like on `date`. Returns the task with its
+// overridden fields already substituted, so every existing caller that reads
+// `.name` / `.time_section` picks the override up for free — placement into a
+// schedule section included.
+export function resolveWeeklyDay<T extends WeeklyNameable>(
+  task: T,
+  overrides: DayOverrideLike[],
+  date: string,
+): T & { scheduled_time: string | null; overridden: OverrideField[] } {
+  const o = findDayOverride(task.id, overrides, date);
+  if (!o) return { ...task, scheduled_time: null, overridden: [] };
+
+  const overridden: OverrideField[] = [];
+  if (o.name !== null) overridden.push("name");
+  if (o.time_section !== null) overridden.push("time_section");
+  if (o.scheduled_time !== null) overridden.push("scheduled_time");
+
+  return {
+    ...task,
+    name: o.name ?? task.name,
+    time_section: o.time_section ?? task.time_section,
+    scheduled_time: o.scheduled_time,
+    overridden,
+  };
+}
+
+export type OverridePatch = {
+  name?: string | null;
+  time_section?: TimeSection | null;
+  scheduled_time?: string | null;
+};
+
+// A blank name is not a rename — it means "go back to the task's own name".
+// Normalising here keeps the empty-string case out of the database, where the
+// not-empty CHECK constraint would reject it anyway.
+export function normalizeOverridePatch(patch: OverridePatch): Required<OverridePatch> {
+  const name = typeof patch.name === "string" ? patch.name.trim() : patch.name ?? null;
+  return {
+    name: name ? name : null,
+    time_section: patch.time_section ?? null,
+    scheduled_time: patch.scheduled_time ? patch.scheduled_time : null,
+  };
+}
+
+// True when a patch overrides nothing, i.e. the row should be deleted rather
+// than written. Mirrors weekly_task_day_overrides_not_empty in the schema.
+export function overrideIsEmpty(patch: OverridePatch): boolean {
+  const n = normalizeOverridePatch(patch);
+  return n.name === null && n.time_section === null && n.scheduled_time === null;
 }
