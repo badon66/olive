@@ -688,3 +688,98 @@ own range). In a running browser against the real Upcoming Days panel: a Sept
 of them; a pick task set for Sept 24/26/29 rendered on exactly those days;
 completing Sept 24 left Sept 26 untouched and struck through only Sept 24
 (`truncate line-through` on the 24th, plain `truncate` on the 26th).
+
+## Multi-day tasks made solid: range chips, the date flicker, and a full review (2026-09-24)
+
+Keenan asked for the weekly one-day editor (built by a parallel session) to be
+tested end to end, for the date flicker to be found, and for multi-day tasks to
+show a range instead of one date. An independent four-lens review (flicker /
+one-day overrides / every surface / today's flexible rework — 8 agents, each
+finding attacked by a refuter) ran alongside hands-on browser testing.
+
+**The date flicker — two real causes, both fixed.**
+1. *Every way of moving a multi-day task rewrote `due_date` alone* — dragging it
+   between sections or onto a day, "Skip for the day", "Reschedule", and the
+   assistant's "move X to Friday". A window/pick task's days come from its range,
+   so it didn't move, but its deadline was overwritten: the chip jumped from
+   "Sep 28" to "Today", and next day the task was flagged overdue and listed in
+   Carryover while its window was still running. All moves now go through
+   shape-aware patches in `lib/flexible.ts` (`dropPatch`, `dayDropPatch`,
+   `skipDayPatch`, `onDayPatch`); the assistant edge function mirrors
+   `onDayPatch` (deployed as v12).
+2. *Reloads could land out of order.* Two quick actions let an older reload arrive
+   after a newer optimistic change, so a task visibly jumped back and then
+   forward. `useTasks` and `useWeeklyTasks` now apply a reload only if no change
+   has started since it was issued (a newer one always follows). `useTasks` also
+   stopped restoring whole-list snapshots on a failed write — a snapshot taken
+   before another in-flight change silently undid that one too; the trailing
+   reload now restores the truth instead.
+
+Live check: the real dashboard, fed Keenan's actual overlapping windows, watched
+for 40 s across the 30 s clock refresh — zero date changes, zero background writes.
+
+**Range chips.** `whenLabel()`: a window reads "Sep 24–28" (or "Sep 29 – Oct 2"),
+a pick task lists its days ("Sep 24, 26, 29", collapsing past four to
+"Sep 24 – Oct 2 · 5 days"), a fixed task keeps "Today"/"Tomorrow"/"3d overdue".
+The label is fixed by the task itself, so it cannot change between renders or
+depend on the day you look from. Verified identical across every panel.
+
+**Pick-days tasks.**
+- *Could get stuck open forever*: a missed day kept `allDaysDone` false, so an
+  overdue pick task came back unticked every day however often it was ticked.
+  `completeDayPatch` closes the task when nothing is left from today onward, and
+  ticking an overdue one finishes it.
+- Phone view completed EVERY day on one tick (no per-day handlers) — fixed.
+- Past days in Today's Schedule ignored per-day ticks — fixed.
+- Reopening left every day ticked; editing the days left stale ticks and a wrong
+  open/closed state — `reopenPatch` / `reconcileOnEdit`.
+- A day ticked off reads "Done for this day", not "Completed", since the task
+  stays open for its other days.
+
+**Weekly one-day editor (built by the parallel session) — tested and completed.**
+Tested live through the real popup: rename + move + pin a time for today only,
+tomorrow untouched, reopen prefilled with the pattern's name as placeholder,
+reset, and editing Saturday saves to Saturday. Fixed around it:
+- Upcoming Days ignored one-day edits (same day, two versions) — each box now
+  resolves its own day and marks it "this day".
+- Upcoming Days also stopped showing *finished* work after this morning's rework
+  (a regression of mine: it used the "still to do" rule for a day's record) —
+  `showsOnDate()` restores it, struck through; weekly ticks now show there too.
+- One shared `moveWeeklySection`: a drag onto a day with a pinned section moves
+  that pin (phone included — it used to change every day and snap back); the
+  drop's own day is used (Active Tasks = the active day, not the schedule's page
+  day); "unschedule" really unschedules. Verified live, including at 4 AM where
+  Active Tasks is still on the previous day's Night.
+- A pinned clock time now sorts among timed tasks (7 AM Gym above a 2:30 PM booking).
+- The popup names the day it skips ("Skip Saturday") when not today.
+- Late-bedtime Morning clear no longer hides weekly occurrences; they get
+  day-scoped rehome buttons in the prompt.
+- Undo of a weekly→task conversion restores the one-day edits too.
+
+**Counts that ignored multi-day tasks:** greeting headline and "Next" booking,
+Active Jobs stats (active vs upcoming), and done-today now count a window/pick
+task on every day it occurs (`asScheduled` adapter; tests added).
+
+**Phone layout:** the Weekly Tasks row (7 × 56 px cubes) overflowed a 390 px
+screen and the Pause button drew over the chips; below `sm` the cubes wrap to a
+full-width line at 40 px. Desktop unchanged (verified).
+
+**Refuted by the review (kept so they aren't re-litigated):** "Delete for today"
+clearing a multi-day task from every day (intentional and documented); a tab
+running the old bundle (possible only in a bundle that no longer exists);
+dashboard weekly count including paused tasks (they match); the 1:30 AM page
+flip moving the viewed date (day navigation is relative by design).
+
+**Known and left:** the late-bedtime prompt's section buttons change a *regular*
+multi-day task's section on all its days — a task has one section, that's the
+data model. Out-of-order-reload protection is verified by reading, not live (the
+harness uses in-memory stores); undo-restores-overrides and the bedtime weekly
+prompt need a signed-in session to exercise.
+
+**Tested:** 353 unit tests (from 297; +56). Live, via a throwaway harness mounting
+the real DesktopDashboard and BriefView against stateful fake stores that log
+every write: the flicker watch; Skip for the day on a window (wrote only
+`window_start`); Reschedule (became a one-day task); a real pointer drag between
+sections (wrote only `time_section`); drops onto day boxes (own day: no write;
+other day: one-day task); per-day ticks on desktop and phone; the one-day editor
+end to end; pinned-time ordering; the phone layout at 390 px and desktop at 1920 px.
