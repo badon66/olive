@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { supabase } from "../lib/supabase";
-import { allDaysDone } from "../lib/flexible";
+import { edmontonToday } from "../lib/dates";
+import { completeDayPatch, reopenPatch, uncompleteDayPatch } from "../lib/flexible";
 import type { Database } from "../lib/database.types";
 import type { TimeSection } from "../lib/sections";
 
@@ -24,6 +25,9 @@ export type TaskInput = {
   candidate_dates?: string[] | null;
   // Per-day completions, pick mode only (see lib/flexible.ts).
   completed_dates?: string[] | null;
+  // Set only when an edit changes whether a pick task is finished.
+  status?: "open" | "completed";
+  completed_at?: string | null;
 };
 
 export type TaskStore = ReturnType<typeof useTasks>;
@@ -31,8 +35,16 @@ export type TaskStore = ReturnType<typeof useTasks>;
 export function useTasks() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
+  // Bumped by every mutation. A reload only applies if no mutation has started
+  // since it was issued — otherwise its data predates that mutation's write.
+  // Without this, two quick actions let an OLDER reload land after a newer
+  // optimistic change and put a just-moved task back where it was, then the
+  // newer reload moved it forward again: a visible jump back and forth. A
+  // fresher reload is always coming, because every mutation ends with one.
+  const epoch = useRef(0);
 
   const refresh = useCallback(async () => {
+    const issuedAt = epoch.current;
     // Open tasks plus the last 30 days of completed ones. Every completed-task
     // display needs at most 30 days (category panels show the 5 most recent,
     // the Tasks tab 20, doneTodayCount only today) — without this bound the app
@@ -44,6 +56,7 @@ export function useTasks() {
       .or(`status.eq.open,completed_at.gte.${cutoff}`)
       .order("due_date", { ascending: true, nullsFirst: false })
       .order("priority_weight", { ascending: false });
+    if (issuedAt !== epoch.current) return; // superseded — a newer reload follows
     if (!error && data) setTasks(data);
     setLoading(false);
   }, []);
@@ -54,6 +67,17 @@ export function useTasks() {
 
   const userId = async () => (await supabase.auth.getUser()).data.user!.id;
 
+  // The one path every change goes through: paint it immediately, write it,
+  // then reload. A failed write is corrected by that reload (the database still
+  // holds the old row) rather than by restoring a snapshot — a snapshot taken
+  // before another in-flight change would have silently undone that one too.
+  const patchTask = async (id: string, patch: Partial<TaskInput> | Record<string, unknown>) => {
+    epoch.current += 1;
+    setTasks((prev) => prev.map((t) => (t.id === id ? ({ ...t, ...patch } as Task) : t)));
+    await supabase.from("tasks").update(patch).eq("id", id);
+    await refresh();
+  };
+
   return {
     tasks,
     loading,
@@ -61,83 +85,46 @@ export function useTasks() {
     addTask: async (input: TaskInput) => {
       // Throw on failure — this used to swallow the error, so a constraint
       // violation closed the modal with no task created and no message.
+      epoch.current += 1;
       const { error } = await supabase.from("tasks").insert({ ...input, user_id: await userId() });
       if (error) throw new Error(error.message);
       await refresh();
     },
-    // Optimistic: paint the change immediately, then persist and reconcile.
-    // A failed write rolls the local row back so the UI never lies.
-    updateTask: async (id: string, patch: Partial<TaskInput>) => {
-      const before = tasks;
-      setTasks((prev) => prev.map((t) => (t.id === id ? { ...t, ...patch } : t)));
-      const { error } = await supabase.from("tasks").update(patch).eq("id", id);
-      if (error) setTasks(before);
-      await refresh();
-    },
-    completeTask: async (id: string) => {
-      const before = tasks;
-      const completed_at = new Date().toISOString();
-      setTasks((prev) => prev.map((t) => (t.id === id ? { ...t, status: "completed", completed_at } : t)));
-      const { error } = await supabase.from("tasks").update({ status: "completed", completed_at }).eq("id", id);
-      if (error) setTasks(before);
-      await refresh();
-    },
-    // Pick mode completes ONE DAY at a time: finishing Monday must leave
-    // Wednesday still showing. The day is recorded in completed_dates, and the
-    // task as a whole only closes once every chosen day is in there.
+    updateTask: (id: string, patch: Partial<TaskInput>) => patchTask(id, patch),
+    completeTask: (id: string) => patchTask(id, { status: "completed", completed_at: new Date().toISOString() }),
+    // Pick mode completes ONE DAY at a time: finishing Monday leaves Wednesday
+    // still showing. completeDayPatch decides when the task as a whole closes —
+    // including when a missed day would otherwise have kept it open for ever.
     completeTaskDay: async (id: string, date: string) => {
-      const before = tasks;
       const task = tasks.find((t) => t.id === id);
       if (!task) return;
-      const days = [...new Set([...(task.completed_dates ?? []), date])].sort();
-      const finished = allDaysDone({ ...task, completed_dates: days } as never);
-      const patch = {
-        completed_dates: days,
-        ...(finished ? { status: "completed" as const, completed_at: new Date().toISOString() } : {}),
-      };
-      setTasks((prev) => prev.map((t) => (t.id === id ? { ...t, ...patch } : t)));
-      const { error } = await supabase.from("tasks").update(patch).eq("id", id);
-      if (error) setTasks(before);
-      await refresh();
+      await patchTask(id, completeDayPatch(task, date, edmontonToday(), new Date().toISOString()));
     },
     uncompleteTaskDay: async (id: string, date: string) => {
-      const before = tasks;
       const task = tasks.find((t) => t.id === id);
       if (!task) return;
-      const days = (task.completed_dates ?? []).filter((d) => d !== date);
-      // Un-ticking any day reopens the task — it can no longer be all-done.
-      const patch = { completed_dates: days, status: "open" as const, completed_at: null };
-      setTasks((prev) => prev.map((t) => (t.id === id ? { ...t, ...patch } : t)));
-      const { error } = await supabase.from("tasks").update(patch).eq("id", id);
-      if (error) setTasks(before);
-      await refresh();
+      await patchTask(id, uncompleteDayPatch(task, date));
     },
     reopenTask: async (id: string) => {
-      const before = tasks;
-      setTasks((prev) => prev.map((t) => (t.id === id ? { ...t, status: "open", completed_at: null } : t)));
-      const { error } = await supabase.from("tasks").update({ status: "open", completed_at: null }).eq("id", id);
-      if (error) setTasks(before);
-      await refresh();
+      const task = tasks.find((t) => t.id === id);
+      await patchTask(id, task ? reopenPatch(task) : { status: "open", completed_at: null });
     },
     // Persist a section's manual order. Optimistic so the rows visibly swap on
     // the click, then all writes go out together.
     saveOrder: async (updates: { id: string; sort_order: number }[]) => {
       if (updates.length === 0) return;
-      const before = tasks;
+      epoch.current += 1;
       const byId = new Map(updates.map((u) => [u.id, u.sort_order]));
       setTasks((prev) => prev.map((t) => (byId.has(t.id) ? { ...t, sort_order: byId.get(t.id)! } : t)));
-      const results = await Promise.all(
-        updates.map((u) => supabase.from("tasks").update({ sort_order: u.sort_order }).eq("id", u.id)),
-      );
-      if (results.some((r) => r.error)) setTasks(before);
+      await Promise.all(updates.map((u) => supabase.from("tasks").update({ sort_order: u.sort_order }).eq("id", u.id)));
       await refresh();
     },
     deleteTask: async (id: string) => {
-      // Optimistic: the row leaves the screen immediately; rollback on error.
-      const before = tasks;
+      // Optimistic: the row leaves the screen immediately; the reload restores
+      // it if the delete failed.
+      epoch.current += 1;
       setTasks((prev) => prev.filter((t) => t.id !== id));
-      const { error } = await supabase.from("tasks").delete().eq("id", id);
-      if (error) setTasks(before);
+      await supabase.from("tasks").delete().eq("id", id);
       await refresh();
     },
   };

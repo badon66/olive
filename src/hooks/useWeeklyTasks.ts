@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { supabase } from "../lib/supabase";
 import type { Database } from "../lib/database.types";
 import { addDays, edmontonToday } from "../lib/dates";
+import type { TimeSection } from "../lib/sections";
 import { normalizeOverridePatch, overrideIsEmpty, type OverridePatch } from "../lib/weekly";
 
 export type WeeklyTask = Database["public"]["Tables"]["weekly_tasks"]["Row"];
@@ -24,8 +25,13 @@ export function useWeeklyTasks() {
   // False until the overrides table answers — see refresh().
   const [overridesReady, setOverridesReady] = useState(false);
   const [loading, setLoading] = useState(true);
+  // Bumped by every mutation; a reload only applies if none has started since it
+  // was issued. Stops an older reload landing after a newer optimistic change
+  // and flipping a cube (or a one-day edit) back and then forward again.
+  const epoch = useRef(0);
 
   const refresh = useCallback(async () => {
+    const issuedAt = epoch.current;
     // ~4 weeks of history is plenty for the current-week cubes
     const since = addDays(edmontonToday(), -28);
     const [w, c, o] = await Promise.all([
@@ -41,6 +47,7 @@ export function useWeeklyTasks() {
       // coming day has to travel with it.
       supabase.from("weekly_task_day_overrides").select("*").gte("date", since),
     ]);
+    if (issuedAt !== epoch.current) return; // superseded — a newer reload follows
     if (!w.error && w.data) setWeeklyTasks(w.data);
     if (!c.error && c.data) setCheckins(c.data);
     // Tolerated rather than required: if weekly_task_day_overrides has not been
@@ -64,9 +71,21 @@ export function useWeeklyTasks() {
 
   const userId = async () => (await supabase.auth.getUser()).data.user!.id;
 
+  const updateWeeklyTask = async (id: string, patch: Partial<WeeklyTaskInput>) => {
+    epoch.current += 1;
+    // Optimistic: cube-weekday toggles and drag-to-section paint immediately
+    // (a dropped weekly item used to snap back until the refetch landed).
+    const before = weeklyTasks;
+    setWeeklyTasks((prev) => prev.map((t) => (t.id === id ? { ...t, ...patch } : t)));
+    const { error } = await supabase.from("weekly_tasks").update(patch).eq("id", id);
+    if (error) setWeeklyTasks(before);
+    await refresh();
+  };
+
   // Optimistic check-off: the cube flips instantly, then the row is written and
   // the real state reconciled by refresh().
   const upsertStatus = async (weeklyTaskId: string, date: string, status: "planned" | "completed" | "skipped") => {
+    epoch.current += 1;
     setCheckins((prev) => {
       const hit = prev.find((c) => c.weekly_task_id === weeklyTaskId && c.date === date);
       if (hit) return prev.map((c) => (c === hit ? { ...c, status } : c));
@@ -85,6 +104,7 @@ export function useWeeklyTasks() {
   };
 
   const removeDayOverride = async (weeklyTaskId: string, date: string) => {
+    epoch.current += 1;
     const before = dayOverrides;
     setDayOverrides((prev) => prev.filter((o) => !(o.weekly_task_id === weeklyTaskId && o.date === date)));
     const { error } = await supabase
@@ -103,6 +123,7 @@ export function useWeeklyTasks() {
   const writeDayOverride = async (weeklyTaskId: string, date: string, patch: OverridePatch) => {
     const next = normalizeOverridePatch(patch);
     if (overrideIsEmpty(next)) return removeDayOverride(weeklyTaskId, date);
+    epoch.current += 1;
 
     const before = dayOverrides;
     setDayOverrides((prev) => {
@@ -126,22 +147,43 @@ export function useWeeklyTasks() {
     setDayOverride: writeDayOverride,
     clearDayOverride: removeDayOverride,
     addWeeklyTask: async (input: WeeklyTaskInput) => {
+      epoch.current += 1;
       await supabase.from("weekly_tasks").insert({ ...input, user_id: await userId() });
       await refresh();
     },
-    updateWeeklyTask: async (id: string, patch: Partial<WeeklyTaskInput>) => {
-      // Optimistic: cube-weekday toggles and drag-to-section paint immediately
-      // (a dropped weekly item used to snap back until the refetch landed).
-      const before = weeklyTasks;
-      setWeeklyTasks((prev) => prev.map((t) => (t.id === id ? { ...t, ...patch } : t)));
-      const { error } = await supabase.from("weekly_tasks").update(patch).eq("id", id);
-      if (error) setWeeklyTasks(before);
-      await refresh();
+    updateWeeklyTask,
+    // Moving an occurrence to another part of the day, from ANY surface
+    // (desktop or phone, schedule or Active Tasks). `date` is the day it was
+    // dropped on. If THAT day already has a section pinned, the pin moves —
+    // changing the pattern instead would leave the pin winning and the row
+    // snapping straight back. Otherwise the pattern itself moves, as before.
+    // A null section is "unschedule": that always applies to the pattern, and
+    // clears any section pin on the day so it can't keep the task placed.
+    moveWeeklySection: async (id: string, section: TimeSection | null, date: string) => {
+      const pin = dayOverrides.find((o) => o.weekly_task_id === id && o.date === date && o.time_section !== null);
+      if (section === null) {
+        await updateWeeklyTask(id, { time_section: null });
+        if (pin) await writeDayOverride(id, date, { name: pin.name, scheduled_time: pin.scheduled_time, time_section: null });
+        return;
+      }
+      if (pin) {
+        await writeDayOverride(id, date, { name: pin.name, scheduled_time: pin.scheduled_time, time_section: section });
+        return;
+      }
+      await updateWeeklyTask(id, { time_section: section });
+    },
+    // Put ONE day's occurrence in a part of the day, keeping any name or time
+    // already set for that day. Always day-scoped — used where a change must
+    // not touch the pattern (the late-bedtime Morning prompt).
+    pinWeeklySection: async (id: string, date: string, section: TimeSection) => {
+      const o = dayOverrides.find((x) => x.weekly_task_id === id && x.date === date);
+      await writeDayOverride(id, date, { name: o?.name ?? null, scheduled_time: o?.scheduled_time ?? null, time_section: section });
     },
     // Ordering for weekly occurrences shown inside Today's Schedule / Active
     // Tasks. Not used by the Weekly Tasks tab, which has no arrows (BUILD_PLAN).
     saveWeeklyOrder: async (updates: { id: string; sort_order: number }[]) => {
       if (updates.length === 0) return;
+      epoch.current += 1;
       const before = weeklyTasks;
       const byId = new Map(updates.map((u) => [u.id, u.sort_order]));
       setWeeklyTasks((prev) => prev.map((t) => (byId.has(t.id) ? { ...t, sort_order: byId.get(t.id)! } : t)));
@@ -152,6 +194,7 @@ export function useWeeklyTasks() {
       await refresh();
     },
     deleteWeeklyTask: async (id: string) => {
+      epoch.current += 1;
       await supabase.from("weekly_tasks").delete().eq("id", id); // checkins cascade
       await refresh();
     },
@@ -165,6 +208,7 @@ export function useWeeklyTasks() {
     // Unplanning removes the row (fixed_days cubes fall back to their virtual planned state).
     // Optimistic: the cube clears instantly; rollback on error.
     unplanDay: async (id: string, date: string) => {
+      epoch.current += 1;
       const before = checkins;
       setCheckins((prev) => prev.filter((c) => !(c.weekly_task_id === id && c.date === date)));
       const { error } = await supabase
@@ -180,6 +224,7 @@ export function useWeeklyTasks() {
     // wait a full round-trip while checking was instant, a felt asymmetry on
     // the very same cube.
     uncompleteDay: async (task: WeeklyTask, date: string) => {
+      epoch.current += 1;
       const before = checkins;
       if (task.recurrence_mode === "count") {
         setCheckins((prev) =>
