@@ -354,7 +354,7 @@ export type Database = {
         Row: {
           auto_carry_forward: boolean
           candidate_dates: string[] | null
-          placed_date: string | null
+          completed_dates: string[] | null
           window_end: string | null
           window_start: string | null
           category_id: string
@@ -376,7 +376,7 @@ export type Database = {
         Insert: {
           auto_carry_forward?: boolean
           candidate_dates?: string[] | null
-          placed_date?: string | null
+          completed_dates?: string[] | null
           window_end?: string | null
           window_start?: string | null
           category_id: string
@@ -398,7 +398,7 @@ export type Database = {
         Update: {
           auto_carry_forward?: boolean
           candidate_dates?: string[] | null
-          placed_date?: string | null
+          completed_dates?: string[] | null
           window_end?: string | null
           window_start?: string | null
           category_id?: string
