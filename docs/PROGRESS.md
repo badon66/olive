@@ -621,3 +621,70 @@ bedtime was 1:30 AM", and the completed task's picker reading "2026-08-30
 (Completed 3 days ago)" both standalone and inside the real edit modal — while the
 open-task picker still correctly reads "9d overdue". A regex sweep of the whole
 rendered page found zero 24-hour leaks.
+
+## Flexible tasks: occur on every day of their set (2026-09-24)
+
+**This is a SPEC CHANGE from Keenan, not a defect fix.** The old behaviour
+implemented BUILD_PLAN lines 84-85 exactly as written — "the system picks an
+actual day within that window, based on how busy each candidate day already is…
+if that day gets busy and the task isn't done, it moves to another day." That is
+precisely why a task given a Sept 23-25 window surfaced on ONE day and drifted
+between days. It was working as specified; the specification is what changed.
+
+**New model** (`src/lib/flexible.ts`, rewritten):
+- **window** — occurs on EVERY day from `window_start` to `window_end`. ONE
+  completion finishes it and it stops appearing on the remaining days.
+- **pick** — occurs on EVERY chosen day, and each day is completed
+  INDEPENDENTLY: finishing Monday leaves Wednesday still showing.
+- **fixed** — unchanged, one day.
+
+`occursOn()` is now the single rule for "does this task belong to this day", and
+every day-grouped surface goes through it (Today's Schedule on any day, Active
+Tasks, Upcoming Days blocks, `computeSections`). Previously each panel matched on
+`due_date` directly, which is what made one-day placement the only possible
+answer.
+
+`due_date` survives as the DEADLINE — the last day the task can still happen —
+because sorting, carryover and overdue all read it. It never decides which days
+a task shows on.
+
+**Removed:** the entire placement scheduler — `loadByDay`, `bestPlacement`,
+`replacementFor`, `planPlacements`, and the dashboard effect that wrote a new
+`due_date` on every render. Nothing chooses a day any more, so nothing can drift.
+The `placed_date` column went with it (migration
+`20260924000001_flexible_tasks_occur_every_day.sql`): it only ever held which day
+the scheduler had picked — derived bookkeeping, never user input — and left in
+place it would read like live state to the next reader.
+
+**Added:** `tasks.completed_dates date[]`, the per-day completions for pick mode.
+A pick task closes outright only once every chosen day is listed there;
+un-ticking any day reopens it.
+
+**Data backfill (in the same migration):** existing open flexible rows carried
+the day the old scheduler had chosen as their `due_date` — mid-range values that
+would have read as overdue early under the new model. Five live window tasks were
+realigned to `due_date = window_end`.
+
+**UI:** task cards carry a "window · Nd" or "N/M days" chip, so the same title
+appearing on four days reads as a window rather than a duplication bug; the form
+states what each mode does before you pick it. A pick-days row's checkbox ticks
+off ITS day only, in both the schedule and the Upcoming Days blocks.
+
+**BUILD_PLAN is now stale on this** (lines 84-85 still describe load-balanced
+placement). That file is user-owned per CLAUDE.md's file-ownership rule, so it has
+deliberately NOT been edited — flagged for Keenan to replace.
+
+**Interpretation worth confirming:** "every single day you select, it pops up,
+regardless of whether you finished it that day or not" was read as per-day
+completion — each chosen day is its own tick-off, and completing one never clears
+the others. The alternative reading (it keeps appearing even after the whole task
+is done) seemed wrong, since a finished task that never goes away has no way out.
+
+**Tested.** 297 unit tests (36 rewritten for the new contract, covering both
+shapes, per-day completion, deadlines, overdue-once-every-day-is-spent, and that
+`tasksOnDate` returns a task at most once even though its deadline sits inside its
+own range). In a running browser against the real Upcoming Days panel: a Sept
+24-27 window rendered on all four days; one completion cleared it from every one
+of them; a pick task set for Sept 24/26/29 rendered on exactly those days;
+completing Sept 24 left Sept 26 untouched and struck through only Sept 24
+(`truncate line-through` on the 24th, plain `truncate` on the 26th).
