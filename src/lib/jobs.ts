@@ -1,4 +1,5 @@
 import { edmontonToday } from "./dates";
+import { asScheduled, isFlexibleOverdue, occursOn } from "./flexible";
 
 // Job pipeline stages, in the order a job typically moves through them.
 export const JOB_STATUSES = ["quoted", "sold", "in_progress", "paid"] as const;
@@ -45,6 +46,14 @@ export function changedOn<T extends JobLike>(jobs: T[], date: string): T[] {
   return jobs.filter((j) => edmontonToday(new Date(j.updated_at)) === date);
 }
 
+// Exactly one bucket per open task, so the three always add up.
+function bucket(t: Parameters<typeof asScheduled>[0], today: string): "overdue" | "active" | "upcoming" {
+  const s = asScheduled(t);
+  if (isFlexibleOverdue(s, today)) return "overdue";
+  if (occursOn(s, today)) return "active";
+  return "upcoming";
+}
+
 export type JobTaskStats = {
   upcoming: number;
   active: number;
@@ -55,12 +64,22 @@ export type JobTaskStats = {
 
 // Per-job task summary for the dashboard panel. The three live buckets count
 // only OPEN tasks:
-//  • overdue  — due before today
-//  • active   — due today
-//  • upcoming — due after today, or not scheduled at all
+//  • overdue  — every day it could happen on has passed
+//  • active   — happening today (a window/pick task counts on EVERY day it
+//               occurs, not only its deadline)
+//  • upcoming — still ahead, or not scheduled at all
 // plus done/total over ALL of the job's tasks, so a job whose work is finished
 // doesn't look identical to one that never had any tasks.
-export function jobTaskStats<T extends { job_id: string | null; status: string; due_date: string | null }>(
+export function jobTaskStats<
+  T extends {
+    job_id: string | null;
+    status: string;
+    due_date: string | null;
+    window_start?: string | null;
+    window_end?: string | null;
+    candidate_dates?: string[] | null;
+  },
+>(
   tasks: T[],
   jobId: string,
   today: string,
@@ -68,9 +87,9 @@ export function jobTaskStats<T extends { job_id: string | null; status: string; 
   const all = tasks.filter((t) => t.job_id === jobId);
   const mine = all.filter((t) => t.status === "open");
   return {
-    overdue: mine.filter((t) => t.due_date !== null && t.due_date < today).length,
-    active: mine.filter((t) => t.due_date === today).length,
-    upcoming: mine.filter((t) => t.due_date === null || t.due_date > today).length,
+    overdue: mine.filter((t) => bucket(t, today) === "overdue").length,
+    active: mine.filter((t) => bucket(t, today) === "active").length,
+    upcoming: mine.filter((t) => bucket(t, today) === "upcoming").length,
     // Completed/total are what make an all-done job distinguishable from a job
     // with no tasks at all — without them both render as a row of zeros, which
     // is what "the stats always show zero" actually was.

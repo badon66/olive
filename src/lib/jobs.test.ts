@@ -118,3 +118,17 @@ describe("changedOn — bucketed by the Edmonton day (1:30 AM boundary)", () => 
     expect(changedOn([evening, midday], "2026-07-19").map((j) => j.name)).toEqual(["evening"]);
   });
 });
+
+describe("jobTaskStats — multi-day tasks", () => {
+  const today = "2026-08-12";
+  const w = (start: string, end: string) => ({ job_id: "j1", status: "open", due_date: end, window_start: start, window_end: end });
+  it("a window covering today counts as active", () => {
+    expect(jobTaskStats([w("2026-08-10", "2026-08-14")], "j1", today)).toMatchObject({ active: 1, upcoming: 0, overdue: 0 });
+  });
+  it("a window still ahead counts as upcoming", () => {
+    expect(jobTaskStats([w("2026-08-13", "2026-08-15")], "j1", today)).toMatchObject({ active: 0, upcoming: 1, overdue: 0 });
+  });
+  it("a fully expired window counts as overdue", () => {
+    expect(jobTaskStats([w("2026-08-01", "2026-08-05")], "j1", today)).toMatchObject({ active: 0, upcoming: 0, overdue: 1 });
+  });
+});

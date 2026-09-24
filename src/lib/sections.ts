@@ -202,6 +202,8 @@ type TaskLike = {
   created_at: string;
   status: string;
   completed_at: string | null;
+  // Per-day ticks of a pick task (see lib/flexible.ts).
+  completed_dates?: string[] | null;
 };
 
 // Brief sections computed live from open tasks so mid-day changes are always current
@@ -234,9 +236,14 @@ type FlexibleShape = {
   candidate_dates: string[] | null;
 };
 
+// Finished today: tasks closed today, plus a pick task ticked off for today
+// that stays open for its other days. A task closed today is counted once even
+// though its last tick was also today.
 export function doneTodayCount<T extends TaskLike>(tasks: T[], today: string): number {
   return tasks.filter(
-    (t) => t.status === "completed" && t.completed_at !== null && edmontonToday(new Date(t.completed_at)) === today,
+    (t) =>
+      (t.status === "completed" && t.completed_at !== null && edmontonToday(new Date(t.completed_at)) === today) ||
+      (t.status !== "completed" && (t.completed_dates ?? []).includes(today)),
   ).length;
 }
 

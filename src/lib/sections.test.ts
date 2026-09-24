@@ -394,3 +394,22 @@ describe("splitAnytime — anytime tasks fill an empty section, else fold away",
     expect(splitAnytime(["midday-1"], [])).toEqual({ primary: ["midday-1"], dropdown: [] });
   });
 });
+
+import { doneTodayCount } from "./sections";
+
+describe("doneTodayCount — per-day ticks count too", () => {
+  const base = { priority_weight: 3, created_at: "2026-09-01T00:00:00Z", due_date: "2026-09-26" };
+  it("a pick task ticked for today counts as done today, while it stays open for its other days", () => {
+    const tasks = [
+      { ...base, id: "p", status: "open", completed_at: null, candidate_dates: ["2026-09-24", "2026-09-26"], completed_dates: ["2026-09-24"] },
+    ];
+    expect(doneTodayCount(tasks, "2026-09-24")).toBe(1);
+    expect(doneTodayCount(tasks, "2026-09-25")).toBe(0);
+  });
+  it("a task that closed today is counted once, not once per tick", () => {
+    const tasks = [
+      { ...base, id: "p", status: "completed", completed_at: "2026-09-24T18:00:00Z", candidate_dates: ["2026-09-24"], completed_dates: ["2026-09-24"] },
+    ];
+    expect(doneTodayCount(tasks, "2026-09-24")).toBe(1);
+  });
+});

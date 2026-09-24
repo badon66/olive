@@ -1,4 +1,5 @@
 import type { TimeSection } from "./sections";
+import { asScheduled, dayIsDone, occursOn } from "./flexible";
 import { formatClock } from "./dates";
 
 // The line under the greeting. Aims to answer "what actually matters right
@@ -13,6 +14,20 @@ export type InsightTask = {
   time_section: TimeSection | null;
   priority_weight: number;
   created_at: string;
+  // Multi-day shapes (lib/flexible.ts). Optional so older callers still work.
+  status?: string;
+  window_start?: string | null;
+  window_end?: string | null;
+  candidate_dates?: string[] | null;
+  completed_dates?: string[] | null;
+};
+
+// Still to do on `day`: the task occurs that day and that day isn't ticked off.
+// A window or pick task counts on EVERY day it occurs — matching on due_date
+// (its deadline) made the headline ignore it until its very last day.
+const liveOn = (t: InsightTask, day: string) => {
+  const s = asScheduled(t);
+  return occursOn(s, day) && !dayIsDone(s, day);
 };
 
 export type Insight = { headline: string; stat: string };
@@ -37,12 +52,12 @@ export function buildInsight(args: {
 
   // 1) The next fixed booking still ahead today wins — it's time-bound.
   const nextBooking = open
-    .filter((t) => t.due_date === today && t.scheduled_time !== null && hhmm(t.scheduled_time) >= nowTime)
+    .filter((t) => liveOn(t, today) && t.scheduled_time !== null && hhmm(t.scheduled_time) >= nowTime)
     .sort((a, b) => hhmm(a.scheduled_time!).localeCompare(hhmm(b.scheduled_time!)))[0];
 
   // 2) Otherwise the highest-priority item sitting in the current part of day.
   const nowTask = open
-    .filter((t) => t.due_date === activeDay && (t.time_section ?? "anytime") === nowSection)
+    .filter((t) => liveOn(t, activeDay) && (t.time_section ?? "anytime") === nowSection)
     .sort((a, b) => b.priority_weight - a.priority_weight || a.created_at.localeCompare(b.created_at))[0];
 
   let headline: string;

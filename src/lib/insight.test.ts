@@ -68,3 +68,24 @@ describe("buildInsight", () => {
     expect(i.stat).not.toContain("overdue");
   });
 });
+
+describe("buildInsight — multi-day tasks count on every day they occur", () => {
+  it("a window task covering today is picked for 'Now', not only on its last day", () => {
+    const open = [
+      t({ id: "w", title: "Lookbook", due_date: "2026-07-09", time_section: "afternoon", window_start: "2026-07-06", window_end: "2026-07-09" }),
+    ];
+    expect(buildInsight({ ...base, open }).headline).toBe("Now: Lookbook");
+  });
+  it("a pick task with a booked time today is offered as 'Next'", () => {
+    const open = [
+      t({ id: "p", title: "Pickleball", due_date: "2026-07-10", scheduled_time: "18:00:00", candidate_dates: ["2026-07-07", "2026-07-10"] }),
+    ];
+    expect(buildInsight({ ...base, open }).headline).toBe("Next: Pickleball at 6:00 PM");
+  });
+  it("a pick task already ticked for today is not suggested again", () => {
+    const open = [
+      t({ id: "p", title: "Pickleball", due_date: "2026-07-10", time_section: "afternoon", candidate_dates: ["2026-07-07", "2026-07-10"], completed_dates: ["2026-07-07"] }),
+    ];
+    expect(buildInsight({ ...base, open }).headline).not.toContain("Pickleball");
+  });
+});
