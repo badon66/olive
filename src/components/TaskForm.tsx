@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from "react";
 import type { Task, TaskInput } from "../hooks/useTasks";
 import type { CategoryRow } from "../hooks/useCategories";
+import { deadlineFor } from "../lib/flexible";
 import { SECTION_ORDER, sectionOptionLabel, type TimeSection } from "../lib/sections";
 import { DatePickerPopup } from "./DatePickerPopup";
 import { CandidateDatesGrid } from "./CandidateDatesGrid";
@@ -72,7 +73,18 @@ export function TaskForm({ initial, categories, onSubmit, onClose, onDelete, def
       title: title.trim(),
       description: description.trim() || null,
       category_id: categoryId,
-      due_date: mode === "fixed" ? dueDate || null : dueDate || null,
+      // A flexible task's due_date is its DEADLINE — the last day it can still
+      // happen — never a day chosen for it. Which days it SHOWS on comes from
+      // the window/candidate set at render time (lib/flexible.ts occursOn).
+      // This used to read `mode === "fixed" ? dueDate : dueDate`, a no-op
+      // ternary that left a flexible task with whatever the fixed-day picker
+      // happened to hold — usually nothing.
+      due_date: deadlineFor({
+        due_date: mode === "fixed" ? dueDate || null : null,
+        window_start: mode === "range" ? windowStart || null : null,
+        window_end: mode === "range" ? windowEnd || null : null,
+        candidate_dates: mode === "pick" && candidateDates.length > 0 ? candidateDates : null,
+      }),
       window_start: mode === "range" ? windowStart || null : null,
       window_end: mode === "range" ? windowEnd || null : null,
       candidate_dates: mode === "pick" && candidateDates.length > 0 ? candidateDates : null,
@@ -182,6 +194,11 @@ export function TaskForm({ initial, categories, onSubmit, onClose, onDelete, def
             />
           )}
           {mode === "range" && (
+            <p className="font-data text-[10px] text-dim/80 mb-1">
+              Shows on every day in the range. Ticking it off once clears it from the rest.
+            </p>
+          )}
+          {mode === "range" && (
             <div className="flex items-center gap-2">
               <label className="flex-1">
                 <span className="font-data text-[10px] text-dim block mb-0.5">From</span>
@@ -194,7 +211,12 @@ export function TaskForm({ initial, categories, onSubmit, onClose, onDelete, def
             </div>
           )}
           {mode === "pick" && (
-            <CandidateDatesGrid value={candidateDates} onChange={setCandidateDates} />
+            <>
+              <p className="font-data text-[10px] text-dim/80 mb-1">
+                Shows on every day you pick, and each day is ticked off on its own.
+              </p>
+              <CandidateDatesGrid value={candidateDates} onChange={setCandidateDates} />
+            </>
           )}
         </div>
 

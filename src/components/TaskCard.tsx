@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { Task } from "../hooks/useTasks";
 import { formatClock, formatCompleted, formatDue } from "../lib/dates";
+import { dayIsDone, occurrenceDates, schedulingMode } from "../lib/flexible";
 import { useDoubleClick } from "./TaskActionPopup";
 
 type Props = {
@@ -19,6 +20,14 @@ type Props = {
   // How the description renders: "none" (default, hidden), "always" (shown inline,
   // e.g. Active Tasks), or "chevron" (a toggle reveals it — e.g. Today's Schedule).
   descriptionMode?: "none" | "always" | "chevron";
+  // The DAY this row stands for. A pick-days task appears on several days and
+  // each completes independently, so the row's done state and its checkbox
+  // belong to this date, not to the task as a whole. Omit in lists that aren't
+  // grouped by day (category panels, the Tasks tab) — those fall back to the
+  // task's overall status.
+  occurrenceDate?: string;
+  onCompleteDay?: (id: string, date: string) => void;
+  onUncompleteDay?: (id: string, date: string) => void;
 };
 
 export function TaskCard({
@@ -30,14 +39,32 @@ export function TaskCard({
   onDoubleClick,
   category,
   descriptionMode = "none",
+  occurrenceDate,
+  onCompleteDay,
+  onUncompleteDay,
 }: Props) {
   const [expanded, setExpanded] = useState(false);
   const handleTitleClick = useDoubleClick(
     () => onEdit(task),
     () => onDoubleClick?.(task),
   );
-  const done = task.status === "completed";
+  // A pick-days row is done for ITS day only; every other shape is all-or-nothing.
+  const perDay = schedulingMode(task) === "pick" && !!occurrenceDate && !!onCompleteDay;
+  const done = perDay ? dayIsDone(task, occurrenceDate!) : task.status === "completed";
+  const toggle = () => {
+    if (perDay) {
+      if (done) onUncompleteDay?.(task.id, occurrenceDate!);
+      else onCompleteDay!(task.id, occurrenceDate!);
+      return;
+    }
+    if (done) onReopen(task.id);
+    else onComplete(task.id);
+  };
   const overdue = !done && task.due_date !== null && formatDue(task.due_date, today).includes("overdue");
+  // How many days this task spans, so a multi-day row says so rather than
+  // looking like a duplicate of itself on four different days.
+  const spanDays = occurrenceDate ? occurrenceDates(task).length : 0;
+  const mode = schedulingMode(task);
 
   const hasDesc = !!task.description && descriptionMode !== "none";
   const showDesc = hasDesc && (descriptionMode === "always" || expanded);
@@ -46,8 +73,12 @@ export function TaskCard({
     <div className={done ? "opacity-50" : ""}>
       <div className="flex items-center gap-3 py-2.5 px-1">
         <button
-          onClick={() => (done ? onReopen(task.id) : onComplete(task.id))}
-          aria-label={done ? `Reopen ${task.title}` : `Complete ${task.title}`}
+          onClick={toggle}
+          aria-label={
+            done
+              ? `${perDay ? "Un-complete" : "Reopen"} ${task.title}${perDay ? ` for ${occurrenceDate}` : ""}`
+              : `Complete ${task.title}${perDay ? ` for ${occurrenceDate}` : ""}`
+          }
           className="shrink-0 w-11 h-11 grid place-items-center cursor-pointer focus-visible:outline-2 focus-visible:outline-signal rounded-full"
         >
           <span
@@ -100,6 +131,19 @@ export function TaskCard({
             )}
             {task.scheduled_time && (
               <span className="hud-chip hud-chip-signal">⏱ {formatClock(task.scheduled_time)}</span>
+            )}
+            {/* Multi-day shapes appear on every day of their set, so say which
+                kind this is — otherwise the same title on four days reads as a
+                bug rather than a window. */}
+            {spanDays > 1 && mode === "window" && (
+              <span className="hud-chip" title="Any day in this window — finishing it once clears them all">
+                window · {spanDays}d
+              </span>
+            )}
+            {spanDays > 1 && mode === "pick" && (
+              <span className="hud-chip" title="Each chosen day is ticked off on its own">
+                {(task.completed_dates ?? []).length}/{spanDays} days
+              </span>
             )}
             {/* BUILD_PLAN: scheduled / not-scheduled indicator on every task */}
             <span className={`hud-chip ${task.due_date ? "hud-chip-signal" : "!border-dim/30 !text-dim/70"}`}>
