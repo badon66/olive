@@ -6,7 +6,7 @@ import type { ReminderStore } from "../hooks/useReminders";
 import type { Task, TaskStore } from "../hooks/useTasks";
 import type { WeeklyStore, WeeklyTask } from "../hooks/useWeeklyTasks";
 import { carryoverTasks } from "../lib/dayrules";
-import { tasksOnDate } from "../lib/flexible";
+import { dayIsDone, onDayPatch, skipDayPatch, tasksOnDate } from "../lib/flexible";
 import { activeCount } from "../lib/jobs";
 import { useBrief } from "../hooks/useBrief";
 import { PORTRAIT_MONITOR_QUERY, useMediaQuery } from "../hooks/useMediaQuery";
@@ -115,6 +115,12 @@ export function DesktopDashboard({
   const open = useMemo(() => tasks.filter((t) => t.status === "open"), [tasks]);
   const sections = useMemo(() => computeSections(open, today), [open, today]);
   const doneToday = useMemo(() => doneTodayCount(tasks, today), [tasks, today]);
+  // Still to do today. A pick task already ticked off for today stays visible
+  // (struck through) but is no longer "due" — it was being counted as both.
+  const dueTodayOpen = useMemo(
+    () => sections.today.filter((t) => !dayIsDone(t, today)).length,
+    [sections.today, today],
+  );
 
   // 12-hour with AM/PM everywhere Olive renders a time (CLAUDE.md) — this
   // header clock was the last 24-hour holdout.
@@ -148,9 +154,9 @@ export function DesktopDashboard({
         nowTime,
         doneToday,
         overdue: sections.overdue.length,
-        dueToday: sections.today.length,
+        dueToday: dueTodayOpen,
       }),
-    [open, today, activeDay, nowSection, nowTime, doneToday, sections.overdue.length, sections.today.length],
+    [open, today, activeDay, nowSection, nowTime, doneToday, sections.overdue.length, dueTodayOpen],
   );
 
   const status =
@@ -175,7 +181,8 @@ export function DesktopDashboard({
     // Double-click → task actions / weekly skip (BUILD_PLAN). Flows through
     // cardProps, so it reaches Today's Schedule, Active Tasks and Upcoming Days
     // without each panel wiring it separately.
-    onDoubleClick: (t: Task) => setActionFor({ kind: "task", task: t }),
+    // The row's day travels with it, so the popup acts on THAT day.
+    onDoubleClick: (t: Task, date?: string) => setActionFor({ kind: "task", task: t, date: date ?? today }),
     categoryOf: (t: Task) => categoryStore.byId.get(t.category_id),
   };
 
@@ -274,6 +281,12 @@ export function DesktopDashboard({
 
   const convertWeeklyToTask = async (weekly: WeeklyTask, categoryId: string) => {
     const { data: history } = await supabase.from("weekly_task_checkins").select("*").eq("weekly_task_id", weekly.id);
+    // One-day edits cascade-delete with the weekly task, so they are saved too —
+    // undo used to bring the task back without them, losing them for good.
+    const { data: overrides } = await supabase
+      .from("weekly_task_day_overrides")
+      .select("*")
+      .eq("weekly_task_id", weekly.id);
     const { data: created, error: terr } = await supabase
       .from("tasks")
       .insert({
@@ -291,6 +304,7 @@ export function DesktopDashboard({
       await supabase.from("tasks").delete().eq("id", created.id);
       await supabase.from("weekly_tasks").insert(weekly);
       if (history?.length) await supabase.from("weekly_task_checkins").insert(history);
+      if (overrides?.length) await supabase.from("weekly_task_day_overrides").insert(overrides);
       await Promise.all([taskStore.refresh(), weeklyStore.refresh()]);
     };
   };
@@ -382,6 +396,9 @@ export function DesktopDashboard({
       carryover={otherDay ? [] : carryover}
       dayNav={dayNav}
       onMoveSection={(id, section) => taskStore.updateTask(id, { time_section: section })}
+      onPinWeeklySection={
+        weeklyStore.overridesReady ? (id, date, s) => weeklyStore.pinWeeklySection(id, date, s) : undefined
+      }
       onSaveOrder={taskStore.saveOrder}
       onSaveWeeklyOrder={weeklyStore.saveWeeklyOrder}
       onWeeklyDoubleClick={(w, date) => setActionFor({ kind: "weekly", weekly: baseWeekly(w), date })}
@@ -425,6 +442,7 @@ export function DesktopDashboard({
       onSelectDay={selectDay}
       weeklyTasks={weeklyStore.weeklyTasks}
       checkins={weeklyStore.checkins}
+      dayOverrides={weeklyStore.dayOverrides}
       categoryOf={cardProps.categoryOf}
     />
   );
@@ -482,18 +500,10 @@ export function DesktopDashboard({
         // Dragging an occurrence whose DAY has been pinned to a section moves that
         // pin, not the recurring pattern — otherwise the day override keeps winning
         // and the item visibly snaps back. Unpinned days behave exactly as before.
-        setWeeklySection: (id, s) => {
-          const pinned = weeklyStore.dayOverrides.find(
-            (o) => o.weekly_task_id === id && o.date === scheduleDate && o.time_section !== null,
-          );
-          return pinned
-            ? weeklyStore.setDayOverride(id, scheduleDate, {
-                name: pinned.name,
-                scheduled_time: pinned.scheduled_time,
-                time_section: s,
-              })
-            : weeklyStore.updateWeeklyTask(id, { time_section: s });
-        },
+        // The drop carries its own day (Active Tasks = today, the schedule = the
+        // day shown). Falls back to the viewed day for "unschedule", which has
+        // no day of its own.
+        setWeeklySection: (id, s, date) => weeklyStore.moveWeeklySection(id, s, date ?? scheduleDate),
         planWeeklyDay: (id, date) => weeklyStore.planDay(id, date),
         convertTaskToWeekly,
         convertWeeklyToTask,
@@ -661,9 +671,14 @@ export function DesktopDashboard({
                 window_start: null,
                 window_end: null,
                 candidate_dates: null,
+                completed_dates: null,
               })
             }
-            onReschedule={(id, date) => void taskStore.updateTask(id, { due_date: date })}
+            // Choosing a date means "it's happening on that day": a window or
+            // pick task becomes a single-day task there. Rewriting due_date
+            // alone moved nothing and corrupted the deadline.
+            onReschedule={(id, date) => void taskStore.updateTask(id, onDayPatch(date))}
+            onSkipTask={(task, day) => void taskStore.updateTask(task.id, skipDayPatch(task, day))}
           />
         )}
 

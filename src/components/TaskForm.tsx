@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from "react";
 import type { Task, TaskInput } from "../hooks/useTasks";
 import type { CategoryRow } from "../hooks/useCategories";
-import { deadlineFor } from "../lib/flexible";
+import { deadlineFor, reconcileOnEdit } from "../lib/flexible";
 import { SECTION_ORDER, sectionOptionLabel, type TimeSection } from "../lib/sections";
 import { DatePickerPopup } from "./DatePickerPopup";
 import { CandidateDatesGrid } from "./CandidateDatesGrid";
@@ -88,6 +88,17 @@ export function TaskForm({ initial, categories, onSubmit, onClose, onDelete, def
       window_start: mode === "range" ? windowStart || null : null,
       window_end: mode === "range" ? windowEnd || null : null,
       candidate_dates: mode === "pick" && candidateDates.length > 0 ? candidateDates : null,
+      // Ticks for days no longer chosen are dropped, and a pick task's
+      // open/closed state follows what is actually left (reconcileOnEdit).
+      ...reconcileOnEdit(
+        initial,
+        {
+          window_start: mode === "range" ? windowStart || null : null,
+          window_end: mode === "range" ? windowEnd || null : null,
+          candidate_dates: mode === "pick" && candidateDates.length > 0 ? candidateDates : null,
+        },
+        new Date().toISOString(),
+      ),
       priority_weight: priority,
       scheduled_time: scheduledTime || null,
       time_section: timeSection || null,

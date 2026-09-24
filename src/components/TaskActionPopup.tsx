@@ -3,6 +3,7 @@ import type { Task } from "../hooks/useTasks";
 import type { WeeklyTask } from "../hooks/useWeeklyTasks";
 import { addDays, fullDateLabel } from "../lib/dates";
 import { SECTION_ORDER, sectionOptionLabel, type TimeSection } from "../lib/sections";
+import { skipIsPointless } from "../lib/flexible";
 import { findDayOverride, type DayOverrideLike, type OverridePatch } from "../lib/weekly";
 import { DatePickerPopup } from "./DatePickerPopup";
 import { Portal } from "./Portal";
@@ -41,7 +42,8 @@ export function useDoubleClick(onSingle: () => void, onDouble: () => void) {
 // thing from a task — it has no due_date of its own and skipping it must not
 // disturb the recurring pattern — so it gets its own action set.
 export type ActionTarget =
-  | { kind: "task"; task: Task }
+  // `date`: the day the row was double-clicked on (defaults to today).
+  | { kind: "task"; task: Task; date?: string }
   | { kind: "weekly"; weekly: WeeklyTask; date: string };
 
 export function TaskActionPopup({
@@ -50,6 +52,7 @@ export function TaskActionPopup({
   onClose,
   onUnschedule,
   onReschedule,
+  onSkipTask,
   onSkipWeekly,
   dayOverrides = [],
   onSetWeeklyOverride,
@@ -60,6 +63,9 @@ export function TaskActionPopup({
   onClose: () => void;
   onUnschedule: (id: string) => void;
   onReschedule: (id: string, date: string | null) => void;
+  // "Skip for the day" on the day the task was shown. Shape-aware (skipDayPatch):
+  // a window drops that day, a pick task drops that date, a fixed task moves on.
+  onSkipTask?: (task: Task, day: string) => void;
   onSkipWeekly: (task: WeeklyTask, date: string) => void;
   // One-day-only occurrence tweaks. Optional so the popup still works anywhere
   // the override store isn't wired up.
@@ -85,11 +91,14 @@ export function TaskActionPopup({
   // Show what this occurrence is actually called on this day, override included.
   const label = target.kind === "task" ? target.task.title : (existing?.name ?? target.weekly.name);
 
-  // "Skip for the day" pushes a regular task to tomorrow. Explicitly a no-op if
-  // it is already sitting on tomorrow — skipping twice shouldn't march it into
-  // next week by accident.
-  const tomorrow = addDays(today, 1);
-  const alreadyTomorrow = target.kind === "task" && target.task.due_date === tomorrow;
+  // The day this action is about: the row's own day, which is not necessarily
+  // today — the schedule can be stepped to any day.
+  const shownDay = target.kind === "task" ? (target.date ?? today) : target.date;
+  // Refused only when it would change nothing: a single-day task already on the
+  // next day. A window ending tomorrow still has its current day to drop — it
+  // used to be refused with "Already on tomorrow" while sitting on today.
+  const skipPointless = target.kind === "task" && skipIsPointless(target.task, shownDay);
+  const weekdayOf = (iso: string) => fullDateLabel(iso).split(",")[0];
 
   return (
     <Portal>
@@ -220,7 +229,7 @@ export function TaskActionPopup({
                     onClose();
                   }}
                 >
-                  Skip today
+                  {target.date === today ? "Skip today" : `Skip ${weekdayOf(target.date)}`}
                 </button>
                 <p className="font-data text-[10px] text-dim/70 -mt-1 mb-1">
                   Doesn't count as missed, and leaves the schedule unchanged.
@@ -253,10 +262,13 @@ export function TaskActionPopup({
               </button>
               <button
                 className="hud-button w-full disabled:opacity-40 disabled:cursor-default"
-                disabled={alreadyTomorrow}
-                title={alreadyTomorrow ? "Already on tomorrow" : "Push to tomorrow"}
+                disabled={skipPointless}
+                title={skipPointless ? "Already on the next day" : "Take it off this day"}
                 onClick={() => {
-                  if (!alreadyTomorrow) onReschedule(target.task.id, tomorrow);
+                  if (!skipPointless) {
+                    if (onSkipTask) onSkipTask(target.task, shownDay);
+                    else onReschedule(target.task.id, addDays(shownDay, 1));
+                  }
                   onClose();
                 }}
               >

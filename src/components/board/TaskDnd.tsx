@@ -16,6 +16,7 @@ import {
 } from "@dnd-kit/core";
 import type { Task } from "../../hooks/useTasks";
 import type { WeeklyTask } from "../../hooks/useWeeklyTasks";
+import { dayDropPatch, dropPatch } from "../../lib/flexible";
 import type { TimeSection } from "../../lib/sections";
 
 // Draggable ids are "<zone>:<id>" so the same item can appear in several panels
@@ -32,7 +33,8 @@ export type DndDeps = {
   ) => Promise<void>;
   // Weekly task drops: into a schedule section, or onto a day block (plans just
   // that day — a `planned` checkin, not the recurring pattern)
-  setWeeklySection?: (id: string, section: TimeSection | null) => Promise<void>;
+  // `date` is the day the occurrence was dropped on; absent for "unschedule".
+  setWeeklySection?: (id: string, section: TimeSection | null, date?: string) => Promise<void>;
   planWeeklyDay?: (id: string, date: string) => Promise<unknown>;
   // Two-way conversion (BUILD_PLAN): each returns an undo closure for the toast
   convertTaskToWeekly?: (task: Task) => Promise<() => Promise<void>>;
@@ -97,9 +99,12 @@ export function TaskDndProvider({
     if (item.kind === "weekly") {
       const w = item.weekly;
       if (over.startsWith("section:") && deps.setWeeklySection) {
-        // id is "section:<sec>" or "section:<sec>:<date>" — a weekly's section
-        // is a property of the recurring task, so any date part is ignored here.
-        await deps.setWeeklySection(w.id, over.split(":")[1] as TimeSection);
+        // "section:<sec>:<date>". The date is passed on because a day with its
+        // own pinned section must move THAT pin — and it has to be the day the
+        // row was dropped on (Active Tasks is always today; the schedule can be
+        // showing any day), not whichever day the schedule happens to display.
+        const [, sec, dropDate] = over.split(":");
+        await deps.setWeeklySection(w.id, sec as TimeSection, dropDate);
       } else if (over.startsWith("day:") && deps.planWeeklyDay) {
         // Plans only that specific day (a `planned` checkin) — never the pattern
         await deps.planWeeklyDay(w.id, over.slice("day:".length));
@@ -118,14 +123,17 @@ export function TaskDndProvider({
       // matters: Today's Schedule renders the SAME section drop zones for
       // whatever day is being viewed, and stamping deps.today unconditionally
       // yanked a task dropped into tomorrow's Evening back onto today.
+      // dropPatch is shape-aware: a window/pick task dropped on a day it already
+      // covers only changes its part of the day. Rewriting due_date here used to
+      // corrupt its deadline — the chip jumped to "Today" and next day the task
+      // was flagged overdue while its window was still running.
       const [, section, dropDate] = over.split(":");
-      await deps.updateTask(task.id, {
-        due_date: dropDate ?? deps.today,
-        time_section: section as TimeSection,
-      });
+      await deps.updateTask(task.id, dropPatch(task, dropDate ?? deps.today, section as TimeSection));
     } else if (over.startsWith("day:")) {
-      // Booking times survive a date move — only due_date changes
-      await deps.updateTask(task.id, { due_date: over.slice("day:".length) });
+      // Booking times survive a date move. A multi-day task dropped back on a
+      // day it already covers is left alone; anywhere else it lands on that day.
+      const patch = dayDropPatch(task, over.slice("day:".length));
+      if (patch) await deps.updateTask(task.id, patch);
     } else if (over === "weekly" && deps.convertTaskToWeekly) {
       const undo = await deps.convertTaskToWeekly(task);
       showUndo(`Converted "${task.title}" to a weekly task — tap to undo`, undo);

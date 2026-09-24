@@ -1,7 +1,7 @@
 import { useState } from "react";
 import type { Task } from "../hooks/useTasks";
-import { formatClock, formatCompleted, formatDue } from "../lib/dates";
-import { dayIsDone, occurrenceDates, schedulingMode } from "../lib/flexible";
+import { formatClock, formatCompleted } from "../lib/dates";
+import { dayIsDone, occurrenceDates, schedulingMode, whenLabel } from "../lib/flexible";
 import { useDoubleClick } from "./TaskActionPopup";
 
 type Props = {
@@ -14,7 +14,8 @@ type Props = {
   onEdit: (task: Task) => void;
   // Double-click opens the action popup (BUILD_PLAN). Supplied by the
   // dashboard; when absent the card keeps plain single-click-to-edit behaviour.
-  onDoubleClick?: (task: Task) => void;
+  // Receives the day the row stands for, so "Skip for the day" skips THAT day.
+  onDoubleClick?: (task: Task, date?: string) => void;
   // Category corner tag (color + name); omit in contexts already grouped by category
   category?: { name: string; color: string };
   // How the description renders: "none" (default, hidden), "always" (shown inline,
@@ -46,7 +47,7 @@ export function TaskCard({
   const [expanded, setExpanded] = useState(false);
   const handleTitleClick = useDoubleClick(
     () => onEdit(task),
-    () => onDoubleClick?.(task),
+    () => onDoubleClick?.(task, occurrenceDate),
   );
   // A pick-days row is done for ITS day only; every other shape is all-or-nothing.
   const perDay = schedulingMode(task) === "pick" && !!occurrenceDate && !!onCompleteDay;
@@ -60,11 +61,13 @@ export function TaskCard({
     if (done) onReopen(task.id);
     else onComplete(task.id);
   };
-  const overdue = !done && task.due_date !== null && formatDue(task.due_date, today).includes("overdue");
-  // How many days this task spans, so a multi-day row says so rather than
-  // looking like a duplicate of itself on four different days.
-  const spanDays = occurrenceDate ? occurrenceDates(task).length : 0;
+  // The date chip. A multi-day task shows its RANGE ("Sep 24–28", or the
+  // picked days) — never one date, which read as "that day" and, while a
+  // scheduler kept changing which day it was, visibly flickered.
+  const when = whenLabel(task, today);
+  const overdue = !done && !!when?.overdue;
   const mode = schedulingMode(task);
+  const pickDays = mode === "pick" ? occurrenceDates(task).length : 0;
 
   const hasDesc = !!task.description && descriptionMode !== "none";
   const showDesc = hasDesc && (descriptionMode === "always" || expanded);
@@ -121,28 +124,33 @@ export function TaskCard({
                 The styling already guarded on `done`, but the chip still
                 rendered the words "5d overdue" for a task finished late. */}
             {done ? (
-              <span className="hud-chip">{formatCompleted(task.completed_at, today)}</span>
+              <span className="hud-chip">
+                {perDay && task.status !== "completed" ? "Done for this day" : formatCompleted(task.completed_at, today)}
+              </span>
             ) : (
-              task.due_date && (
-                <span className={`hud-chip ${overdue ? "hud-chip-amber" : ""}`}>
-                  {formatDue(task.due_date, today)}
+              when && (
+                <span
+                  className={`hud-chip ${overdue ? "hud-chip-amber" : ""}`}
+                  title={
+                    mode === "window"
+                      ? "Shows every day in this range — ticking it off once clears the rest"
+                      : mode === "pick"
+                        ? "Shows on each of these days — each day is ticked off on its own"
+                        : undefined
+                  }
+                >
+                  {when.text}
                 </span>
               )
             )}
             {task.scheduled_time && (
               <span className="hud-chip hud-chip-signal">⏱ {formatClock(task.scheduled_time)}</span>
             )}
-            {/* Multi-day shapes appear on every day of their set, so say which
-                kind this is — otherwise the same title on four days reads as a
-                bug rather than a window. */}
-            {spanDays > 1 && mode === "window" && (
-              <span className="hud-chip" title="Any day in this window — finishing it once clears them all">
-                window · {spanDays}d
-              </span>
-            )}
-            {spanDays > 1 && mode === "pick" && (
-              <span className="hud-chip" title="Each chosen day is ticked off on its own">
-                {(task.completed_dates ?? []).length}/{spanDays} days
+            {/* Progress across a pick task's days — the range chip says WHICH
+                days, this says how many are already done. */}
+            {pickDays > 1 && (
+              <span className="hud-chip" title="Days ticked off so far">
+                {(task.completed_dates ?? []).filter((d) => (task.candidate_dates ?? []).includes(d)).length}/{pickDays} done
               </span>
             )}
             {/* BUILD_PLAN: scheduled / not-scheduled indicator on every task */}

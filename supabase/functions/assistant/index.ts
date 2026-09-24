@@ -174,6 +174,13 @@ Deno.serve(async (req) => {
       } else if (a.type === "update_task") {
         const { type: _t, task_id, category_name, ...rest } = a;
         const patch: Record<string, unknown> = { ...rest };
+        // A new date means "it's happening on that day" — mirrors onDayPatch in
+        // src/lib/flexible.ts. Rewriting due_date alone on a window or pick task
+        // moved nothing (its days come from the range) and corrupted its
+        // deadline, so "move X to Friday" reported "Updated" and changed nothing.
+        if (rest.due_date !== undefined) {
+          Object.assign(patch, { window_start: null, window_end: null, candidate_dates: null, completed_dates: null });
+        }
         if (category_name) patch.category_id = (await resolveCategory(category_name)).id;
         const { data, error } = await supabase.from("tasks").update(patch).eq("id", task_id).select("title").single();
         if (error) throw error;
