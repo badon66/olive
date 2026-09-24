@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { supabase } from "../lib/supabase";
+import { allDaysDone } from "../lib/flexible";
 import type { Database } from "../lib/database.types";
 import type { TimeSection } from "../lib/sections";
 
@@ -15,13 +16,14 @@ export type TaskInput = {
   duration_minutes?: number | null;
   auto_carry_forward?: boolean;
   job_id?: string | null;
-  // Flexible scheduling (BUILD_PLAN): either a continuous window OR hand-picked
-  // candidate days, never both. placed_date is where the scheduler currently
-  // has it; due_date stays the authoritative "when is this happening".
+  // Flexible scheduling: either a continuous window OR hand-picked candidate
+  // days, never both. The task occurs on EVERY day of whichever set it has
+  // (lib/flexible.ts); due_date is the deadline, not a chosen day.
   window_start?: string | null;
   window_end?: string | null;
   candidate_dates?: string[] | null;
-  placed_date?: string | null;
+  // Per-day completions, pick mode only (see lib/flexible.ts).
+  completed_dates?: string[] | null;
 };
 
 export type TaskStore = ReturnType<typeof useTasks>;
@@ -77,6 +79,36 @@ export function useTasks() {
       const completed_at = new Date().toISOString();
       setTasks((prev) => prev.map((t) => (t.id === id ? { ...t, status: "completed", completed_at } : t)));
       const { error } = await supabase.from("tasks").update({ status: "completed", completed_at }).eq("id", id);
+      if (error) setTasks(before);
+      await refresh();
+    },
+    // Pick mode completes ONE DAY at a time: finishing Monday must leave
+    // Wednesday still showing. The day is recorded in completed_dates, and the
+    // task as a whole only closes once every chosen day is in there.
+    completeTaskDay: async (id: string, date: string) => {
+      const before = tasks;
+      const task = tasks.find((t) => t.id === id);
+      if (!task) return;
+      const days = [...new Set([...(task.completed_dates ?? []), date])].sort();
+      const finished = allDaysDone({ ...task, completed_dates: days } as never);
+      const patch = {
+        completed_dates: days,
+        ...(finished ? { status: "completed" as const, completed_at: new Date().toISOString() } : {}),
+      };
+      setTasks((prev) => prev.map((t) => (t.id === id ? { ...t, ...patch } : t)));
+      const { error } = await supabase.from("tasks").update(patch).eq("id", id);
+      if (error) setTasks(before);
+      await refresh();
+    },
+    uncompleteTaskDay: async (id: string, date: string) => {
+      const before = tasks;
+      const task = tasks.find((t) => t.id === id);
+      if (!task) return;
+      const days = (task.completed_dates ?? []).filter((d) => d !== date);
+      // Un-ticking any day reopens the task — it can no longer be all-done.
+      const patch = { completed_dates: days, status: "open" as const, completed_at: null };
+      setTasks((prev) => prev.map((t) => (t.id === id ? { ...t, ...patch } : t)));
+      const { error } = await supabase.from("tasks").update(patch).eq("id", id);
       if (error) setTasks(before);
       await refresh();
     },

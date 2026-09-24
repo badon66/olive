@@ -25,6 +25,9 @@ type CardProps = {
   onEdit: (task: Task) => void;
   onDoubleClick?: (task: Task) => void;
   categoryOf?: (task: Task) => { name: string; color: string } | undefined;
+  // Per-day completion for pick-days tasks (see lib/flexible.ts).
+  onCompleteDay?: (id: string, date: string) => void;
+  onUncompleteDay?: (id: string, date: string) => void;
 };
 
 type WeeklyBits = {
@@ -129,6 +132,7 @@ export function ActiveTasksPanel({
         <TaskCard
           task={row.task}
           {...cardProps}
+          occurrenceDate={today}
           category={cardProps.categoryOf?.(row.task)}
           descriptionMode="always"
         />

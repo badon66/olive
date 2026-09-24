@@ -3,6 +3,7 @@ import type { Task } from "../../hooks/useTasks";
 import type { WeeklyCheckin, WeeklyTask } from "../../hooks/useWeeklyTasks";
 import { addDays, formatClock } from "../../lib/dates";
 import { orderBySortOrder, SECTION_ORDER, type TimeSection } from "../../lib/sections";
+import { dayIsDone, tasksOnDate } from "../../lib/flexible";
 import { appearsOn } from "../../lib/weekly";
 import { DraggableTask, DropZone } from "./TaskDnd";
 
@@ -70,7 +71,8 @@ export function UpcomingDaysPanel({
   for (let i = 0; i < batches; i++) rows.push(extra.slice(i * BATCH, i * BATCH + BATCH));
 
   const block = (date: string) => {
-    const items = orderBySortOrder(tasks.filter((t) => t.due_date === date));
+    // occursOn, not due_date: a window task belongs to every day of its range.
+    const items = orderBySortOrder(tasksOnDate(tasks, date));
     // Weekly tasks belonging to this day render inline, exactly like regular
     // tasks (BUILD_PLAN) — not a separate list that only knows about "today".
     const weeklyHere = weeklyTasks.filter((w) =>
@@ -152,7 +154,9 @@ export function UpcomingDaysPanel({
                         const isWeekly = !("status" in row);
                         const t = row as Task;
                         const w = row as WeeklyTask;
-                        const isDone = !isWeekly && t.status === "completed";
+                        // dayIsDone, not status: a pick-days task is ticked
+                        // off per day, so this block shows ITS day's state.
+                        const isDone = !isWeekly && dayIsDone(t, date);
                         const label = isWeekly ? w.name : t.title;
                         const cat = isWeekly ? undefined : categoryOf?.(t);
                         const inner = (

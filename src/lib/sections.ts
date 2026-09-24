@@ -1,4 +1,5 @@
 import { addDays, daysBetween, edmontonToday } from "./dates";
+import { occursOn, type ScheduledTask } from "./flexible";
 
 // Chronological within a day (the day flips at 5 AM — see dates.ts): morning
 // through night. Night runs 11 PM–5 AM and belongs wholly to the day it started
@@ -217,10 +218,13 @@ export function computeSections<T extends TaskLike>(open: T[], today: string) {
   };
   const dated = (pred: (d: number) => boolean) =>
     open.filter((t) => t.due_date && pred(daysBetween(today, t.due_date)));
+  // "Due today" is occurrence-based: a window covering today counts even though
+  // its due_date (the deadline) is later in the range.
+  const occursToday = open.filter((t) => occursOn(t as unknown as ScheduledTask, today));
   return {
     overdue: dated((d) => d < 0).filter((t) => !stillHasOptions(t)),
-    today: dated((d) => d === 0),
-    upcoming: dated((d) => d > 0 && d <= 7),
+    today: occursToday,
+    upcoming: dated((d) => d > 0 && d <= 7).filter((t) => !occursToday.includes(t)),
   };
 }
 

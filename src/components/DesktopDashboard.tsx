@@ -6,7 +6,7 @@ import type { ReminderStore } from "../hooks/useReminders";
 import type { Task, TaskStore } from "../hooks/useTasks";
 import type { WeeklyStore, WeeklyTask } from "../hooks/useWeeklyTasks";
 import { carryoverTasks } from "../lib/dayrules";
-import { candidatesFor, isFlexible, loadByDay, planPlacements } from "../lib/flexible";
+import { tasksOnDate } from "../lib/flexible";
 import { activeCount } from "../lib/jobs";
 import { useBrief } from "../hooks/useBrief";
 import { PORTRAIT_MONITOR_QUERY, useMediaQuery } from "../hooks/useMediaQuery";
@@ -168,6 +168,9 @@ export function DesktopDashboard({
     today,
     onComplete: taskStore.completeTask,
     onReopen: taskStore.reopenTask,
+    // Pick-days tasks tick off ONE day at a time; the panels supply which day.
+    onCompleteDay: taskStore.completeTaskDay,
+    onUncompleteDay: taskStore.uncompleteTaskDay,
     onEdit: setEditing,
     // Double-click → task actions / weekly skip (BUILD_PLAN). Flows through
     // cardProps, so it reaches Today's Schedule, Active Tasks and Upcoming Days
@@ -195,28 +198,10 @@ export function DesktopDashboard({
   }, [open, activeDay, today, sections]);
   const activeCardProps = { ...cardProps, today: activeDay };
 
-  // Flexible-window placement (BUILD_PLAN). Every time the task set changes,
-  // re-evaluate where each flexible task should sit: the least-busy day still
-  // available to it. A task moves only if its current day is meaningfully
-  // busier than the best alternative, so it does not thrash between two
-  // near-equal days, and a completed task never moves at all.
-  useEffect(() => {
-    const flexible = open.filter(isFlexible);
-    if (flexible.length === 0) return;
-    const horizon = [...new Set(flexible.flatMap((t) => candidatesFor(t)))];
-    if (horizon.length === 0) return;
-    const load = loadByDay(open, horizon);
-    // planPlacements updates the load map as each move is accepted, so two
-    // tasks sharing candidates can no longer both flee the same busy day to the
-    // same quiet one and oscillate back on the next render (an infinite
-    // write loop — two DB updates per cycle — armed the moment a second
-    // flexible task existed).
-    for (const m of planPlacements(flexible, today, load)) {
-      void taskStore.updateTask(m.id, { due_date: m.target, placed_date: m.target });
-    }
-    // taskStore is stable enough here; re-running on `open` is the point.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, today]);
+  // NOTHING places flexible tasks any more. A window task belongs to every day
+  // of its range and a pick task to every day chosen, so there is no day to
+  // choose and no reason to move one — which is also what removed the drifting
+  // dates. Day membership is decided at render time by occursOn().
 
   // Carryover is MANUAL (no cron bumps anything): opted-in tasks overdue, plus
   // any still sitting overdue if the cron hasn't run. Its own nudge button —
@@ -230,7 +215,8 @@ export function DesktopDashboard({
   const MAX_FWD = 7;
   const scheduleDate = addDays(today, scheduleOffset);
   const otherDay = scheduleOffset !== 0;
-  const scheduleDue = otherDay ? open.filter((t) => t.due_date === scheduleDate) : dueToday;
+  // One rule for "what belongs to this day", whichever day is on screen.
+  const scheduleDue = otherDay ? tasksOnDate(open, scheduleDate) : dueToday;
   const dayNav = {
     label: dayOffsetLabel(scheduleOffset),
     date: scheduleDate,
@@ -664,16 +650,14 @@ export function DesktopDashboard({
               weeklyStore.overridesReady ? (id, date) => weeklyStore.clearDayOverride(id, date) : undefined
             }
             onClose={() => setActionFor(null)}
-            // "Delete for today" = off today's schedule, not destroyed. The task
-            // drops back to its category's backlog with no due date.
-            // "Delete for today" must clear the WHOLE scheduling state: leaving
-            // window/candidates/placed_date behind let the placement effect
-            // re-place the task onto another candidate day moments later,
-            // silently undoing the user's action.
+            // "Delete for today" = off the schedule, not destroyed. The task
+            // drops back to its category's backlog with no due date. It clears
+            // the WHOLE scheduling state, because a leftover window or
+            // candidate list would keep the task appearing on every day of a
+            // set the user has just dismissed.
             onUnschedule={(id) =>
               void taskStore.updateTask(id, {
                 due_date: null,
-                placed_date: null,
                 window_start: null,
                 window_end: null,
                 candidate_dates: null,
