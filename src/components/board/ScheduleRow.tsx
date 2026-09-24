@@ -46,8 +46,8 @@ export function ScheduleRow({
 // One ordered list per section holding BOTH kinds, so the arrows move an item
 // relative to everything actually on screen rather than only its own type.
 export type ScheduleItem<T, W> =
-  | { kind: "task"; id: string; label: string; sort: number | null; task: T }
-  | { kind: "weekly"; id: string; label: string; sort: number | null; weekly: W };
+  | { kind: "task"; id: string; label: string; sort: number | null; time?: string | null; task: T }
+  | { kind: "weekly"; id: string; label: string; sort: number | null; time?: string | null; weekly: W };
 
 // Interleave tasks and weekly occurrences by sort_order. Anything never nudged
 // (sort null) keeps its incoming relative order behind the placed ones.
@@ -58,7 +58,14 @@ export function combineRows<T, W>(
   const all = [...tasks, ...weekly];
   const placed = all.filter((r) => r.sort != null).sort((a, b) => a.sort! - b.sort!);
   const rest = all.filter((r) => r.sort == null);
-  return [...placed, ...rest];
+  // Rows with a clock time run in time order — a weekly occurrence pinned to
+  // 7 AM for the day used to list below a 10 AM booking, because weekly rows
+  // were simply appended after the tasks. Untimed rows keep their incoming
+  // order after them (the sort is stable). A manual order still wins.
+  const hhmm = (t: string) => t.slice(0, 5);
+  const timed = rest.filter((r) => r.time).sort((a, b) => hhmm(a.time!).localeCompare(hhmm(b.time!)));
+  const untimed = rest.filter((r) => !r.time);
+  return [...placed, ...timed, ...untimed];
 }
 
 // Renumber the whole combined list after a move, then split the writes back out

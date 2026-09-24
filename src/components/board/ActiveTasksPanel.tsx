@@ -97,8 +97,22 @@ export function ActiveTasksPanel({
   const build = (tasks: Task[], weekly: ResolvedWeekly[]) =>
     liftRows(
       combineRows<Task, ResolvedWeekly>(
-        orderBySortOrder(tasks).map((t) => ({ kind: "task" as const, id: t.id, label: t.title, sort: t.sort_order, task: t })),
-        weekly.map((w) => ({ kind: "weekly" as const, id: w.id, label: w.name, sort: w.sort_order, weekly: w })),
+        orderBySortOrder(tasks).map((t) => ({
+          kind: "task" as const,
+          id: t.id,
+          label: t.title,
+          sort: t.sort_order,
+          time: t.scheduled_time,
+          task: t,
+        })),
+        weekly.map((w) => ({
+          kind: "weekly" as const,
+          id: w.id,
+          label: w.name,
+          sort: w.sort_order,
+          time: w.scheduled_time,
+          weekly: w,
+        })),
       ),
       (r) => r.kind === "task" && r.task.due_date !== null && r.task.due_date < today,
     );

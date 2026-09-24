@@ -183,6 +183,7 @@ export function TodaySchedulePanel({
   bare = false,
   dayNav,
   onMoveSection,
+  onPinWeeklySection,
   nowSection,
   activeDay,
   onSaveOrder,
@@ -204,6 +205,8 @@ export function TodaySchedulePanel({
   dayNav?: DayNav;
   // Re-home a task displaced by the late-bedtime rule
   onMoveSection?: (taskId: string, section: TimeSection) => Promise<void>;
+  // Day-scoped section change for a weekly occurrence (late-bedtime prompt).
+  onPinWeeklySection?: (weeklyId: string, date: string, section: TimeSection) => Promise<void> | void;
   // Which section the clock is in right now — highlights that slot
   nowSection?: TimeSection;
   // The day whose Night is still running (flips 5 AM, unlike the page's 1:30).
@@ -294,6 +297,12 @@ export function TodaySchedulePanel({
   // user picks — the override is day-scoped, never a standing change to the task.
   const morningCleared = !historical && isLateBedtime(prevBedtime);
   const displacedMorning = morningCleared ? (partition.morning ?? []).slice().sort(scheduleSort) : [];
+  // Weekly occurrences in Morning are displaced too. They used to vanish with
+  // the cleared slot — nowhere to tick them off, and the prompt claimed nothing
+  // was scheduled. Rehoming one pins THIS day only; the pattern is untouched.
+  const displacedWeekly = morningCleared
+    ? weeklyToday.filter((w) => (w.time_section ?? "anytime") === "morning")
+    : [];
 
   // Within-section ordering. Untouched sections keep the normal schedule sort;
   // once the user nudges something with the arrows, their placement wins.
@@ -314,9 +323,17 @@ export function TodaySchedulePanel({
           id: t.id,
           label: t.title,
           sort: t.sort_order,
+          time: t.scheduled_time,
           task: t,
         })),
-        weekly.map((w) => ({ kind: "weekly" as const, id: w.id, label: w.name, sort: w.sort_order, weekly: w })),
+        weekly.map((w) => ({
+          kind: "weekly" as const,
+          id: w.id,
+          label: w.name,
+          sort: w.sort_order,
+          time: w.scheduled_time,
+          weekly: w,
+        })),
       ),
       (r) => r.kind === "task" && r.task.due_date !== null && r.task.due_date < today,
     );
@@ -419,7 +436,14 @@ export function TodaySchedulePanel({
               </p>
               <div className="divide-y divide-signal-dim/15">
                 {items.map((t) => (
-                  <TaskCard key={t.id} task={t} {...cardProps} category={cardProps.categoryOf?.(t)} descriptionMode="chevron" />
+                  <TaskCard
+                    key={t.id}
+                    task={t}
+                    {...cardProps}
+                    occurrenceDate={viewDate}
+                    category={cardProps.categoryOf?.(t)}
+                    descriptionMode="chevron"
+                  />
                 ))}
               </div>
             </div>
@@ -498,7 +522,7 @@ export function TodaySchedulePanel({
           <p className="font-data text-[11px] text-amber uppercase tracking-wider">
             Morning cleared — bedtime was {prevBedtime ? formatClock(prevBedtime) : "late"}
           </p>
-          {displacedMorning.length === 0 ? (
+          {displacedMorning.length === 0 && displacedWeekly.length === 0 ? (
             <p className="text-dim text-xs">Nothing was scheduled for this morning.</p>
           ) : (
             <ul className="space-y-1.5">
@@ -513,6 +537,26 @@ export function TodaySchedulePanel({
                         disabled={!onMoveSection}
                         className="font-data text-[10px] px-1.5 py-0.5 rounded border border-signal-dim/40 text-dim hover:border-signal hover:text-signal disabled:opacity-40 cursor-pointer focus-visible:outline-2 focus-visible:outline-signal"
                         aria-label={`Move ${t.title} to ${s}`}
+                      >
+                        {SECTION_LABELS[s]}
+                      </button>
+                    ))}
+                  </span>
+                </li>
+              ))}
+              {displacedWeekly.map((w) => (
+                <li key={`w-${w.id}`} className="flex items-center gap-2 flex-wrap">
+                  <span className="flex-1 min-w-0 truncate font-body text-[13px]">
+                    {w.name} <span className="hud-chip shrink-0">weekly</span>
+                  </span>
+                  <span className="flex gap-1 shrink-0">
+                    {(["midday", "afternoon", "evening", "night", "anytime"] as const).map((s) => (
+                      <button
+                        key={s}
+                        onClick={() => void onPinWeeklySection?.(w.id, viewDate, s)}
+                        disabled={!onPinWeeklySection}
+                        className="font-data text-[10px] px-1.5 py-0.5 rounded border border-signal-dim/40 text-dim hover:border-signal hover:text-signal disabled:opacity-40 cursor-pointer focus-visible:outline-2 focus-visible:outline-signal"
+                        aria-label={`Move ${w.name} to ${s} for this day`}
                       >
                         {SECTION_LABELS[s]}
                       </button>

@@ -3,8 +3,8 @@ import type { Task } from "../../hooks/useTasks";
 import type { WeeklyCheckin, WeeklyTask } from "../../hooks/useWeeklyTasks";
 import { addDays, formatClock } from "../../lib/dates";
 import { orderBySortOrder, SECTION_ORDER, type TimeSection } from "../../lib/sections";
-import { dayIsDone, tasksOnDate } from "../../lib/flexible";
-import { appearsOn } from "../../lib/weekly";
+import { dayIsDone, showsOnDate } from "../../lib/flexible";
+import { appearsOn, type DayOverrideLike, resolveWeeklyDay } from "../../lib/weekly";
 import { DraggableTask, DropZone } from "./TaskDnd";
 
 const SECTION_LABELS: Record<TimeSection, string> = {
@@ -46,6 +46,7 @@ export function UpcomingDaysPanel({
   onSelectDay,
   weeklyTasks = [],
   checkins = [],
+  dayOverrides = [],
   categoryOf,
 }: {
   // All tasks (not just open) — completion state is part of the point here
@@ -59,6 +60,10 @@ export function UpcomingDaysPanel({
   // Weekly tasks render inline in each day they belong to, same as regular ones
   weeklyTasks?: WeeklyTask[];
   checkins?: WeeklyCheckin[];
+  // One-day-only changes to a weekly occurrence (name / part of day / time).
+  // Each block resolves its own day, so a rename on Thursday shows in
+  // Thursday's box — the same version Today's Schedule shows for that day.
+  dayOverrides?: DayOverrideLike[];
   categoryOf?: (t: Task) => { name: string; color: string } | undefined;
 }) {
   // How many extra batches of 3 days are revealed beyond the base row.
@@ -71,16 +76,20 @@ export function UpcomingDaysPanel({
   for (let i = 0; i < batches; i++) rows.push(extra.slice(i * BATCH, i * BATCH + BATCH));
 
   const block = (date: string) => {
-    // occursOn, not due_date: a window task belongs to every day of its range.
-    const items = orderBySortOrder(tasksOnDate(tasks, date));
+    // showsOnDate: this box is the day's RECORD, so finished work stays on it
+    // struck through. (occursOn — "what's still to do" — made every ticked-off
+    // task vanish from its day.) A window task belongs to every day of its range.
+    const items = orderBySortOrder(tasks.filter((t) => showsOnDate(t, date)));
     // Weekly tasks belonging to this day render inline, exactly like regular
-    // tasks (BUILD_PLAN) — not a separate list that only knows about "today".
-    const weeklyHere = weeklyTasks.filter((w) =>
-      appearsOn(w, checkins.filter((c) => c.weekly_task_id === w.id), date),
-    );
+    // tasks (BUILD_PLAN) — resolved for THIS day, so a one-day change shows here.
+    const weeklyHere = weeklyTasks
+      .filter((w) => appearsOn(w, checkins.filter((c) => c.weekly_task_id === w.id), date))
+      .map((w) => resolveWeeklyDay(w, dayOverrides, date));
+    const weeklyDone = (id: string) =>
+      checkins.some((c) => c.weekly_task_id === id && c.date === date && c.status === "completed");
     const isToday = date === today;
     const isSelected = date === selectedDate;
-    const done = items.filter((t) => t.status === "completed").length;
+    const done = items.filter((t) => dayIsDone(t, date)).length + weeklyHere.filter((w) => weeklyDone(w.id)).length;
     const total = items.length + weeklyHere.length;
 
     // Grouped under section dividers. UPCOMING DAYS ONLY: an empty section is
@@ -154,9 +163,10 @@ export function UpcomingDaysPanel({
                         const isWeekly = !("status" in row);
                         const t = row as Task;
                         const w = row as WeeklyTask;
+                        const resolved = row as ReturnType<typeof resolveWeeklyDay<WeeklyTask>>;
                         // dayIsDone, not status: a pick-days task is ticked
                         // off per day, so this block shows ITS day's state.
-                        const isDone = !isWeekly && dayIsDone(t, date);
+                        const isDone = isWeekly ? weeklyDone(w.id) : dayIsDone(t, date);
                         const label = isWeekly ? w.name : t.title;
                         const cat = isWeekly ? undefined : categoryOf?.(t);
                         const inner = (
@@ -178,6 +188,11 @@ export function UpcomingDaysPanel({
                               )}
                             </span>
                             <span className={`truncate ${isDone ? "line-through" : ""}`}>{label}</span>
+                            {isWeekly && resolved.overridden.length > 0 && (
+                              <span className="hud-chip hud-chip-amber shrink-0 !text-[9px]" title="Changed for this day only">
+                                this day
+                              </span>
+                            )}
                             {isWeekly && <span className="hud-chip shrink-0 !text-[9px]">weekly</span>}
                             {cat && (
                               <span
@@ -187,9 +202,9 @@ export function UpcomingDaysPanel({
                                 {cat.name}
                               </span>
                             )}
-                            {!isWeekly && t.scheduled_time && (
+                            {(isWeekly ? resolved.scheduled_time : t.scheduled_time) && (
                               <span className="font-data text-[10px] text-dim shrink-0 ml-auto">
-                                {formatClock(t.scheduled_time)}
+                                {formatClock((isWeekly ? resolved.scheduled_time : t.scheduled_time)!)}
                               </span>
                             )}
                           </span>
