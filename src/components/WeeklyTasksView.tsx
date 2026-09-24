@@ -111,7 +111,7 @@ export function WeeklyTasksView({
               <div className={`py-2.5 ${t.paused ? "opacity-55" : ""}`}>
                 {/* Single row: name (+ chips) on the left, the 7 square cubes on
                     the right. Cubes stay large but genuinely square (w-14 h-14). */}
-                <div className="flex items-center gap-3">
+                <div className="flex flex-wrap sm:flex-nowrap items-center gap-3">
                   <div className="min-w-0 flex-1 flex items-center gap-2 flex-wrap">
                     <button
                       onClick={() => setEditing(t)}
@@ -143,7 +143,11 @@ export function WeeklyTasksView({
                     {t.paused ? "Resume" : "Pause"}
                   </button>
 
-                  <div className="flex gap-1.5 shrink-0" role="group" aria-label={`${t.name} week`}>
+                  <div
+                    className="flex gap-1.5 shrink-0 w-full sm:w-auto justify-between sm:justify-start"
+                    role="group"
+                    aria-label={`${t.name} week`}
+                  >
                     {week.map((date, i) => {
                       const state = states[i];
                       return (
@@ -164,7 +168,7 @@ export function WeeklyTasksView({
                                     ? `${DAY_ABBRS[i]} — planned; click to mark done`
                                     : `${DAY_ABBRS[i]} — click to plan`
                           }
-                          className={`w-14 h-14 shrink-0 rounded-md flex flex-col items-center justify-center gap-0.5 font-data cursor-pointer transition duration-150 border ${
+                          className={`w-10 h-10 sm:w-14 sm:h-14 shrink-0 rounded-md flex flex-col items-center justify-center gap-0.5 font-data cursor-pointer transition duration-150 border ${
                             state === "completed"
                               ? "bg-signal-dim border-signal text-hud shadow-[0_0_10px_rgba(63,169,104,0.45)]"
                               : state === "planned"

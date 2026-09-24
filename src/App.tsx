@@ -68,6 +68,8 @@ function Shell() {
         tasks={taskStore.tasks}
         loading={taskStore.loading}
         completeTask={taskStore.completeTask}
+        completeTaskDay={taskStore.completeTaskDay}
+        uncompleteTaskDay={taskStore.uncompleteTaskDay}
         reopenTask={taskStore.reopenTask}
         updateTask={taskStore.updateTask}
         onEdit={setEditTask}

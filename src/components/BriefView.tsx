@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { Task, TaskInput } from "../hooks/useTasks";
 import type { CategoryStore } from "../hooks/useCategories";
 import type { WeeklyStore } from "../hooks/useWeeklyTasks";
@@ -16,6 +16,9 @@ type Props = {
   tasks: Task[];
   loading: boolean;
   completeTask: (id: string) => Promise<void>;
+  // Pick-days tasks tick off one day at a time (lib/flexible.ts).
+  completeTaskDay?: (id: string, date: string) => Promise<void>;
+  uncompleteTaskDay?: (id: string, date: string) => Promise<void>;
   reopenTask: (id: string) => Promise<void>;
   updateTask: (id: string, patch: Partial<TaskInput>) => Promise<void>;
   onEdit: (task: Task) => void;
@@ -60,10 +63,27 @@ function RingGauge({ done, total }: { done: number; total: number }) {
   );
 }
 
-export function BriefView({ tasks, loading, completeTask, reopenTask, updateTask, onEdit, categoryStore, weeklyStore, customize = false, refresh }: Props) {
+export function BriefView({ tasks, loading, completeTask, completeTaskDay, uncompleteTaskDay, reopenTask, updateTask, onEdit, categoryStore, weeklyStore, customize = false, refresh }: Props) {
   const { brief, loading: briefLoading, error, regenerate } = useBrief();
   const [addWeekly, setAddWeekly] = useState(false);
-  const today = edmontonToday();
+  // A real clock, like the desktop's. "Today" used to be computed only when the
+  // view happened to re-render, so a phone left in the background overnight
+  // showed yesterday's day until an unrelated tap — then everything jumped.
+  // Re-checked every 30s and the moment the app comes back to the foreground.
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const tick = () => setNow(new Date());
+    const iv = setInterval(tick, 30_000);
+    const onVisible = () => {
+      if (!document.hidden) tick();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      clearInterval(iv);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, []);
+  const today = edmontonToday(now);
 
   const open = useMemo(() => tasks.filter((t) => t.status === "open"), [tasks]);
   const sections = useMemo(() => computeSections(open, today), [open, today]);
@@ -73,6 +93,9 @@ export function BriefView({ tasks, loading, completeTask, reopenTask, updateTask
     today,
     onComplete: completeTask,
     onReopen: reopenTask,
+    // Without these, ticking a pick task on the phone completed EVERY day.
+    onCompleteDay: completeTaskDay,
+    onUncompleteDay: uncompleteTaskDay,
     onEdit,
     categoryOf: (t: Task) => categoryStore.byId.get(t.category_id),
   };
@@ -99,7 +122,10 @@ export function BriefView({ tasks, loading, completeTask, reopenTask, updateTask
       deps={{
         today,
         updateTask,
-        setWeeklySection: weeklyStore ? (id, s) => weeklyStore.updateWeeklyTask(id, { time_section: s }) : undefined,
+        // Same rule as the desktop: a day with its own pinned section moves that
+        // pin. Changing the pattern instead moved every other day and left the
+        // pin winning, so the dragged row snapped straight back.
+        setWeeklySection: weeklyStore ? (id, s, date) => weeklyStore.moveWeeklySection(id, s, date ?? today) : undefined,
         planWeeklyDay: weeklyStore ? (id, date) => weeklyStore.planDay(id, date) : undefined,
       }}
     >
@@ -182,7 +208,14 @@ export function BriefView({ tasks, loading, completeTask, reopenTask, updateTask
 
         <TodaySchedulePanel dueToday={dueToday} openTasks={open} cardProps={cardProps} weeklyBits={weeklyStore} />
 
-        <UpcomingDaysPanel tasks={tasks} today={today} onEdit={onEdit} />
+        <UpcomingDaysPanel
+          tasks={tasks}
+          today={today}
+          onEdit={onEdit}
+          weeklyTasks={weeklyStore?.weeklyTasks}
+          checkins={weeklyStore?.checkins}
+          dayOverrides={weeklyStore?.dayOverrides}
+        />
       </div>
     </TaskDndProvider>
   );
