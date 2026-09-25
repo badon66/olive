@@ -9,6 +9,10 @@ import { TaskCard } from "../TaskCard";
 import { combineRows, liftRows, ScheduleRow, splitOrderWrites, type ScheduleItem } from "./ScheduleRow";
 import { DraggableTask, DropZone } from "./TaskDnd";
 
+// Priority runs 1–5. An anytime task at the top priority never folds into
+// the Anytime dropdown — it always shows in the main list.
+const TOP_PRIORITY = 5;
+
 const SECTION_LABELS: Record<TimeSection, string> = {
   morning: "Morning",
   midday: "Midday",
@@ -94,6 +98,8 @@ export function ActiveTasksPanel({
   // — so the arrows move an item relative to what is actually on screen, not
   // just its own kind. Overdue lifted AFTER combining, because combineRows
   // re-sorts placed rows by sort_order and would discard a pre-combine lift.
+  const isOverdueRow = (r: ScheduleItem<Task, ResolvedWeekly>) =>
+    r.kind === "task" && r.task.due_date !== null && r.task.due_date < today;
   const build = (tasks: Task[], weekly: ResolvedWeekly[]) =>
     liftRows(
       combineRows<Task, ResolvedWeekly>(
@@ -114,13 +120,21 @@ export function ActiveTasksPanel({
           weekly: w,
         })),
       ),
-      (r) => r.kind === "task" && r.task.due_date !== null && r.task.due_date < today,
+      isOverdueRow,
     );
 
   // If the current part of day has nothing of its own, anytime work is promoted
   // into the main list so the panel is never needlessly empty. If it does have
-  // its own work, anytime folds into the dropdown instead of competing with it.
-  const { primary, dropdown } = splitAnytime(build(sectionTasks, sectionWeekly), build(anytimeTasks, anytimeWeekly));
+  // its own work, anytime folds into the dropdown instead of competing with it —
+  // EXCEPT top-priority (5) anytime tasks, which always show in the main list.
+  const split = splitAnytime(
+    build(sectionTasks, sectionWeekly),
+    build(anytimeTasks, anytimeWeekly),
+    (r) => r.kind === "task" && r.task.priority_weight >= TOP_PRIORITY,
+  );
+  // Overdue still sorts to the top across the combined list (BUILD_PLAN).
+  const primary = liftRows(split.primary, isOverdueRow);
+  const dropdown = split.dropdown;
   const promoted = sectionTasks.length + sectionWeekly.length === 0 && primary.length > 0;
   const total = primary.length + dropdown.length;
 

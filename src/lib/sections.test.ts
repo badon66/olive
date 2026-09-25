@@ -413,3 +413,35 @@ describe("doneTodayCount — per-day ticks count too", () => {
     expect(doneTodayCount(tasks, "2026-09-24")).toBe(1);
   });
 });
+
+// Top-priority anytime work never hides in the dropdown (Keenan, 2026-09-25):
+// an anytime task at priority 5 shows in Active Tasks itself, even when the
+// current part of the day has its own work.
+describe("splitAnytime — priority-5 anytime work always shows", () => {
+  type Row = { id: string; p: number };
+  const top = (r: Row) => r.p === 5;
+  const section = [{ id: "midday", p: 3 }];
+
+  it("a priority-5 anytime task joins the main list, not the dropdown", () => {
+    const anytime = [{ id: "urgent", p: 5 }, { id: "someday", p: 2 }];
+    expect(splitAnytime(section, anytime, top)).toEqual({
+      primary: [{ id: "midday", p: 3 }, { id: "urgent", p: 5 }],
+      dropdown: [{ id: "someday", p: 2 }],
+    });
+  });
+
+  it("with no priority-5 anytime work the dropdown behaves as before", () => {
+    const anytime = [{ id: "a", p: 4 }, { id: "b", p: 1 }];
+    expect(splitAnytime(section, anytime, top)).toEqual({ primary: section, dropdown: anytime });
+  });
+
+  it("when every anytime task is priority 5 there is no dropdown at all", () => {
+    const anytime = [{ id: "x", p: 5 }];
+    expect(splitAnytime(section, anytime, top)).toEqual({ primary: [...section, ...anytime], dropdown: [] });
+  });
+
+  it("an empty section still shows ALL anytime work, whatever its priority", () => {
+    const anytime = [{ id: "urgent", p: 5 }, { id: "someday", p: 2 }];
+    expect(splitAnytime([], anytime, top)).toEqual({ primary: anytime, dropdown: [] });
+  });
+});

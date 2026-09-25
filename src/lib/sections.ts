@@ -308,8 +308,17 @@ export function overdueFirst<T extends { due_date: string | null; status?: strin
 //   • the section already has its own work → anytime folds into a collapsible
 //     dropdown beneath it, available on click but not competing with what is
 //     actually scheduled for now.
-export function splitAnytime<T>(sectionItems: T[], anytimeItems: T[]): { primary: T[]; dropdown: T[] } {
-  return sectionItems.length === 0
-    ? { primary: anytimeItems, dropdown: [] }
-    : { primary: sectionItems, dropdown: anytimeItems };
+// `alwaysShow` exempts items from the dropdown: they join the main list even
+// when the section has its own work (used for priority-5 anytime tasks, which
+// are too important to sit behind a click).
+export function splitAnytime<T>(
+  sectionItems: T[],
+  anytimeItems: T[],
+  alwaysShow: (item: T) => boolean = () => false,
+): { primary: T[]; dropdown: T[] } {
+  if (sectionItems.length === 0) return { primary: anytimeItems, dropdown: [] };
+  return {
+    primary: [...sectionItems, ...anytimeItems.filter(alwaysShow)],
+    dropdown: anytimeItems.filter((item) => !alwaysShow(item)),
+  };
 }
