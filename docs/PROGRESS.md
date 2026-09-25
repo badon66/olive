@@ -783,3 +783,19 @@ every write: the flicker watch; Skip for the day on a window (wrote only
 sections (wrote only `time_section`); drops onto day boxes (own day: no write;
 other day: one-day task); per-day ticks on desktop and phone; the one-day editor
 end to end; pinned-time ordering; the phone layout at 390 px and desktop at 1920 px.
+
+
+## Priority-5 anytime tasks always show in Active Tasks (2026-09-25)
+
+Refines the conditional-anytime rule at Keenan's direction: when the current part
+of the day has its own work, anytime tasks still fold into the "Anytime"
+dropdown, except those at priority 5 (the top of the 1-5 scale), which always
+show in the main list. `splitAnytime` gained an `alwaysShow` predicate (4 tests);
+Active Tasks passes "task with priority 5", then re-applies the overdue lift across
+the combined list so an overdue task still sorts first. Weekly occurrences have no
+priority and are unaffected. BUILD_PLAN is user-owned and was not edited.
+
+Tested in a running browser against the real Active Tasks panel: with Midday work
+present, a priority-5 anytime task showed in the main list and the dropdown read
+"Anytime 1" holding only the priority-3 one; an overdue priority-5 anytime task
+sorted above the section's own task, with no dropdown at all. 357 unit tests pass.
