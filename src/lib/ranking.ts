@@ -1,7 +1,7 @@
 import { daysBetween } from "./dates";
 
-// Score bands keep classes strictly separated regardless of priority (1-5):
-// overdue 100+, due today 80+, future ≤ 55, undated ≤ 5.
+// Score bands keep classes strictly separated regardless of priority (1-3,
+// 3 = urgent): overdue 100+, due today 80+, future ≤ 53, undated ≤ 3.
 export function scoreTask(
   t: { due_date: string | null; priority_weight: number },
   todayISO: string,
