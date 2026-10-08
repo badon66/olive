@@ -15,6 +15,8 @@ export type AssistantAction = {
     | "add_memory";
   title?: string;
   description?: string | null;
+  // create_task: checklist items inside this ONE task ("X, with A, B and C").
+  checklist?: string[];
   category_name?: string;
   due_date?: string | null;
   priority_weight?: number;
