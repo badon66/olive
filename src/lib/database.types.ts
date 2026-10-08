@@ -350,6 +350,64 @@ export type Database = {
           },
         ]
       }
+      task_checklist_items: {
+        Row: {
+          completed: boolean
+          completed_at: string | null
+          created_at: string
+          id: string
+          sort_order: number
+          task_id: string | null
+          title: string
+          user_id: string
+          weekly_task_id: string | null
+        }
+        Insert: {
+          completed?: boolean
+          completed_at?: string | null
+          created_at?: string
+          id?: string
+          sort_order?: number
+          task_id?: string | null
+          title: string
+          user_id: string
+          weekly_task_id?: string | null
+        }
+        Update: {
+          completed?: boolean
+          completed_at?: string | null
+          created_at?: string
+          id?: string
+          sort_order?: number
+          task_id?: string | null
+          title?: string
+          user_id?: string
+          weekly_task_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "task_checklist_items_task_id_fkey"
+            columns: ["task_id"]
+            isOneToOne: false
+            referencedRelation: "tasks"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "task_checklist_items_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "app_user"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "task_checklist_items_weekly_task_id_fkey"
+            columns: ["weekly_task_id"]
+            isOneToOne: false
+            referencedRelation: "weekly_tasks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       tasks: {
         Row: {
           auto_carry_forward: boolean
@@ -434,6 +492,48 @@ export type Database = {
           },
           {
             foreignKeyName: "tasks_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "app_user"
+            referencedColumns: ["user_id"]
+          },
+        ]
+      }
+      weekly_checklist_checks: {
+        Row: {
+          checklist_item_id: string
+          completed: boolean
+          created_at: string
+          date: string
+          id: string
+          user_id: string
+        }
+        Insert: {
+          checklist_item_id: string
+          completed?: boolean
+          created_at?: string
+          date: string
+          id?: string
+          user_id: string
+        }
+        Update: {
+          checklist_item_id?: string
+          completed?: boolean
+          created_at?: string
+          date?: string
+          id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "weekly_checklist_checks_checklist_item_id_fkey"
+            columns: ["checklist_item_id"]
+            isOneToOne: false
+            referencedRelation: "task_checklist_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "weekly_checklist_checks_user_id_fkey"
             columns: ["user_id"]
             isOneToOne: false
             referencedRelation: "app_user"
@@ -536,6 +636,7 @@ export type Database = {
           id: string
           name: string
           paused: boolean
+          priority_weight: number
           recurrence_mode: Database["public"]["Enums"]["recurrence_mode"]
           scheduled_days: number[] | null
           sort_order: number | null
@@ -548,6 +649,7 @@ export type Database = {
           id?: string
           name: string
           paused?: boolean
+          priority_weight?: number
           recurrence_mode?: Database["public"]["Enums"]["recurrence_mode"]
           scheduled_days?: number[] | null
           sort_order?: number | null
@@ -560,6 +662,7 @@ export type Database = {
           id?: string
           name?: string
           paused?: boolean
+          priority_weight?: number
           recurrence_mode?: Database["public"]["Enums"]["recurrence_mode"]
           scheduled_days?: number[] | null
           sort_order?: number | null
