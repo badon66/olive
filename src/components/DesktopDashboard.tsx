@@ -354,12 +354,15 @@ export function DesktopDashboard({
       customize={customize}
     />
   );
-  // Orb + greeting + insight + capture box. Portrait shrinks the orb (the spec
-  // explicitly allows it) so the actionable panels start above the fold.
+  // Orb + greeting + insight + capture box. The orb unit is deliberately smaller
+  // than it used to be (380) on BOTH desktop layouts: on ultrawide it sits in a
+  // narrow column between the lists and the schedule (BUILD_PLAN: "sized down to
+  // free width for the lists"), and on portrait it buys the actionable panels a
+  // place above the fold.
   const centreInner = (
     <>
-      <Orb size={tall ? 240 : 380} />
-      <p className="font-display text-[26px] font-medium tracking-wide text-hud -mt-3 text-center">
+      <Orb size={tall ? 240 : 300} />
+      <p className="font-display text-[22px] font-medium tracking-wide text-hud -mt-2 text-center text-balance">
         {greeting(edmontonHourNow)}
       </p>
       {/* What actually matters right now: next booking, else the top
@@ -600,41 +603,60 @@ export function DesktopDashboard({
         /* FIXED LAYOUT (BUILD_PLAN) — not user-rearrangeable. pt-5 gives the first
            row clear breathing room below the sticky header. */
         <div className="px-6 pt-5 pb-6 flex flex-col gap-3">
-          {/* Flanking row: the left and right columns run the FULL height of the
-              centre unit (orb + capture box together), not just the orb. */}
-          {/* Row height is pinned to the centre unit (orb 380 + capture box) so the
-              flanks match IT and scroll internally, rather than a long schedule
-              stretching the whole row. */}
-          <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(420px,520px)_minmax(0,1fr)] gap-3 items-stretch lg:h-[640px]">
-            {/* LEFT flank — Active Tasks, with Active Jobs closing any height gap */}
-            <div className="flex flex-col gap-3 h-full min-h-0">
-              {/* Firm 50/50 split — Active Jobs gets its own half, it doesn't
-                  just absorb whatever Active Tasks leaves over. */}
-              <DashSection title="Active Tasks" customize={customize} className="basis-1/2 grow-0 shrink-0 min-h-0">
+          {/* TOP ROW (BUILD_PLAN, 2026-10-08): four columns side by side, left to
+              right — Active Tasks | Active Jobs | orb unit | Today's Schedule —
+              all the same height, running from the top of the dashboard down to
+              Finance. Supersedes the stacked 50/50 flank, which fitted about
+              three items per list.
+
+              WIDTH goes by need, not evenly. The two lists take the free space
+              (1fr each); the orb unit and the schedule are capped — the schedule
+              used to be ~850px wide at 2560 and mostly empty, now it gets only
+              what its content needs (340–440px), and the orb unit the least
+              (300–360px). At 2560 each list is ~700px; at 1920 ~470px.
+
+              HEIGHT comes from the tallest column — normally Today's Schedule's
+              full day, or the orb unit on an empty day. The two lists are laid
+              out as absolutely-filled cells, so they contribute NOTHING to the
+              row height: they stretch to match whatever the schedule and orb
+              columns need and scroll inside themselves (DashSection's body
+              scrolls) instead of pushing the page longer. The schedule is capped
+              at one viewport so a packed day scrolls inside it rather than
+              turning the top row into a second screen. */}
+          <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(300px,0.5fr)_minmax(340px,0.62fr)] gap-3 items-stretch">
+            {/* Column 1 — Active Tasks, full height */}
+            <div className="relative min-h-[480px] xl:min-h-0">
+              <DashSection title="Active Tasks" customize={customize} className="xl:absolute xl:inset-0">
                 {activeTasksBody}
               </DashSection>
+            </div>
+
+            {/* Column 2 — Active Jobs, full height, directly beside Active Tasks */}
+            <div className="relative min-h-[480px] xl:min-h-0">
               <DashSection
                 title="Active Jobs"
                 customize={customize}
                 hint={activeJobsHint}
-                className="basis-1/2 grow-0 shrink-0 min-h-0"
+                className="xl:absolute xl:inset-0"
               >
                 {activeJobsBody}
               </DashSection>
             </div>
 
-            {/* CENTRE unit — orb at full size, capture box directly beneath it */}
-            <div className="flex flex-col items-center justify-center gap-2 h-full">
+            {/* Column 3 — the orb unit: orb directly above the capture box, one
+                vertical unit, sized down. It no longer has to sit at exact
+                screen centre; it sits between the lists and the schedule. */}
+            <div className="flex flex-col items-center justify-start gap-2 min-w-0">
               {centreInner}
             </div>
 
-            {/* RIGHT flank — Today's Schedule, full height of the centre unit */}
+            {/* Column 4 — Today's Schedule, the full day, sized to its content */}
             <DashSection
               title={scheduleTitle}
               customize={customize}
               onAdd={() => setAddTaskFor({ due_date: scheduleDate })}
               hint={scheduleHint}
-              className="h-full min-h-0"
+              className="min-h-0 xl:max-h-[calc(100dvh-7rem)]"
             >
               {scheduleBody}
             </DashSection>
