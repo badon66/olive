@@ -177,6 +177,7 @@ export function JobsView({
           onDelete={async () => {
             await taskStore.deleteTask(editingTask.id);
           }}
+          onComplete={taskStore.completeTask}
         />
       )}
     </div>

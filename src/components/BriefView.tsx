@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type { Task, TaskInput } from "../hooks/useTasks";
 import type { CategoryStore } from "../hooks/useCategories";
-import type { WeeklyStore } from "../hooks/useWeeklyTasks";
+import type { WeeklyStore, WeeklyTask } from "../hooks/useWeeklyTasks";
 import { useBrief, type BriefContent } from "../hooks/useBrief";
 import { edmontonToday } from "../lib/dates";
 import { computeSections, doneTodayCount } from "../lib/sections";
@@ -66,6 +66,9 @@ function RingGauge({ done, total }: { done: number; total: number }) {
 export function BriefView({ tasks, loading, completeTask, completeTaskDay, uncompleteTaskDay, reopenTask, updateTask, onEdit, categoryStore, weeklyStore, customize = false, refresh }: Props) {
   const { brief, loading: briefLoading, error, regenerate } = useBrief();
   const [addWeekly, setAddWeekly] = useState(false);
+  // A weekly occurrence tapped in the schedule opens its popup for that day
+  // (checklist first) — same as the desktop.
+  const [editWeekly, setEditWeekly] = useState<{ weekly: WeeklyTask; date: string } | null>(null);
   // A real clock, like the desktop's. "Today" used to be computed only when the
   // view happened to re-render, so a phone left in the background overnight
   // showed yesterday's day until an unrelated tap — then everything jumped.
@@ -200,13 +203,39 @@ export function BriefView({ tasks, loading, completeTask, completeTaskDay, uncom
         {addWeekly && weeklyStore && (
           <WeeklyTaskForm
             onClose={() => setAddWeekly(false)}
+            onSubmit={(input) => weeklyStore.addWeeklyTask(input)}
+          />
+        )}
+
+        {editWeekly && weeklyStore && (
+          <WeeklyTaskForm
+            initial={editWeekly.weekly}
+            checklistDate={editWeekly.date}
+            occurrenceDone={weeklyStore.checkins.some(
+              (c) => c.weekly_task_id === editWeekly.weekly.id && c.date === editWeekly.date && c.status === "completed",
+            )}
+            onCompleteDay={(id, date) => void weeklyStore.completeDay(id, date)}
+            onClose={() => setEditWeekly(null)}
+            onDelete={async () => {
+              await weeklyStore.deleteWeeklyTask(editWeekly.weekly.id);
+            }}
             onSubmit={async (input) => {
-              await weeklyStore.addWeeklyTask(input);
+              await weeklyStore.updateWeeklyTask(editWeekly.weekly.id, input);
             }}
           />
         )}
 
-        <TodaySchedulePanel dueToday={dueToday} openTasks={open} cardProps={cardProps} weeklyBits={weeklyStore} />
+        <TodaySchedulePanel
+          dueToday={dueToday}
+          openTasks={open}
+          cardProps={cardProps}
+          weeklyBits={weeklyStore}
+          onEditWeekly={
+            weeklyStore
+              ? (w, date) => setEditWeekly({ weekly: weeklyStore.weeklyTasks.find((t) => t.id === w.id) ?? w, date })
+              : undefined
+          }
+        />
 
         <UpcomingDaysPanel
           tasks={tasks}

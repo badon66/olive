@@ -14,7 +14,7 @@ type Props = {
   tasks: Task[];
   loading: boolean;
   categoryStore: CategoryStore;
-  addTask: (input: TaskInput) => Promise<void>;
+  addTask: (input: TaskInput) => Promise<string | void>;
   updateTask: (id: string, patch: Partial<TaskInput>) => Promise<void>;
   completeTask: (id: string) => Promise<void>;
   reopenTask: (id: string) => Promise<void>;
@@ -232,6 +232,7 @@ export function TaskList({ tasks, loading, categoryStore, addTask, updateTask, c
           onDelete={async () => {
             await deleteTask(editing.id);
           }}
+          onComplete={completeTask}
         />
       )}
 
@@ -259,9 +260,7 @@ export function TaskList({ tasks, loading, categoryStore, addTask, updateTask, c
           categories={categories}
           defaults={{ category_id: addTaskCat }}
           onClose={() => setAddTaskCat(null)}
-          onSubmit={async (input) => {
-            await addTask(input);
-          }}
+          onSubmit={(input) => addTask(input)}
         />
       )}
     </div>

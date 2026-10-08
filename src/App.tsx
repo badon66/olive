@@ -11,6 +11,7 @@ import { TaskForm } from "./components/TaskForm";
 import { TaskList } from "./components/TaskList";
 import { WeeklyTasksView } from "./components/WeeklyTasksView";
 import { useCategories } from "./hooks/useCategories";
+import { ChecklistContext, useChecklists } from "./hooks/useChecklists";
 import { useJobs } from "./hooks/useJobs";
 import { useReminders } from "./hooks/useReminders";
 import { useMediaQuery } from "./hooks/useMediaQuery";
@@ -48,6 +49,9 @@ function Shell() {
   const categoryStore = useCategories();
   const jobStore = useJobs();
   const reminderStore = useReminders();
+  // Checklist items for every task and weekly task, read through a context so
+  // row chips and popup editors anywhere in the tree see the same store.
+  const checklistStore = useChecklists();
   const alerts = useReminderAlerts(reminderStore);
 
   const dashboard = isDesktop ? (
@@ -107,6 +111,7 @@ function Shell() {
     );
 
   return (
+    <ChecklistContext.Provider value={checklistStore}>
     <div className="lg:flex min-h-dvh">
       <ReminderAlerts firing={alerts.firing} dismiss={alerts.dismiss} />
       <Sidebar active={nav} onNavigate={setNav} open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
@@ -157,9 +162,11 @@ function Shell() {
           onDelete={async () => {
             await taskStore.deleteTask(editTask.id);
           }}
+          onComplete={taskStore.completeTask}
         />
       )}
     </div>
+    </ChecklistContext.Provider>
   );
 }
 

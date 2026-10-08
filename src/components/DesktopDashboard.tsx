@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "../lib/supabase";
 import type { CategoryStore } from "../hooks/useCategories";
+import { useChecklistStore } from "../hooks/useChecklists";
 import type { JobStore } from "../hooks/useJobs";
 import type { ReminderStore } from "../hooks/useReminders";
 import type { Task, TaskStore } from "../hooks/useTasks";
@@ -93,6 +94,10 @@ export function DesktopDashboard({
   >(null);
   // Double-click target: a regular task OR a weekly occurrence on a given day.
   const [actionFor, setActionFor] = useState<ActionTarget | null>(null);
+  // Single-click on a weekly occurrence in Active Tasks / Today's Schedule opens
+  // its popup for THAT day — checklist first, the only place items are ticked.
+  const [editWeekly, setEditWeekly] = useState<{ weekly: WeeklyTask; date: string } | null>(null);
+  const checklist = useChecklistStore();
   const [now, setNow] = useState(() => new Date());
   // Previous-day navigation for Today's Schedule: 0 = today, down to -3.
   const [scheduleOffset, setScheduleOffset] = useState(0);
@@ -266,15 +271,20 @@ export function DesktopDashboard({
         recurrence_mode: "fixed_days" as const,
         scheduled_days: [0, 1, 2, 3, 4, 5, 6],
         time_section: task.time_section,
+        priority_weight: task.priority_weight,
       })
       .select("id")
       .single();
     if (werr) throw werr;
+    // The checklist travels with it — moved BEFORE the delete, which would
+    // otherwise cascade the items away.
+    await checklist?.moveItems({ task_id: task.id }, { weekly_task_id: wt.id });
     await supabase.from("tasks").delete().eq("id", task.id);
     await Promise.all([taskStore.refresh(), weeklyStore.refresh()]);
     return async () => {
-      await supabase.from("weekly_tasks").delete().eq("id", wt.id);
       await supabase.from("tasks").insert(task);
+      await checklist?.moveItems({ weekly_task_id: wt.id }, { task_id: task.id });
+      await supabase.from("weekly_tasks").delete().eq("id", wt.id);
       await Promise.all([taskStore.refresh(), weeklyStore.refresh()]);
     };
   };
@@ -294,15 +304,19 @@ export function DesktopDashboard({
         title: weekly.name,
         category_id: categoryId,
         time_section: weekly.time_section,
+        priority_weight: weekly.priority_weight,
       })
       .select("id")
       .single();
     if (terr) throw terr;
+    // Checklist items follow the task across (before the cascade delete).
+    await checklist?.moveItems({ weekly_task_id: weekly.id }, { task_id: created.id });
     await supabase.from("weekly_tasks").delete().eq("id", weekly.id);
     await Promise.all([taskStore.refresh(), weeklyStore.refresh()]);
     return async () => {
-      await supabase.from("tasks").delete().eq("id", created.id);
       await supabase.from("weekly_tasks").insert(weekly);
+      await checklist?.moveItems({ task_id: created.id }, { weekly_task_id: weekly.id });
+      await supabase.from("tasks").delete().eq("id", created.id);
       if (history?.length) await supabase.from("weekly_task_checkins").insert(history);
       if (overrides?.length) await supabase.from("weekly_task_day_overrides").insert(overrides);
       await Promise.all([taskStore.refresh(), weeklyStore.refresh()]);
@@ -322,6 +336,7 @@ export function DesktopDashboard({
       onSaveOrder={taskStore.saveOrder}
       onSaveWeeklyOrder={weeklyStore.saveWeeklyOrder}
       onWeeklyDoubleClick={(w, date) => setActionFor({ kind: "weekly", weekly: baseWeekly(w), date })}
+      onEditWeekly={(w, date) => setEditWeekly({ weekly: baseWeekly(w), date })}
       loading={loading || weeklyStore.loading}
     />
   );
@@ -402,6 +417,7 @@ export function DesktopDashboard({
       onSaveOrder={taskStore.saveOrder}
       onSaveWeeklyOrder={weeklyStore.saveWeeklyOrder}
       onWeeklyDoubleClick={(w, date) => setActionFor({ kind: "weekly", weekly: baseWeekly(w), date })}
+      onEditWeekly={(w, date) => setEditWeekly({ weekly: baseWeekly(w), date })}
       nowSection={nowSection}
       nowMinutes={edmontonMinutes(now)}
       activeDay={activeDay}
@@ -693,15 +709,35 @@ export function DesktopDashboard({
             onDelete={async () => {
               await taskStore.deleteTask(editing.id);
             }}
+            onComplete={taskStore.completeTask}
+          />
+        )}
+
+        {/* A weekly occurrence opened from Active Tasks / Today's Schedule: its
+            popup for THAT day. The checklist (if any) comes first and ticks
+            that day's boxes; "Yes" to the all-done prompt checks the day off. */}
+        {editWeekly && (
+          <WeeklyTaskForm
+            initial={editWeekly.weekly}
+            checklistDate={editWeekly.date}
+            occurrenceDone={weeklyStore.checkins.some(
+              (c) => c.weekly_task_id === editWeekly.weekly.id && c.date === editWeekly.date && c.status === "completed",
+            )}
+            onCompleteDay={(id, date) => void weeklyStore.completeDay(id, date)}
+            onClose={() => setEditWeekly(null)}
+            onDelete={async () => {
+              await weeklyStore.deleteWeeklyTask(editWeekly.weekly.id);
+            }}
+            onSubmit={async (input) => {
+              await weeklyStore.updateWeeklyTask(editWeekly.weekly.id, input);
+            }}
           />
         )}
 
         {addWeekly && (
           <WeeklyTaskForm
             onClose={() => setAddWeekly(false)}
-            onSubmit={async (input) => {
-              await weeklyStore.addWeeklyTask(input);
-            }}
+            onSubmit={(input) => weeklyStore.addWeeklyTask(input)}
           />
         )}
         {addTaskFor && (
@@ -710,9 +746,7 @@ export function DesktopDashboard({
             defaults={addTaskFor}
             jobName={addTaskFor.job_id ? jobStore.jobs.find((j) => j.id === addTaskFor.job_id)?.name : undefined}
             onClose={() => setAddTaskFor(null)}
-            onSubmit={async (input) => {
-              await taskStore.addTask(input);
-            }}
+            onSubmit={(input) => taskStore.addTask(input)}
           />
         )}
       </div>
