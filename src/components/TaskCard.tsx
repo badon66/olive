@@ -114,8 +114,12 @@ export function TaskCard({
           // in-UI hint it exists (a fuller affordance is a design decision).
           title={onDoubleClick ? "Click to edit · double-click for quick actions" : undefined}
         >
-          <p className={`flex items-center gap-2 font-body font-semibold text-base leading-snug ${done ? "line-through" : ""}`}>
-            <span className="truncate">{task.title}</span>
+          {/* flex-wrap: in a narrow column (Today's Schedule at 1920 is ~360px)
+              the checklist count and category tag drop UNDER the title instead
+              of squeezing it down to "Figu…". The title only truncates when it
+              is longer than the whole row by itself. */}
+          <p className={`flex flex-wrap items-center gap-x-2 gap-y-0.5 font-body font-semibold text-base leading-snug ${done ? "line-through" : ""}`}>
+            <span className="truncate max-w-full">{task.title}</span>
             {checklistCount && (
               <span
                 className="shrink-0 inline-flex items-center gap-1 hud-chip hud-chip-signal !no-underline"
@@ -138,7 +142,7 @@ export function TaskCard({
               </span>
             )}
           </p>
-          <p className="flex items-center gap-2 mt-0.5">
+          <p className="flex flex-wrap items-center gap-x-2 gap-y-1 mt-0.5">
             {/* A completed task is COMPLETED, full stop — never "overdue",
                 however long after its due date it was finished (CLAUDE.md).
                 The styling already guarded on `done`, but the chip still

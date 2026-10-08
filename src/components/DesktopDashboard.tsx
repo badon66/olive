@@ -610,10 +610,12 @@ export function DesktopDashboard({
               three items per list.
 
               WIDTH goes by need, not evenly. The two lists take the free space
-              (1fr each); the orb unit and the schedule are capped — the schedule
-              used to be ~850px wide at 2560 and mostly empty, now it gets only
-              what its content needs (340–440px), and the orb unit the least
-              (300–360px). At 2560 each list is ~700px; at 1920 ~470px.
+              (1fr each); the orb unit and the schedule get smaller shares — the
+              schedule used to be ~850px wide at 2560 and mostly empty, now it
+              gets what its rows need (~370px at 1920, ~510px at 2560: at 440px a
+              title with a checklist count and a category tag clipped to a few
+              letters), and the orb unit the least (300–360px). At 2560 each
+              list is ~680px; at 1920 ~460px.
 
               HEIGHT comes from the tallest column — normally Today's Schedule's
               full day, or the orb unit on an empty day. The two lists are laid
@@ -623,7 +625,7 @@ export function DesktopDashboard({
               scrolls) instead of pushing the page longer. The schedule is capped
               at one viewport so a packed day scrolls inside it rather than
               turning the top row into a second screen. */}
-          <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(300px,0.5fr)_minmax(340px,0.62fr)] gap-3 items-stretch">
+          <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(300px,0.5fr)_minmax(360px,0.75fr)] gap-3 items-stretch">
             {/* Column 1 — Active Tasks, full height */}
             <div className="relative min-h-[480px] xl:min-h-0">
               <DashSection title="Active Tasks" customize={customize} className="xl:absolute xl:inset-0">
