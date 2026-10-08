@@ -82,13 +82,20 @@ export function useTasks() {
     tasks,
     loading,
     refresh,
-    addTask: async (input: TaskInput) => {
+    // Resolves to the new row's id so a checklist typed into the form can be
+    // attached to the task it was typed for.
+    addTask: async (input: TaskInput): Promise<string> => {
       // Throw on failure — this used to swallow the error, so a constraint
       // violation closed the modal with no task created and no message.
       epoch.current += 1;
-      const { error } = await supabase.from("tasks").insert({ ...input, user_id: await userId() });
+      const { data, error } = await supabase
+        .from("tasks")
+        .insert({ ...input, user_id: await userId() })
+        .select("id")
+        .single();
       if (error) throw new Error(error.message);
       await refresh();
+      return data.id;
     },
     updateTask: (id: string, patch: Partial<TaskInput>) => patchTask(id, patch),
     completeTask: (id: string) => patchTask(id, { status: "completed", completed_at: new Date().toISOString() }),

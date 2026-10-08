@@ -1,27 +1,36 @@
 import { useState, type FormEvent } from "react";
 import type { Task, TaskInput } from "../hooks/useTasks";
 import type { CategoryRow } from "../hooks/useCategories";
-import { deadlineFor, reconcileOnEdit } from "../lib/flexible";
+import { useChecklistStore } from "../hooks/useChecklists";
+import { edmontonToday } from "../lib/dates";
+import { daysLeft, daysLeftLabel, deadlineFor, reconcileOnEdit, spanLabel } from "../lib/flexible";
+import { clampPriority, type Priority } from "../lib/priority";
 import { SECTION_ORDER, sectionOptionLabel, type TimeSection } from "../lib/sections";
+import { ChecklistEditor } from "./ChecklistEditor";
 import { DatePickerPopup } from "./DatePickerPopup";
 import { CandidateDatesGrid } from "./CandidateDatesGrid";
 import { Portal } from "./Portal";
+import { PriorityPicker } from "./PriorityPicker";
 import { useEscape } from "./useEscape";
 
 type Props = {
   initial?: Task;
   categories: CategoryRow[];
-  onSubmit: (input: TaskInput) => Promise<void>;
+  // Resolves to the new task's id when CREATING, so a checklist typed into the
+  // form can be attached to it. Editing resolves to nothing.
+  onSubmit: (input: TaskInput) => Promise<string | void>;
   onClose: () => void;
   // Deleting lives inside the item's edit modal (revised editing pattern)
   onDelete?: () => Promise<void>;
+  // "Yes" to the checklist's all-items-done prompt completes the task.
+  onComplete?: (id: string) => void | Promise<void>;
   // Presets for scoped adds (category panel "+", the schedule's viewed day, a job)
   defaults?: { category_id?: string; due_date?: string; job_id?: string };
   // Shown as context when the task is being added to a specific job
   jobName?: string;
 };
 
-export function TaskForm({ initial, categories, onSubmit, onClose, onDelete, defaults, jobName }: Props) {
+export function TaskForm({ initial, categories, onSubmit, onClose, onDelete, onComplete, defaults, jobName }: Props) {
   const [title, setTitle] = useState(initial?.title ?? "");
   const [description, setDescription] = useState(initial?.description ?? "");
   const [categoryId, setCategoryId] = useState(initial?.category_id ?? defaults?.category_id ?? categories[0]?.id ?? "");
@@ -38,7 +47,8 @@ export function TaskForm({ initial, categories, onSubmit, onClose, onDelete, def
   const [windowStart, setWindowStart] = useState(initial?.window_start ?? "");
   const [windowEnd, setWindowEnd] = useState(initial?.window_end ?? "");
   const [candidateDates, setCandidateDates] = useState<string[]>(initial?.candidate_dates ?? []);
-  const [priority, setPriority] = useState(initial?.priority_weight ?? 3);
+  // 1-3 scale with fixed meanings (lib/priority.ts); a new task starts at medium.
+  const [priority, setPriority] = useState<Priority>(clampPriority(initial?.priority_weight));
   const [scheduledTime, setScheduledTime] = useState(initial?.scheduled_time?.slice(0, 5) ?? "");
   const [timeSection, setTimeSection] = useState<TimeSection | "">(initial?.time_section ?? "");
   const [duration, setDuration] = useState(initial?.duration_minutes ? String(initial.duration_minutes) : "");
@@ -49,6 +59,18 @@ export function TaskForm({ initial, categories, onSubmit, onClose, onDelete, def
   const [formError, setFormError] = useState<string | null>(null);
   useEscape(onClose);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
+
+  // Checklist (BUILD_PLAN). An existing task's items come from the store and
+  // every tick saves instantly. A NEW task has no id yet, so its items are held
+  // here and attached the moment the task is created.
+  const checklist = useChecklistStore();
+  const [pendingItems, setPendingItems] = useState<string[]>([]);
+  const liveItems = initial && checklist ? checklist.itemsForTask(initial.id) : [];
+
+  // The full span of a range task — "Oct 8 to Oct 12", or the chosen days —
+  // belongs in the popup; the rows only ever say how many days are left.
+  const span = initial ? spanLabel(initial) : null;
+  const left = initial && span ? daysLeft(initial, edmontonToday()) : null;
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
@@ -69,43 +91,44 @@ export function TaskForm({ initial, categories, onSubmit, onClose, onDelete, def
     setFormError(null);
     setBusy(true);
     try {
-      await onSubmit({
-      title: title.trim(),
-      description: description.trim() || null,
-      category_id: categoryId,
-      // A flexible task's due_date is its DEADLINE — the last day it can still
-      // happen — never a day chosen for it. Which days it SHOWS on comes from
-      // the window/candidate set at render time (lib/flexible.ts occursOn).
-      // This used to read `mode === "fixed" ? dueDate : dueDate`, a no-op
-      // ternary that left a flexible task with whatever the fixed-day picker
-      // happened to hold — usually nothing.
-      due_date: deadlineFor({
-        due_date: mode === "fixed" ? dueDate || null : null,
-        window_start: mode === "range" ? windowStart || null : null,
-        window_end: mode === "range" ? windowEnd || null : null,
-        candidate_dates: mode === "pick" && candidateDates.length > 0 ? candidateDates : null,
-      }),
-      window_start: mode === "range" ? windowStart || null : null,
-      window_end: mode === "range" ? windowEnd || null : null,
-      candidate_dates: mode === "pick" && candidateDates.length > 0 ? candidateDates : null,
-      // Ticks for days no longer chosen are dropped, and a pick task's
-      // open/closed state follows what is actually left (reconcileOnEdit).
-      ...reconcileOnEdit(
-        initial,
-        {
+      const created = await onSubmit({
+        title: title.trim(),
+        description: description.trim() || null,
+        category_id: categoryId,
+        // A flexible task's due_date is its DEADLINE — the last day it can still
+        // happen — never a day chosen for it. Which days it SHOWS on comes from
+        // the window/candidate set at render time (lib/flexible.ts occursOn).
+        due_date: deadlineFor({
+          due_date: mode === "fixed" ? dueDate || null : null,
           window_start: mode === "range" ? windowStart || null : null,
           window_end: mode === "range" ? windowEnd || null : null,
           candidate_dates: mode === "pick" && candidateDates.length > 0 ? candidateDates : null,
-        },
-        new Date().toISOString(),
-      ),
-      priority_weight: priority,
-      scheduled_time: scheduledTime || null,
-      time_section: timeSection || null,
-      duration_minutes: duration.trim() ? Math.max(1, Number(duration)) : null,
-      auto_carry_forward: carryForward,
-      ...(initial ? {} : defaults?.job_id ? { job_id: defaults.job_id } : {}),
-    });
+        }),
+        window_start: mode === "range" ? windowStart || null : null,
+        window_end: mode === "range" ? windowEnd || null : null,
+        candidate_dates: mode === "pick" && candidateDates.length > 0 ? candidateDates : null,
+        // Ticks for days no longer chosen are dropped, and a pick task's
+        // open/closed state follows what is actually left (reconcileOnEdit).
+        ...reconcileOnEdit(
+          initial,
+          {
+            window_start: mode === "range" ? windowStart || null : null,
+            window_end: mode === "range" ? windowEnd || null : null,
+            candidate_dates: mode === "pick" && candidateDates.length > 0 ? candidateDates : null,
+          },
+          new Date().toISOString(),
+        ),
+        priority_weight: priority,
+        scheduled_time: scheduledTime || null,
+        time_section: timeSection || null,
+        duration_minutes: duration.trim() ? Math.max(1, Number(duration)) : null,
+        auto_carry_forward: carryForward,
+        ...(initial ? {} : defaults?.job_id ? { job_id: defaults.job_id } : {}),
+      });
+      // A new task's typed checklist is attached now that the task has an id.
+      if (!initial && typeof created === "string" && pendingItems.length > 0 && checklist) {
+        await checklist.addItems({ task_id: created }, pendingItems);
+      }
     } catch (err) {
       setBusy(false);
       setFormError(err instanceof Error ? err.message : "Saving failed — nothing was created.");
@@ -114,6 +137,46 @@ export function TaskForm({ initial, categories, onSubmit, onClose, onDelete, def
     setBusy(false);
     onClose();
   };
+
+  const checklistBlock = initial ? (
+    checklist && (
+      <ChecklistEditor
+        rows={liveItems.map((i) => ({ id: i.id, title: i.title, done: i.completed }))}
+        parentTitle={title.trim() || initial.title}
+        parentDone={initial.status === "completed"}
+        onToggle={(id, done) => checklist.setItemDone(id, done)}
+        onAdd={(t) => checklist.addItem({ task_id: initial.id }, t)}
+        onRename={(id, t) => checklist.renameItem(id, t)}
+        onRemove={(id) => checklist.removeItem(id)}
+        onMove={(i, dir) => checklist.moveItem({ task_id: initial.id }, i, dir)}
+        onCompleteParent={
+          onComplete
+            ? async () => {
+                await onComplete(initial.id);
+                onClose();
+              }
+            : undefined
+        }
+      />
+    )
+  ) : (
+    <ChecklistEditor
+      rows={pendingItems.map((t, i) => ({ id: String(i), title: t, done: false }))}
+      parentTitle={title.trim() || "this task"}
+      onAdd={(t) => setPendingItems((p) => [...p, t])}
+      onRename={(id, t) => setPendingItems((p) => p.map((x, i) => (String(i) === id ? t : x)))}
+      onRemove={(id) => setPendingItems((p) => p.filter((_, i) => String(i) !== id))}
+      onMove={(i, dir) =>
+        setPendingItems((p) => {
+          const j = i + dir;
+          if (j < 0 || j >= p.length) return p;
+          const n = [...p];
+          [n[i], n[j]] = [n[j], n[i]];
+          return n;
+        })
+      }
+    />
+  );
 
   return (
     <Portal>
@@ -144,9 +207,21 @@ export function TaskForm({ initial, categories, onSubmit, onClose, onDelete, def
           <p className="font-data text-[11px] text-signal">For job: <span className="text-hud">{jobName}</span></p>
         )}
 
+        {/* Range task: the whole span, date to date (BUILD_PLAN days-left rule). */}
+        {span && (
+          <p className="font-data text-[11px] text-signal flex flex-wrap items-baseline gap-x-2" aria-label="Scheduled span">
+            <span>{span}</span>
+            {left !== null && <span className="text-dim">· {daysLeftLabel(left)}</span>}
+          </p>
+        )}
+
+        {/* An existing task's checklist comes FIRST, above the usual fields
+            (BUILD_PLAN): opening a checklist task is mostly about ticking. */}
+        {initial && checklistBlock}
+
         <label className="block space-y-1">
           <span className="font-data text-xs text-dim uppercase tracking-wider">Title *</span>
-          <input className="hud-input" value={title} onChange={(e) => setTitle(e.target.value)} required autoFocus />
+          <input className="hud-input" value={title} onChange={(e) => setTitle(e.target.value)} required autoFocus={!initial || liveItems.length === 0} />
         </label>
 
         <label className="block space-y-1">
@@ -158,6 +233,10 @@ export function TaskForm({ initial, categories, onSubmit, onClose, onDelete, def
             placeholder="optional — extra detail, shown on the task"
           />
         </label>
+
+        {/* A new task's checklist sits with the other details; it is attached
+            as soon as the task exists. */}
+        {!initial && checklistBlock}
 
         <label className="block space-y-1">
           <span className="font-data text-xs text-dim uppercase tracking-wider">Category</span>
@@ -173,9 +252,8 @@ export function TaskForm({ initial, categories, onSubmit, onClose, onDelete, def
         <div className="block space-y-1">
           <span className="font-data text-xs text-dim uppercase tracking-wider">When</span>
           {/* Three ways to schedule: one fixed day, a continuous window, or a
-              hand-picked set of days. The two flexible modes let the scheduler
-              place the task on whichever option is least busy, and the task is
-              only overdue once every option is used up (BUILD_PLAN). */}
+              hand-picked set of days. A range task occurs on every day of its
+              set and is only overdue once the set is used up (lib/flexible.ts). */}
           <div className="flex gap-1 mb-1.5" role="group" aria-label="Scheduling mode">
             {([
               ["fixed", "Fixed day"],
@@ -272,24 +350,7 @@ export function TaskForm({ initial, categories, onSubmit, onClose, onDelete, def
 
         <fieldset className="space-y-1">
           <legend className="font-data text-xs text-dim uppercase tracking-wider">Priority</legend>
-          <div className="flex gap-1.5" role="radiogroup" aria-label="Priority 1 to 5">
-            {[1, 2, 3, 4, 5].map((p) => (
-              <button
-                key={p}
-                type="button"
-                role="radio"
-                aria-checked={priority === p}
-                onClick={() => setPriority(p)}
-                className={`flex-1 min-h-[44px] rounded border font-data text-sm cursor-pointer transition-colors duration-150 ${
-                  priority === p
-                    ? "border-signal text-signal bg-signal/10 shadow-[0_0_8px_rgba(63,169,104,0.25)]"
-                    : "border-signal-dim/40 text-dim hover:border-signal-dim"
-                }`}
-              >
-                {p}
-              </button>
-            ))}
-          </div>
+          <PriorityPicker value={priority} onChange={setPriority} />
         </fieldset>
 
         {/* Opt-in carry-forward: if not done by its day, surfaces under Today's

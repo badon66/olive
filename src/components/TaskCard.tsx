@@ -1,7 +1,10 @@
 import { useState } from "react";
 import type { Task } from "../hooks/useTasks";
+import { useChecklistStore } from "../hooks/useChecklists";
+import { progressLabel } from "../lib/checklist";
 import { formatClock, formatCompleted } from "../lib/dates";
 import { dayIsDone, occurrenceDates, schedulingMode, whenLabel } from "../lib/flexible";
+import { PriorityBars } from "./PriorityPicker";
 import { useDoubleClick } from "./TaskActionPopup";
 
 type Props = {
@@ -49,6 +52,10 @@ export function TaskCard({
     () => onEdit(task),
     () => onDoubleClick?.(task, occurrenceDate),
   );
+  // Checklist progress ("2/5") — the parent is ONE row everywhere it appears,
+  // and items are only ever ticked inside its popup (BUILD_PLAN).
+  const checklist = useChecklistStore();
+  const checklistCount = progressLabel(checklist?.taskProgress(task.id));
   // A pick-days row is done for ITS day only; every other shape is all-or-nothing.
   const perDay = schedulingMode(task) === "pick" && !!occurrenceDate && !!onCompleteDay;
   const done = perDay ? dayIsDone(task, occurrenceDate!) : task.status === "completed";
@@ -61,9 +68,9 @@ export function TaskCard({
     if (done) onReopen(task.id);
     else onComplete(task.id);
   };
-  // The date chip. A multi-day task shows its RANGE ("Sep 24–28", or the
-  // picked days) — never one date, which read as "that day" and, while a
-  // scheduler kept changing which day it was, visibly flickered.
+  // The date chip. A range task shows only its DAYS LEFT ("3 days left", "Last
+  // day") — never a date, which on a task belonging to several days read as
+  // "that day". The full span lives in the popup (BUILD_PLAN days-left rule).
   const when = whenLabel(task, today);
   const overdue = !done && !!when?.overdue;
   const mode = schedulingMode(task);
@@ -109,6 +116,19 @@ export function TaskCard({
         >
           <p className={`flex items-center gap-2 font-body font-semibold text-base leading-snug ${done ? "line-through" : ""}`}>
             <span className="truncate">{task.title}</span>
+            {checklistCount && (
+              <span
+                className="shrink-0 inline-flex items-center gap-1 hud-chip hud-chip-signal !no-underline"
+                title="Checklist progress — open the task to tick items"
+                aria-label={`Checklist ${checklistCount} done`}
+              >
+                <svg viewBox="0 0 24 24" className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M9 11l3 3L22 4" />
+                  <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
+                </svg>
+                {checklistCount}
+              </span>
+            )}
             {category && (
               <span
                 className="shrink-0 inline-flex items-center gap-1 px-1.5 py-px rounded-sm font-data text-[9.5px] tracking-wide uppercase"
@@ -133,9 +153,9 @@ export function TaskCard({
                   className={`hud-chip ${overdue ? "hud-chip-amber" : ""}`}
                   title={
                     mode === "window"
-                      ? "Shows every day in this range — ticking it off once clears the rest"
+                      ? "Days left to the end of its window — open the task for the full dates"
                       : mode === "pick"
-                        ? "Shows on each of these days — each day is ticked off on its own"
+                        ? "Days left to its last chosen day — open the task for the full dates"
                         : undefined
                   }
                 >
@@ -146,8 +166,8 @@ export function TaskCard({
             {task.scheduled_time && (
               <span className="hud-chip hud-chip-signal">⏱ {formatClock(task.scheduled_time)}</span>
             )}
-            {/* Progress across a pick task's days — the range chip says WHICH
-                days, this says how many are already done. */}
+            {/* Progress across a pick task's days — the days-left chip says how
+                long is left, this says how many days are already done. */}
             {pickDays > 1 && (
               <span className="hud-chip" title="Days ticked off so far">
                 {(task.completed_dates ?? []).filter((d) => (task.candidate_dates ?? []).includes(d)).length}/{pickDays} done
@@ -157,10 +177,7 @@ export function TaskCard({
             <span className={`hud-chip ${task.due_date ? "hud-chip-signal" : "!border-dim/30 !text-dim/70"}`}>
               {task.due_date ? "scheduled" : "not scheduled"}
             </span>
-            <span className="font-data text-[0.65rem] text-dim tracking-widest" aria-label={`Priority ${task.priority_weight} of 5`}>
-              {"▮".repeat(task.priority_weight)}
-              <span className="opacity-30">{"▮".repeat(5 - task.priority_weight)}</span>
-            </span>
+            <PriorityBars value={task.priority_weight} />
           </p>
         </button>
 

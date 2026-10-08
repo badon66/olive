@@ -3,7 +3,7 @@ import type { Task } from "../hooks/useTasks";
 import type { WeeklyTask } from "../hooks/useWeeklyTasks";
 import { addDays, fullDateLabel } from "../lib/dates";
 import { SECTION_ORDER, sectionOptionLabel, type TimeSection } from "../lib/sections";
-import { skipIsPointless } from "../lib/flexible";
+import { daysLeft, daysLeftLabel, skipIsPointless, spanLabel } from "../lib/flexible";
 import { findDayOverride, type DayOverrideLike, type OverridePatch } from "../lib/weekly";
 import { DatePickerPopup } from "./DatePickerPopup";
 import { Portal } from "./Portal";
@@ -99,6 +99,10 @@ export function TaskActionPopup({
   // used to be refused with "Already on tomorrow" while sitting on today.
   const skipPointless = target.kind === "task" && skipIsPointless(target.task, shownDay);
   const weekdayOf = (iso: string) => fullDateLabel(iso).split(",")[0];
+  // A range task's popup shows its whole span, date to date — the rows only
+  // ever say how many days are left (BUILD_PLAN days-left rule).
+  const span = target.kind === "task" ? spanLabel(target.task) : null;
+  const left = target.kind === "task" && span ? daysLeft(target.task, today) : null;
 
   return (
     <Portal>
@@ -117,7 +121,13 @@ export function TaskActionPopup({
           <p className="font-data text-[11px] uppercase tracking-widest text-dim mb-1">
             {target.kind === "weekly" ? "Weekly task" : "Task actions"}
           </p>
-          <p className="font-body font-semibold text-base mb-4 truncate">{label}</p>
+          <p className={`font-body font-semibold text-base truncate ${span ? "mb-1" : "mb-4"}`}>{label}</p>
+          {span && (
+            <p className="font-data text-[11px] text-signal mb-4" aria-label="Scheduled span">
+              {span}
+              {left !== null && <span className="text-dim"> · {daysLeftLabel(left)}</span>}
+            </p>
+          )}
 
           {picking ? (
             <div>
