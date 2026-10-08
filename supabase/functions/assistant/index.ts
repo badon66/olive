@@ -89,6 +89,8 @@ Deno.serve(async (req) => {
         "Resolve relative dates ('Friday', 'next week') to YYYY-MM-DD using today's date; 'Friday' means the next upcoming Friday.",
         "scheduled_time is ONLY for fixed appointments ('dentist at 2:30'); time_section is the loose part of day.",
         "time_section values: morning, midday, afternoon, evening, night (11 PM to 5 AM), anytime.",
+        "PRIORITY is 1-3, 3 = most important: 1 = low ('no rush', 'whenever', 'someday', 'low priority'), 2 = medium (the default — use it when nothing is said), 3 = urgent ('urgent', 'ASAP', 'important', 'must', 'right away', 'high priority', 'today for sure').",
+        "CHECKLISTS: when the user names one task and then lists its parts — 'add figure out the clothing order, with Charlie's portion, Keenan's portion and Vesper's portion' — make ONE create_task (title 'Figure out the clothing order') with checklist ['Charlie's portion', \"Keenan's portion\", \"Vesper's portion\"]. Never split the parts into separate tasks. Checklist items have no dates or parts of day of their own.",
         "JOBS: 'add a job, Dennis's driveway' -> create_job (name is the specific job; category_name is the company/header if named, else null).",
         "'mark the Flames job paid' / 'the driveway is sold' -> update_job with job_id from ACTIVE JOBS and the new status (quoted/sold/in_progress/paid).",
         "REMINDERS: 'remind me to X ...' -> create_reminder. Pick recurrence_type from the phrasing:",
@@ -156,21 +158,38 @@ Deno.serve(async (req) => {
     for (const a of plan.actions) {
       if (a.type === "create_task") {
         const cat = await resolveCategory(a.category_name);
-        const { error } = await supabase.from("tasks").insert({
-          user_id: user.id,
-          title: a.title,
-          description: a.description,
-          category_id: cat.id,
-          due_date: a.due_date,
-          priority_weight: a.priority_weight,
-          time_section: a.time_section,
-          duration_minutes: a.duration_minutes,
-          scheduled_time: a.scheduled_time,
-          job_id: a.job_id,
-          auto_carry_forward: a.auto_carry_forward,
-        });
+        const { data: created, error } = await supabase
+          .from("tasks")
+          .insert({
+            user_id: user.id,
+            title: a.title,
+            description: a.description,
+            category_id: cat.id,
+            due_date: a.due_date,
+            priority_weight: a.priority_weight,
+            time_section: a.time_section,
+            duration_minutes: a.duration_minutes,
+            scheduled_time: a.scheduled_time,
+            job_id: a.job_id,
+            auto_carry_forward: a.auto_carry_forward,
+          })
+          .select("id")
+          .single();
         if (error) throw error;
-        confirmations.push(`Added task: ${a.title} (${cat.name}${a.due_date ? ", due " + a.due_date : ""})`);
+        // Checklist items ride along as rows of task_checklist_items, in the
+        // order spoken. Duplicates and blanks were already dropped by zod/client.
+        const items = [...new Set(a.checklist.map((t) => t.trim()).filter(Boolean))];
+        if (items.length > 0) {
+          const { error: ierr } = await supabase.from("task_checklist_items").insert(
+            items.map((title, sort_order) => ({ user_id: user.id, task_id: created.id, title, sort_order })),
+          );
+          if (ierr) throw ierr;
+        }
+        confirmations.push(
+          `Added task: ${a.title} (${cat.name}${a.due_date ? ", due " + a.due_date : ""}${
+            items.length > 0 ? `, ${items.length} checklist item${items.length === 1 ? "" : "s"}` : ""
+          })`,
+        );
       } else if (a.type === "update_task") {
         const { type: _t, task_id, category_name, ...rest } = a;
         const patch: Record<string, unknown> = { ...rest };

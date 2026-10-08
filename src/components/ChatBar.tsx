@@ -1,6 +1,8 @@
 import { useRef, useState, type FormEvent } from "react";
 import { commitAssistant, previewAssistant, sendToAssistant, type AssistantAction, type JobContext } from "../lib/api";
+import { cleanChecklistTitles } from "../lib/checklist";
 import { JOB_STATUSES, JOB_STATUS_LABELS } from "../lib/jobs";
+import { PRIORITY_LEVELS, priorityLabel } from "../lib/priority";
 import { SECTION_ORDER, sectionOptionLabel } from "../lib/sections";
 import { Portal } from "./Portal";
 import { SectionPencil } from "./SectionPencil";
@@ -93,7 +95,11 @@ export function ChatBar({
     if (!preview) return;
     setBusy(true);
     try {
-      const actions = preview.actions;
+      // Checklist lines typed into the preview are cleaned here (blanks and
+      // duplicates dropped) so the server never sees an empty item.
+      const actions = preview.actions.map((a) =>
+        a.checklist ? { ...a, checklist: cleanChecklistTitles(a.checklist) } : a,
+      );
       setPreview(null);
       await finish(await commitAssistant(actions));
     } catch (err) {
@@ -207,12 +213,31 @@ export function ChatBar({
                         {a.due_date && <span className="hud-chip">due {a.due_date}</span>}
                         {a.scheduled_time && <span className="hud-chip">⏱ {formatClock(a.scheduled_time)}</span>}
                         {a.time_section && <span className="hud-chip">{a.time_section}</span>}
-                        {typeof a.priority_weight === "number" && <span className="hud-chip">p{a.priority_weight}</span>}
+                        {typeof a.priority_weight === "number" && (
+                          <span className={`hud-chip ${a.priority_weight >= 3 ? "hud-chip-amber" : ""}`}>
+                            {priorityLabel(a.priority_weight).toLowerCase()} priority
+                          </span>
+                        )}
                         {a.duration_minutes != null && <span className="hud-chip">{a.duration_minutes} min</span>}
                         {a.status && <span className="hud-chip hud-chip-signal">{a.status}</span>}
                         {a.notes && <span className="hud-chip">note</span>}
                         {matched && a.type !== "complete_task" && <span className="hud-chip">→ {matched}</span>}
                       </p>
+                    )}
+
+                    {/* A checklist split ("X, with A, B and C") is shown item by
+                        item so the split can be checked before anything saves. */}
+                    {!editing && a.checklist && a.checklist.filter((c) => c.trim()).length > 0 && (
+                      <ul className="pl-1 space-y-0.5" aria-label="Checklist items">
+                        {a.checklist
+                          .filter((c) => c.trim())
+                          .map((c, k) => (
+                            <li key={k} className="flex items-center gap-2 font-body text-sm text-hud/90">
+                              <span className="w-3.5 h-3.5 rounded-sm border border-signal-dim shrink-0" aria-hidden="true" />
+                              <span className="truncate">{c}</span>
+                            </li>
+                          ))}
+                      </ul>
                     )}
 
                     {editing && (
@@ -230,12 +255,23 @@ export function ChatBar({
                                 <option key={s} value={s} className="bg-void">{sectionOptionLabel(s)}</option>
                               ))}
                             </select>
-                            <select className="hud-input !min-h-[38px] text-sm cursor-pointer" value={a.priority_weight ?? 3} onChange={(e) => patchAction(idx, { priority_weight: Number(e.target.value) })}>
-                              {[1, 2, 3, 4, 5].map((p) => (
-                                <option key={p} value={p} className="bg-void">priority {p}</option>
+                            <select className="hud-input !min-h-[38px] text-sm cursor-pointer" value={a.priority_weight ?? 2} onChange={(e) => patchAction(idx, { priority_weight: Number(e.target.value) })} aria-label="Priority">
+                              {PRIORITY_LEVELS.map((p) => (
+                                <option key={p.value} value={p.value} className="bg-void">
+                                  {p.value} · {p.label} — {p.meaning.toLowerCase()}
+                                </option>
                               ))}
                             </select>
                             <input className="hud-input !min-h-[38px] text-sm" type="number" min="1" value={a.duration_minutes ?? ""} placeholder="minutes" onChange={(e) => patchAction(idx, { duration_minutes: e.target.value ? Number(e.target.value) : null })} />
+                            {a.type === "create_task" && (
+                              <textarea
+                                className="hud-input col-span-2 text-sm min-h-[64px] resize-y"
+                                value={(a.checklist ?? []).join("\n")}
+                                placeholder="checklist — one item per line (optional)"
+                                aria-label="Checklist items, one per line"
+                                onChange={(e) => patchAction(idx, { checklist: e.target.value.split("\n") })}
+                              />
+                            )}
                           </>
                         )}
                         {a.type === "create_category" && (

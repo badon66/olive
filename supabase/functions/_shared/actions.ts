@@ -13,7 +13,8 @@ export const ActionSchema = z.discriminatedUnion("type", [
     description: z.string().min(1).nullable().default(null),
     category_name: z.string().min(1).default("Personal"),
     due_date: isoDate.nullable().default(null),
-    priority_weight: z.number().int().min(1).max(5).default(3),
+    // 1-3 scale, 3 = urgent (BUILD_PLAN); medium is the default.
+    priority_weight: z.number().int().min(1).max(3).default(2),
     time_section: timeSection.nullable().default(null),
     duration_minutes: z.number().int().min(1).nullable().default(null),
     scheduled_time: z.string().regex(/^\d{2}:\d{2}$/).nullable().default(null),
@@ -21,6 +22,9 @@ export const ActionSchema = z.discriminatedUnion("type", [
     // BUILD_PLAN: the carry-forward safety net is ON by default. This was
     // `.default(false)`, so every NL-captured task silently opted out.
     auto_carry_forward: z.boolean().default(true),
+    // Checklist items inside this ONE task ("X, with A, B and C"). Simple
+    // checkboxes — no dates or sections of their own.
+    checklist: z.array(z.string().trim().min(1).max(200)).max(20).default([]),
   }),
   z.object({
     type: z.literal("update_task"),
@@ -29,7 +33,7 @@ export const ActionSchema = z.discriminatedUnion("type", [
     description: z.string().min(1).nullable().optional(),
     category_name: z.string().min(1).optional(),
     due_date: isoDate.nullable().optional(),
-    priority_weight: z.number().int().min(1).max(5).optional(),
+    priority_weight: z.number().int().min(1).max(3).optional(),
     time_section: timeSection.nullable().optional(),
     duration_minutes: z.number().int().min(1).nullable().optional(),
     scheduled_time: z.string().regex(/^\d{2}:\d{2}$/).nullable().optional(),
@@ -127,7 +131,19 @@ export const APPLY_ACTIONS_TOOL = {
                 "Name of an existing category from the CATEGORIES list, or a new one being created. For jobs this is the header (which company).",
             },
             due_date: { type: ["string", "null"], description: "YYYY-MM-DD or null" },
-            priority_weight: { type: "integer", minimum: 1, maximum: 5 },
+            priority_weight: {
+              type: "integer",
+              minimum: 1,
+              maximum: 3,
+              description:
+                "1 = low (no rush, whenever, someday), 2 = medium (the default when nothing is said), 3 = urgent (urgent, ASAP, important, must, right away, today for sure).",
+            },
+            checklist: {
+              type: "array",
+              items: { type: "string" },
+              description:
+                "create_task only: short checklist items INSIDE this one task when the user lists its parts ('figure out the clothing order, with Charlie's portion, Keenan's portion and Vesper's portion'). Items are simple checkboxes with no dates. Omit when the user did not list parts.",
+            },
             time_section: {
               type: ["string", "null"],
               enum: ["morning", "midday", "afternoon", "evening", "night", "anytime", null],
