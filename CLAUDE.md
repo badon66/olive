@@ -105,7 +105,9 @@ Concrete tokens if not re-derived by the skill:
 - `npm run test` — Vitest unit tests (`src/**/*.test.ts`)
 - `npm run lint` — oxlint
 - Migrations: add a SQL file to `supabase/migrations/`, apply the identical SQL to project `dpkdsmvskryettdxcvpp` via Supabase MCP `apply_migration`
-- Edge functions: edit under `supabase/functions/`, deploy via Supabase MCP `deploy_edge_function` (include `_shared/*` files; `daily-brief` deploys with verify_jwt OFF, `assistant` and `journal-clean` with it ON)
+- Edge functions: edit under `supabase/functions/`, deploy via Supabase MCP `deploy_edge_function` (include `_shared/*` files; `daily-brief` deploys with verify_jwt OFF, `assistant` and `journal-clean` with it ON). `assistant` is at v13 (checklist split + 1-3 priority words).
+- Dev fixture dashboard (no sign-in needed): `npm run dev`, then `http://localhost:5173/?harness=busy` or `?harness=light` — the real dashboard over in-memory fixtures, writes logged on `window.__olive.writes`. Dev-only (`src/dev/Harness.tsx`, behind `import.meta.env.DEV`).
+- Checklists live in `task_checklist_items` (task_id XOR weekly_task_id) and `weekly_checklist_checks` (per-date ticks for weekly occurrences); the client store is `src/hooks/useChecklists.ts`, shared through `ChecklistContext`.
 - Secrets: `anthropic_api_key`, `cron_secret`, `project_url` all live in Supabase Vault (read by edge functions via service-role-only RPCs `get_anthropic_key()`/`get_cron_secret()`); local copies in gitignored `.env`/`.env.local`
 - Keep this section current as the project evolves — add new scripts, functions, or secrets here as they're built.
 

@@ -799,3 +799,150 @@ Tested in a running browser against the real Active Tasks panel: with Midday wor
 present, a priority-5 anytime task showed in the main list and the dropdown read
 "Anytime 1" holding only the priority-3 one; an overdue priority-5 anytime task
 sorted above the section's own task, with no dropdown at all. 357 unit tests pass.
+
+## Four-column top row, checklist tasks, priority 1-3, days-left (2026-10-08)
+
+Spec update from Keenan (BUILD_PLAN + CLAUDE.md, committed as 342d393). Six
+items built, each in its own commit so any one can be reverted alone.
+
+### 1. Top row — Active Tasks | Active Jobs | orb | Today's Schedule
+`DesktopDashboard.tsx`, ultrawide branch only. One CSS grid,
+`minmax(0,1fr) minmax(0,1fr) minmax(300px,0.5fr) minmax(360px,0.75fr)`:
+- **Width by need.** The two lists share the free space; the orb unit and the
+  schedule get fixed smaller shares. Measured in the fixture dashboard:
+  2560×1440 → 680 | 680 | 340 | 510 px (the schedule was ~850 and mostly empty;
+  the old stacked flank gave each list ~383px of height). 1920×1080 → 456 | 456
+  | 300 | 360.
+- **Height from the tallest column.** The lists are absolutely-filled cells
+  (`xl:absolute xl:inset-0` inside a `relative` cell) so they contribute nothing
+  to the row height; they stretch to whatever the schedule/orb columns need and
+  scroll inside DashSection's body. The schedule is capped at one viewport
+  (`xl:max-h-[calc(100dvh-7rem)]`) so a packed day scrolls inside it instead of
+  making the top row a second screen. Measured: all four columns 1328px tall at
+  1440 high; Active Tasks showed 9 of 9 rows with no scroll, Active Jobs 4 of 4;
+  the schedule scrolled internally (1408 content in 1268).
+- **Orb unit** shrinks 380 → 300 (`Orb size`), greeting 26 → 22px.
+- Below `xl` (1280) the grid falls back to a 2×2 (lists over orb/schedule) with a
+  480px minimum on the list cells — a laptop fallback, not a target.
+- **Portrait and phone untouched** (separate code paths). Verified 1080×1920:
+  `tall` variant active, no four-column grid, orb 240, panel order Active Tasks
+  → Today's Schedule (1411px tall) → Weekly → Upcoming → Jobs | Reminders →
+  Finance → categories, no horizontal overflow. 390×844: BriefView, no overflow.
+- **Trade-off worth knowing:** at 1920 the schedule is 360px wide and 7 of 10
+  long titles truncate there (they fit fully at 2560). TaskCard's title and chip
+  rows now `flex-wrap`, so chips drop under the title rather than squeezing it —
+  at 2560 zero titles clip anywhere in the top row. If 1920 matters, raise the
+  schedule's 360px floor.
+
+### 2. Checklist tasks
+- **Schema** (`20261008000002_checklists.sql`, applied live): `task_checklist_items`
+  (task_id XOR weekly_task_id — a CHECK enforces exactly one — title, sort_order,
+  completed, completed_at; cascade delete from either parent; RLS) and
+  `weekly_checklist_checks` (checklist_item_id, date, completed; unique per
+  item+date; RLS). Exactly BUILD_PLAN's schema plus `user_id` for RLS.
+- **Store** `hooks/useChecklists.ts`, shared via `ChecklistContext` (provided in
+  App.tsx) so row chips and popups anywhere read one store; optimistic writes
+  with the same reload-epoch guard as useTasks. Pure rules in `lib/checklist.ts`
+  (12 tests).
+- **One row, one count.** TaskCard shows "☑ 2/5"; so do weekly rows in Active
+  Tasks / Today's Schedule / Upcoming Days / the Weekly tab, and Carryover rows.
+- **Ticked only in the popup.** `ChecklistEditor` sits FIRST in TaskForm for an
+  existing task (and in WeeklyTaskForm); each tick saves instantly; add / rename
+  (inline, saves on blur) / remove / reorder (▲▼) live there too. A NEW task or
+  weekly task can be typed with a checklist — held locally and attached once the
+  row exists (`addTask` / `addWeeklyTask` now resolve to the new id).
+- **Ask first, never auto-complete.** Ticking the last box shows "All items done.
+  Mark “…” complete?" Yes / Not yet. Yes → `completeTask` (or `completeDay` for a
+  weekly occurrence: "…done for today?") and the popup closes. Verified in the
+  browser: four item writes, then the prompt, with NO task write until Yes.
+- **Weekly:** items belong to the weekly task; ticks are per date. A weekly
+  occurrence in Active Tasks / Today's Schedule now opens its popup for THAT day
+  on a single click (double-click still = quick actions, same held-click pattern
+  as TaskCard). Verified: yesterday's Walk dog fully ticked, today opened 0/3;
+  three per-date check writes, prompt "done for today?", Yes → one
+  `weekly_task_checkins` completed row and the schedule row showed "☑ 3/3".
+- **Survives moves:** items key on the parent's id, never on a date, so carryover
+  and window/pick moves cannot touch them. Task ↔ weekly conversion MOVES the
+  items to the new parent (and back on undo) instead of losing them to the
+  cascade.
+- **Voice:** `create_task.checklist: string[]` in the assistant (v13 deployed).
+  Prompt rule: "X, with A, B and C" → ONE task with items, never separate tasks.
+  Items insert after the task. ChatBar's preview lists the items and offers a
+  one-per-line editor; blanks/duplicates are cleaned before commit.
+  **Not exercised live** — the function needs a signed-in session. Test: dictate
+  "add figure out the clothing order, with Charlie's portion, Keenan's portion
+  and Vesper's portion" and check the preview shows one task with three items.
+
+### 3. Priority 1-5 → 1-3
+- **Which end was most important: 5.** Evidence: lists sorted `priority_weight`
+  DESC, the ranking score ADDED it, TaskCard drew `priority_weight` filled bars
+  of 5, Active Tasks treated `TOP_PRIORITY = 5` as always-surfaced.
+- **Mapping applied to every row** (`20261008000001_priority_three_levels.sql`):
+  1,2 → 1 · 3 → 2 · 4,5 → 3. Live before/after on the 65 task rows:
+  p2:2, p3:22, p4:8, p5:33 → p1:2, p2:22, p3:41. The old default 3 is now
+  default 2 (medium). Constraint tightened to 1-3. `weekly_tasks` gained the same
+  column (default 2) — it had none; BUILD_PLAN Phase 2 lists it.
+- The column keeps its name `priority_weight` (BUILD_PLAN says `priority`);
+  renaming would have touched every reader on both runtimes and the live edge
+  functions mid-deploy for no behaviour gain. Flagged for Keenan.
+- `lib/priority.ts` (levels + meanings, `clampPriority`), `PriorityPicker`
+  (3 buttons each showing its meaning) in TaskForm and WeeklyTaskForm,
+  `PriorityBars` (3 bars, amber at urgent) on cards; ChatBar preview names the
+  level; assistant schema max 3 / default 2 with word mapping ('no rush' → 1,
+  'urgent'/'ASAP' → 3).
+
+### 4. Anytime rule by priority (Active Tasks)
+`anytimeShowsInMain(priority, ownUncompleted)` in `lib/sections.ts` on top of the
+base `splitAnytime` rule: 3 always surfaces; 2 surfaces while the current section
+has ≤ 2 uncompleted tasks of its own (anytime excluded); 1 follows the base rule.
+Surfaced work renders in the main list under a thin "Anytime · surfaced" group
+that is collapsible by hand (BUILD_PLAN: "still manually collapsible").
+**Interpretation flagged:** weekly occurrences in the current section COUNT as its
+own uncompleted work (they are visibly on the list), so a morning with five daily
+habits is not "light". Verified both branches in the browser (section = Morning):
+busy (4 own tasks + 2 weekly) → surfaced = the three urgent anytime tasks,
+dropdown = medium ×2 + low; light (2 own) → surfaced = 3 urgent + 2 medium,
+dropdown = low only.
+
+### 5. Days-left indicator, and the flicker
+- Rows: `whenLabel` for a window/pick task now reads "N days left" / "1 day left"
+  / "Last day" / "Nd overdue" — no date. Popups (TaskForm, TaskActionPopup) show
+  `spanLabel`: "Oct 8 to Oct 12", or the listed days for a pick task. Counting is
+  `daysBetween(today, lastDay)` on YYYY-MM-DD strings — Edmonton local, no UTC
+  conversion anywhere on the path.
+- **The flicker's real cause (re-diagnosed, not re-guessed):** it was NOT a
+  UTC-vs-local off-by-one — every date in the display path is a plain date
+  string; the only `new Date(…)` conversions are of `completed_at` timestamps,
+  done correctly through `edmontonToday`. The alternating "Sept 6 / Sept 7" came
+  from two code paths fighting: (1) the old placement scheduler re-choosing the
+  task's single displayed day on every render and every move (`due_date` /
+  `placed_date` rewritten by drags, skips, reschedules and the assistant), and
+  (2) a slower reload landing after a newer optimistic change and bouncing the
+  row back. Both were removed/guarded on 2026-09-24 (placement scheduler deleted;
+  reload-epoch guard). The new label is a pure function of two date strings, so it
+  can change only once a day at the 1:30 page flip. Verified: identical labels
+  across three reloads and a 36-second span crossing the 30-second clock tick.
+
+### 6. Global display rules — audit
+A regex sweep of the whole rendered dashboard found 17 twelve-hour clocks and zero
+24-hour leaks (the lone match, "20:27:54", is the rollover countdown — a duration,
+not a time). The only "overdue" strings were job stat counts of open tasks; a task
+due three days ago and completed today reads "Completed today". No new fixes were
+needed beyond what 2026-09-07/08 already did; the new code renders dates only.
+
+### Already built, re-verified: weekly cube two-stage cycle (`cubeClickAction`,
+pencil off) and clock ranges on every part-of-day picker (`sectionOptionLabel`).
+
+### Fixture dashboard (dev only)
+`npm run dev` → `http://localhost:5173/?harness=busy` or `=light`. Mounts the real
+DesktopDashboard/BriefView/Sidebar over in-memory stores shaped like the hooks,
+seeded with Keenan's real open tasks (dated relative to today) plus the test
+cases above; writes are logged on `window.__olive.writes`. Behind
+`import.meta.env.DEV` — confirmed absent from the production bundle. Earlier
+sessions rebuilt and deleted a harness every time; this one stays.
+
+### Tested
+380 unit tests (14 files; +23 this session: priority, checklist, anytime rule, days-left), `npm run check` clean (lint warnings
+are the pre-existing fast-refresh notes). Browser: everything above, in the
+fixture dashboard. **Needs Keenan signed in:** the real-data dashboard, and the
+voice split through the live assistant.
