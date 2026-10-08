@@ -19,6 +19,9 @@ import {
   skipIsPointless,
   tasksOnDate,
   whenLabel,
+  daysLeft,
+  daysLeftLabel,
+  spanLabel,
   type ScheduledTask,
 } from "./flexible";
 
@@ -235,52 +238,87 @@ describe("whenLabel — what the date chip says", () => {
     expect(whenLabel(fixed("2026-09-21"), TODAY)).toEqual({ text: "3d overdue", overdue: true });
   });
 
-  it("a window inside one month reads as a compact range", () => {
-    expect(whenLabel(window_("2026-09-24", "2026-09-28"), TODAY)?.text).toBe("Sep 24–28");
+  // Days-left indicator (BUILD_PLAN, 2026-10-08): a range task's ROW shows only
+  // how many days are left, never a date.
+  it("a window shows the days left to its END, not a date", () => {
+    expect(whenLabel(window_("2026-09-24", "2026-09-28"), TODAY)).toEqual({ text: "4 days left", overdue: false });
   });
 
-  it("a window crossing a month names both months", () => {
-    expect(whenLabel(window_("2026-09-29", "2026-10-02"), TODAY)?.text).toBe("Sep 29 – Oct 2");
+  it("a window already under way counts only to its end", () => {
+    expect(whenLabel(window_("2026-09-20", "2026-09-26"), TODAY)).toEqual({ text: "2 days left", overdue: false });
   });
 
-  it("a one-day window is just that day", () => {
-    expect(whenLabel(window_("2026-09-26", "2026-09-26"), TODAY)?.text).toBe("Sep 26");
+  it("the day before the end reads '1 day left', the end itself 'Last day'", () => {
+    expect(whenLabel(window_("2026-09-22", "2026-09-25"), TODAY)?.text).toBe("1 day left");
+    expect(whenLabel(window_("2026-09-22", "2026-09-24"), TODAY)?.text).toBe("Last day");
+    expect(whenLabel(window_("2026-09-24", "2026-09-24"), TODAY)?.text).toBe("Last day");
   });
 
-  it("a pick list names its days, month shown once", () => {
-    expect(whenLabel(pick(["2026-09-24", "2026-09-26", "2026-09-29"]), TODAY)?.text).toBe("Sep 24, 26, 29");
+  it("a pick list counts to its LAST chosen day", () => {
+    expect(whenLabel(pick(["2026-09-24", "2026-09-26", "2026-09-29"]), TODAY)).toEqual({ text: "5 days left", overdue: false });
+    expect(whenLabel(pick(["2026-09-20", "2026-09-24"]), TODAY)?.text).toBe("Last day");
   });
 
-  it("a pick list crossing a month names the new month where it changes", () => {
-    expect(whenLabel(pick(["2026-09-29", "2026-10-01", "2026-10-03"]), TODAY)?.text).toBe("Sep 29, Oct 1, 3");
+  it("a range that has fully passed while still open is overdue, like a fixed task", () => {
+    expect(whenLabel(window_("2026-09-18", "2026-09-22"), TODAY)).toEqual({ text: "2d overdue", overdue: true });
+    expect(whenLabel(pick(["2026-09-19", "2026-09-21"]), TODAY)).toEqual({ text: "3d overdue", overdue: true });
   });
 
-  it("a long pick list collapses to its span and a day count", () => {
-    const many = ["2026-09-24", "2026-09-25", "2026-09-27", "2026-09-30", "2026-10-02"];
-    expect(whenLabel(pick(many), TODAY)?.text).toBe("Sep 24 – Oct 2 · 5 days");
-  });
-
-  it("a range still running is not overdue, even though it started in the past", () => {
-    expect(whenLabel(window_("2026-09-20", "2026-09-26"), TODAY)).toEqual({ text: "Sep 20–26", overdue: false });
-  });
-
-  it("a range that has fully passed while still open says so", () => {
-    expect(whenLabel(window_("2026-09-18", "2026-09-22"), TODAY)).toEqual({
-      text: "Sep 18–22 · overdue",
-      overdue: true,
-    });
-  });
-
-  it("the label for a range never depends on which day you look at it from", () => {
-    // Same task, three different days: same range text. This is the property
-    // that makes a flicker impossible.
+  it("counts down by exactly one per day and never jumps", () => {
+    // This is the property that rules out a flicker: the label is a pure
+    // function of two YYYY-MM-DD strings, so successive days give successive
+    // numbers — nothing can alternate between two values on one day.
     const w = window_("2026-09-24", "2026-09-28");
-    const seen = new Set(["2026-09-24", "2026-09-26", "2026-09-28"].map((d) => whenLabel(w, d)?.text));
-    expect([...seen]).toEqual(["Sep 24–28"]);
+    const labels = ["2026-09-24", "2026-09-25", "2026-09-26", "2026-09-27", "2026-09-28", "2026-09-29"].map(
+      (d) => whenLabel(w, d)?.text,
+    );
+    expect(labels).toEqual(["4 days left", "3 days left", "2 days left", "1 day left", "Last day", "1d overdue"]);
   });
 
   it("an undated task has no date chip", () => {
     expect(whenLabel(t(), TODAY)).toBeNull();
+  });
+});
+
+describe("spanLabel — the popup shows the whole range, date to date", () => {
+  it("a window reads 'start to end'", () => {
+    expect(spanLabel(window_("2026-10-08", "2026-10-12"))).toBe("Oct 8 to Oct 12");
+    expect(spanLabel(window_("2026-09-29", "2026-10-02"))).toBe("Sep 29 to Oct 2");
+  });
+
+  it("a one-day window is just that day", () => {
+    expect(spanLabel(window_("2026-09-26", "2026-09-26"))).toBe("Sep 26");
+  });
+
+  it("a pick task lists its chosen days, naming the month where it changes", () => {
+    expect(spanLabel(pick(["2026-09-24", "2026-09-26", "2026-09-29"]))).toBe("Sep 24, 26, 29");
+    expect(spanLabel(pick(["2026-09-29", "2026-10-01", "2026-10-03"]))).toBe("Sep 29, Oct 1, 3");
+  });
+
+  it("a very long pick list collapses to its span and a count", () => {
+    const many = Array.from({ length: 9 }, (_, i) => `2026-10-${String(4 + i).padStart(2, "0")}`);
+    expect(spanLabel(pick(many))).toBe("Oct 4 to Oct 12 · 9 days");
+  });
+
+  it("a fixed or undated task has no span", () => {
+    expect(spanLabel(fixed(TODAY))).toBeNull();
+    expect(spanLabel(t())).toBeNull();
+  });
+});
+
+describe("daysLeft — Edmonton local date arithmetic, never UTC", () => {
+  it("is plain string math on YYYY-MM-DD, so a UTC offset cannot shift it", () => {
+    expect(daysLeft(window_("2026-10-08", "2026-10-12"), "2026-10-08")).toBe(4);
+    expect(daysLeft(window_("2026-10-08", "2026-10-12"), "2026-10-12")).toBe(0);
+    expect(daysLeft(window_("2026-10-08", "2026-10-12"), "2026-10-14")).toBe(-2);
+    expect(daysLeft(t(), TODAY)).toBeNull();
+  });
+
+  it("formats every count the way the rows show it", () => {
+    expect(daysLeftLabel(3)).toBe("3 days left");
+    expect(daysLeftLabel(1)).toBe("1 day left");
+    expect(daysLeftLabel(0)).toBe("Last day");
+    expect(daysLeftLabel(-1)).toBe("1d overdue");
   });
 });
 

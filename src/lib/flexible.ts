@@ -180,22 +180,71 @@ export function formatDays(dates: string[]): string {
     .join(", ");
 }
 
+// ── Days-left indicator (BUILD_PLAN, 2026-10-08) ────────────────────────────
+// A range task (window or pick) has TWO displays, depending on where you look:
+//   • dashboard rows — only how many days are left to get it done: "3 days
+//     left", "Last day" on its final day. No dates on the row.
+//   • the task's popup — the full span, date to date ("Oct 8 to Oct 12"), or
+//     the list of chosen days for a pick task.
+// Days left counts to the END of the window (or the last chosen day) in
+// Edmonton local dates — plain YYYY-MM-DD string arithmetic, never a UTC
+// conversion — so the number can only change once a day, at the page flip.
+
+// Days from `today` to the task's last possible day. Negative once that day
+// has passed. null for an undated task.
+export function daysLeft(t: ScheduledTask, today: string): number | null {
+  const days = occurrenceDates(t);
+  if (days.length === 0) return null;
+  return daysBetween(today, days[days.length - 1]);
+}
+
+export function daysLeftLabel(d: number): string {
+  if (d < 0) return `${-d}d overdue`;
+  if (d === 0) return "Last day";
+  if (d === 1) return "1 day left";
+  return `${d} days left`;
+}
+
+// Month + day in words from a YYYY-MM-DD string ("Oct 8").
+const monthDay = (iso: string) => `${shortMonth(iso)} ${dayNum(iso)}`;
+
+// The popup's full span. Window: "Oct 8 to Oct 12" (a one-day window is just
+// "Oct 8"). Pick: the chosen days listed, the month named where it changes
+// ("Oct 8, 9, 12, Nov 2"); past eight days it collapses to the span and a
+// count so the line stays readable. null when the task has no range.
+const MAX_SPAN_DAYS_LISTED = 8;
+export function spanLabel(t: ScheduledTask): string | null {
+  const mode = schedulingMode(t);
+  const days = occurrenceDates(t);
+  if (mode === "fixed" || days.length === 0) return null;
+  const first = days[0];
+  const last = days[days.length - 1];
+  if (mode === "window") return first === last ? monthDay(first) : `${monthDay(first)} to ${monthDay(last)}`;
+  if (days.length > MAX_SPAN_DAYS_LISTED) return `${monthDay(first)} to ${monthDay(last)} · ${days.length} days`;
+  return days
+    .map((d, i) => (i === 0 || monthKey(d) !== monthKey(days[i - 1]) ? monthDay(d) : String(dayNum(d))))
+    .join(", ");
+}
+
+// What the date chip on a ROW says. A fixed task keeps its relative label
+// ("Today" / "Tomorrow" / "3d overdue" / "Oct 12"); a range task shows only
+// its days left — never a date, which on a task belonging to several days read
+// as "that day" (and, back when a scheduler kept choosing a different day,
+// visibly flickered between two dates).
 export function whenLabel(
   t: ScheduledTask,
   today: string,
 ): { text: string; overdue: boolean } | null {
   const mode = schedulingMode(t);
-  const overdue = isFlexibleOverdue(t, today);
   if (mode === "fixed") {
     if (!t.due_date) return null;
     const d = daysBetween(today, t.due_date);
     const text = d === 0 ? "Today" : d === 1 ? "Tomorrow" : d < 0 ? `${-d}d overdue` : formatRange(t.due_date, t.due_date);
     return { text, overdue: d < 0 };
   }
-  const days = occurrenceDates(t);
-  if (days.length === 0) return null;
-  const text = mode === "window" ? formatRange(days[0], days[days.length - 1]) : formatDays(days);
-  return { text: overdue ? `${text} · overdue` : text, overdue };
+  const d = daysLeft(t, today);
+  if (d === null) return null;
+  return { text: daysLeftLabel(d), overdue: d < 0 };
 }
 
 // ── Moving a task, whatever its shape ───────────────────────────────────────
