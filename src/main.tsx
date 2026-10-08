@@ -16,16 +16,34 @@ import App from "./App";
 // new build.
 const UPDATE_CHECK_MS = 60 * 60 * 1000; // hourly
 
-registerSW({
-  immediate: true,
-  onRegisteredSW(_swUrl, registration) {
-    if (!registration) return;
-    setInterval(() => void registration.update(), UPDATE_CHECK_MS);
-  },
-});
+const root = createRoot(document.getElementById("root")!);
+const params = new URLSearchParams(window.location.search);
 
-createRoot(document.getElementById("root")!).render(
-  <StrictMode>
-    <App />
-  </StrictMode>,
-);
+if (import.meta.env.DEV && params.has("harness")) {
+  // Dev-only fixture dashboard (src/dev/Harness.tsx): the real components over
+  // in-memory stores, no sign-in needed. `npm run dev`, then /?harness=busy or
+  // /?harness=light. Behind import.meta.env.DEV, which Vite compiles to `false`
+  // in a production build, so the harness never ships. No service worker here
+  // either, so nothing can be served stale.
+  void import("./dev/Harness").then(({ Harness }) => {
+    root.render(
+      <StrictMode>
+        <Harness mode={params.get("harness") ?? ""} />
+      </StrictMode>,
+    );
+  });
+} else {
+  registerSW({
+    immediate: true,
+    onRegisteredSW(_swUrl, registration) {
+      if (!registration) return;
+      setInterval(() => void registration.update(), UPDATE_CHECK_MS);
+    },
+  });
+
+  root.render(
+    <StrictMode>
+      <App />
+    </StrictMode>,
+  );
+}
