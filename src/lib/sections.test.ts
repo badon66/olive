@@ -414,34 +414,66 @@ describe("doneTodayCount — per-day ticks count too", () => {
   });
 });
 
-// Top-priority anytime work never hides in the dropdown (Keenan, 2026-09-25):
-// an anytime task at priority 5 shows in Active Tasks itself, even when the
-// current part of the day has its own work.
-describe("splitAnytime — priority-5 anytime work always shows", () => {
-  type Row = { id: string; p: number };
-  const top = (r: Row) => r.p === 5;
-  const section = [{ id: "midday", p: 3 }];
 
-  it("a priority-5 anytime task joins the main list, not the dropdown", () => {
-    const anytime = [{ id: "urgent", p: 5 }, { id: "someday", p: 2 }];
-    expect(splitAnytime(section, anytime, top)).toEqual({
-      primary: [{ id: "midday", p: 3 }, { id: "urgent", p: 5 }],
-      dropdown: [{ id: "someday", p: 2 }],
+// Priority overrides on the anytime rule (BUILD_PLAN, 1-3 scale, 2026-10-08).
+// Supersedes the earlier priority-5 rule from the 1-5 scale.
+import { anytimeShowsInMain, LIGHT_SECTION_MAX } from "./sections";
+
+describe("anytimeShowsInMain — which anytime tasks escape the dropdown", () => {
+  it("urgent (3) always shows in the main list, however busy the section is", () => {
+    expect(anytimeShowsInMain(3, 0)).toBe(true);
+    expect(anytimeShowsInMain(3, 2)).toBe(true);
+    expect(anytimeShowsInMain(3, 9)).toBe(true);
+  });
+
+  it("medium (2) shows while the section has 2 or fewer uncompleted tasks of its own", () => {
+    expect(LIGHT_SECTION_MAX).toBe(2);
+    expect(anytimeShowsInMain(2, 0)).toBe(true);
+    expect(anytimeShowsInMain(2, 1)).toBe(true);
+    expect(anytimeShowsInMain(2, 2)).toBe(true);
+    expect(anytimeShowsInMain(2, 3)).toBe(false);
+  });
+
+  it("low (1) follows the base rule — it never escapes a section that has its own work", () => {
+    expect(anytimeShowsInMain(1, 0)).toBe(false);
+    expect(anytimeShowsInMain(1, 3)).toBe(false);
+  });
+
+  it("a stray legacy value above 3 is read as urgent", () => {
+    expect(anytimeShowsInMain(5, 9)).toBe(true);
+  });
+});
+
+describe("splitAnytime with the priority rule applied", () => {
+  type Row = { id: string; p: number };
+  const section = [{ id: "midday-1", p: 2 }, { id: "midday-2", p: 1 }];
+  // The caller supplies the section's uncompleted count; here it is 2 (light).
+  const light = (r: Row) => anytimeShowsInMain(r.p, 2);
+  const busy = (r: Row) => anytimeShowsInMain(r.p, 3);
+
+  it("in a light section, urgent AND medium anytime tasks join the main list; low folds away", () => {
+    const anytime = [{ id: "urgent", p: 3 }, { id: "medium", p: 2 }, { id: "low", p: 1 }];
+    expect(splitAnytime(section, anytime, light)).toEqual({
+      primary: [...section, { id: "urgent", p: 3 }, { id: "medium", p: 2 }],
+      dropdown: [{ id: "low", p: 1 }],
     });
   });
 
-  it("with no priority-5 anytime work the dropdown behaves as before", () => {
-    const anytime = [{ id: "a", p: 4 }, { id: "b", p: 1 }];
-    expect(splitAnytime(section, anytime, top)).toEqual({ primary: section, dropdown: anytime });
+  it("in a busy section, only urgent escapes; medium and low fold into the dropdown", () => {
+    const anytime = [{ id: "urgent", p: 3 }, { id: "medium", p: 2 }, { id: "low", p: 1 }];
+    expect(splitAnytime(section, anytime, busy)).toEqual({
+      primary: [...section, { id: "urgent", p: 3 }],
+      dropdown: [{ id: "medium", p: 2 }, { id: "low", p: 1 }],
+    });
   });
 
-  it("when every anytime task is priority 5 there is no dropdown at all", () => {
-    const anytime = [{ id: "x", p: 5 }];
-    expect(splitAnytime(section, anytime, top)).toEqual({ primary: [...section, ...anytime], dropdown: [] });
+  it("when every anytime task escapes there is no dropdown at all", () => {
+    const anytime = [{ id: "x", p: 3 }];
+    expect(splitAnytime(section, anytime, busy)).toEqual({ primary: [...section, ...anytime], dropdown: [] });
   });
 
-  it("an empty section still shows ALL anytime work, whatever its priority", () => {
-    const anytime = [{ id: "urgent", p: 5 }, { id: "someday", p: 2 }];
-    expect(splitAnytime([], anytime, top)).toEqual({ primary: anytime, dropdown: [] });
+  it("an empty section still shows ALL anytime work directly, whatever its priority", () => {
+    const anytime = [{ id: "urgent", p: 3 }, { id: "low", p: 1 }];
+    expect(splitAnytime([], anytime, busy)).toEqual({ primary: anytime, dropdown: [] });
   });
 });

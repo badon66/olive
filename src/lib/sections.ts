@@ -309,8 +309,8 @@ export function overdueFirst<T extends { due_date: string | null; status?: strin
 //     dropdown beneath it, available on click but not competing with what is
 //     actually scheduled for now.
 // `alwaysShow` exempts items from the dropdown: they join the main list even
-// when the section has its own work (used for priority-5 anytime tasks, which
-// are too important to sit behind a click).
+// when the section has its own work — see anytimeShowsInMain for the priority
+// rule that decides it.
 export function splitAnytime<T>(
   sectionItems: T[],
   anytimeItems: T[],
@@ -321,4 +321,19 @@ export function splitAnytime<T>(
     primary: [...sectionItems, ...anytimeItems.filter(alwaysShow)],
     dropdown: anytimeItems.filter((item) => !alwaysShow(item)),
   };
+}
+
+// Priority overrides on top of the base anytime rule (BUILD_PLAN, 1-3 scale):
+//   3 urgent  — always in the main list, however busy the section is
+//   2 medium  — in the main list while the section has 2 or fewer UNCOMPLETED
+//               tasks of its own (anytime tasks don't count); above 2 it folds
+//               into the dropdown
+//   1 low     — follows the base rule (dropdown whenever the section has work)
+// Only consulted when the section has its own work; an empty section already
+// shows every anytime task directly.
+export const LIGHT_SECTION_MAX = 2;
+export function anytimeShowsInMain(priority: number, ownUncompleted: number): boolean {
+  if (priority >= 3) return true;
+  if (priority === 2) return ownUncompleted <= LIGHT_SECTION_MAX;
+  return false;
 }
