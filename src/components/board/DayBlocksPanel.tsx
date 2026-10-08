@@ -1,6 +1,8 @@
 import { useState } from "react";
 import type { Task } from "../../hooks/useTasks";
 import type { WeeklyCheckin, WeeklyTask } from "../../hooks/useWeeklyTasks";
+import { useChecklistStore } from "../../hooks/useChecklists";
+import { progressLabel } from "../../lib/checklist";
 import { addDays, formatClock } from "../../lib/dates";
 import { orderBySortOrder, SECTION_ORDER, type TimeSection } from "../../lib/sections";
 import { dayIsDone, showsOnDate } from "../../lib/flexible";
@@ -68,6 +70,8 @@ export function UpcomingDaysPanel({
 }) {
   // How many extra batches of 3 days are revealed beyond the base row.
   const [batches, setBatches] = useState(0);
+  // Checklist counts ("2/5") on the rows — the parent is ONE row here too.
+  const checklist = useChecklistStore();
 
   const base = [addDays(today, -1), today, addDays(today, 1)];
   // Each extra batch continues forward from the furthest day already shown.
@@ -169,6 +173,9 @@ export function UpcomingDaysPanel({
                         const isDone = isWeekly ? weeklyDone(w.id) : dayIsDone(t, date);
                         const label = isWeekly ? w.name : t.title;
                         const cat = isWeekly ? undefined : categoryOf?.(t);
+                        const count = progressLabel(
+                          isWeekly ? checklist?.weeklyProgress(w.id, date) : checklist?.taskProgress(t.id),
+                        );
                         const inner = (
                           <span
                             className={`w-full text-left flex items-center gap-2 text-[15px] leading-snug font-body py-0.5 ${
@@ -188,6 +195,11 @@ export function UpcomingDaysPanel({
                               )}
                             </span>
                             <span className={`truncate ${isDone ? "line-through" : ""}`}>{label}</span>
+                            {count && (
+                              <span className="hud-chip hud-chip-signal shrink-0 !text-[9px]" title="Checklist progress">
+                                ☑ {count}
+                              </span>
+                            )}
                             {isWeekly && resolved.overridden.length > 0 && (
                               <span className="hud-chip hud-chip-amber shrink-0 !text-[9px]" title="Changed for this day only">
                                 this day

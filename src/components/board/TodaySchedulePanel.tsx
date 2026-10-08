@@ -3,6 +3,8 @@ import { supabase } from "../../lib/supabase";
 import type { Task } from "../../hooks/useTasks";
 import type { WeeklyCheckin, WeeklyTask } from "../../hooks/useWeeklyTasks";
 import type { BlockedWindow } from "../../lib/api";
+import { useChecklistStore } from "../../hooks/useChecklists";
+import { progressLabel } from "../../lib/checklist";
 import { addDays, formatClock, formatDue } from "../../lib/dates";
 import { isLateBedtime } from "../../lib/dayrules";
 import {
@@ -139,10 +141,88 @@ type WeeklyBits = {
 // day. Distinct from WeeklyTask, which is always the recurring pattern itself.
 type ResolvedWeekly = WeeklyTask & { scheduled_time: string | null; overridden: OverrideField[] };
 
+// One weekly occurrence row in the ribbon. Single click on the name opens the
+// weekly task's popup for THIS day (checklist first — the only place its items
+// are ticked); double-click keeps the quick-actions popup. Same held-click
+// pattern as TaskCard, so the two gestures never race.
+function WeeklyOccurrenceRow({
+  w,
+  date,
+  checked,
+  onToggle,
+  onEdit,
+  onDoubleClick,
+}: {
+  w: ResolvedWeekly;
+  date: string;
+  checked: boolean;
+  onToggle: (checked: boolean) => void | Promise<void>;
+  onEdit?: (weekly: WeeklyTask, date: string) => void;
+  onDoubleClick?: (weekly: WeeklyTask, date: string) => void;
+}) {
+  const checklist = useChecklistStore();
+  const count = progressLabel(checklist?.weeklyProgress(w.id, date));
+  const onName = useDoubleClick(
+    () => onEdit?.(w, date),
+    () => onDoubleClick?.(w, date),
+  );
+  return (
+    <div className="flex items-center gap-3 py-1.5">
+      <button
+        onClick={() => void onToggle(checked)}
+        aria-label={checked ? `Uncheck ${w.name}` : `Check off ${w.name}`}
+        className="shrink-0 w-11 h-11 grid place-items-center cursor-pointer focus-visible:outline-2 focus-visible:outline-signal rounded-full"
+      >
+        <span
+          className={`w-5 h-5 rounded-full border grid place-items-center transition-colors duration-200 ${
+            checked ? "border-signal bg-signal/20" : "border-signal-dim hover:border-signal"
+          }`}
+        >
+          {checked && (
+            <svg viewBox="0 0 24 24" className="w-2.5 h-2.5 text-signal" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M20 6 9 17l-5-5" />
+            </svg>
+          )}
+        </span>
+      </button>
+      <button
+        onClick={onEdit || onDoubleClick ? onName : undefined}
+        className={`flex-1 min-w-0 flex items-center gap-2 text-left font-body text-[15px] rounded ${
+          onEdit ? "cursor-pointer hover:text-signal" : "cursor-default"
+        } focus-visible:outline-2 focus-visible:outline-signal ${checked ? "opacity-50" : ""}`}
+        aria-label={onEdit ? `Edit ${w.name}` : w.name}
+        title={onEdit ? "Click to open · double-click for quick actions" : undefined}
+      >
+        <span className={`truncate ${checked ? "line-through" : ""}`}>{w.name}</span>
+        {count && (
+          <span className="hud-chip hud-chip-signal shrink-0" title="Checklist progress for this day" aria-label={`Checklist ${count} done`}>
+            ☑ {count}
+          </span>
+        )}
+      </button>
+      {/* A one-day override is visible as itself: the pinned time is shown, and
+          the amber chip says the change is scoped to this day so nobody mistakes
+          it for an edit to the recurring pattern. */}
+      {w.scheduled_time && <span className="hud-chip hud-chip-signal shrink-0">{formatClock(w.scheduled_time)}</span>}
+      {w.overridden.length > 0 && (
+        <span
+          className="hud-chip hud-chip-amber shrink-0"
+          title={`Changed for this day only (${w.overridden.map((f) => OVERRIDE_LABELS[f]).join(", ")}). The weekly pattern is unchanged.`}
+        >
+          just this day
+        </span>
+      )}
+      <span className="hud-chip shrink-0">weekly</span>
+    </div>
+  );
+}
+
 // One Carryover Tasks row: a checkbox to complete it inline, single-click to
 // edit, double-click for the action popup — the same gesture set as the other
 // panels, so carryover is not a second-class list.
 function CarryoverRow({ t, today, cardProps }: { t: Task; today: string; cardProps: CardProps }) {
+  const checklist = useChecklistStore();
+  const count = progressLabel(checklist?.taskProgress(t.id));
   const onTitleClick = useDoubleClick(
     () => cardProps.onEdit(t),
     () => cardProps.onDoubleClick?.(t),
@@ -166,6 +246,11 @@ function CarryoverRow({ t, today, cardProps }: { t: Task; today: string; cardPro
       >
         {t.title}
       </button>
+      {count && (
+        <span className="hud-chip hud-chip-signal shrink-0" title="Checklist progress — open the task to tick items">
+          ☑ {count}
+        </span>
+      )}
       {t.due_date && <span className="hud-chip hud-chip-amber shrink-0">{formatDue(t.due_date, today)}</span>}
     </div>
   );
@@ -189,6 +274,7 @@ export function TodaySchedulePanel({
   onSaveOrder,
   onSaveWeeklyOrder,
   onWeeklyDoubleClick,
+  onEditWeekly,
   nowMinutes,
   loading = false,
 }: {
@@ -219,6 +305,8 @@ export function TodaySchedulePanel({
   // have no competing single-click action, so this is a plain dblclick with no
   // delay — unlike TaskCard, where it must not race the edit modal.
   onWeeklyDoubleClick?: (weekly: WeeklyTask, date: string) => void;
+  // Single-click a weekly occurrence -> its popup for that day (checklist first).
+  onEditWeekly?: (weekly: WeeklyTask, date: string) => void;
   // Minutes since local midnight — drives the active section's progress line.
   nowMinutes?: number;
   // While the stores load, show skeletons instead of the empty-day state.
@@ -636,65 +724,21 @@ export function TodaySchedulePanel({
                           />
                         </DraggableTask>
                       ) : (
-                        (() => {
-                          const w = row.weekly;
-                          // Check-off state belongs to the day being viewed, not today
-                          const checked = checkinsFor(w.id).some(
-                            (c) => c.date === viewDate && c.status === "completed",
-                          );
-                          return (
-                            <DraggableWeekly zone="schedweekly" weekly={w}>
-                              <div className="flex items-center gap-3 py-1.5"
-                        onDoubleClick={() => onWeeklyDoubleClick?.(w, viewDate)}
-                      >
-                                <button
-                                  // Instant, no follow-up prompt: check off and done.
-                                  onClick={async () => {
-                                    if (checked) await weeklyBits!.uncompleteDay(w, viewDate);
-                                    else await weeklyBits!.completeDay(w.id, viewDate);
-                                  }}
-                                  aria-label={checked ? `Uncheck ${w.name}` : `Check off ${w.name}`}
-                                  className="shrink-0 w-11 h-11 grid place-items-center cursor-pointer focus-visible:outline-2 focus-visible:outline-signal rounded-full"
-                                >
-                                  <span
-                                    className={`w-5 h-5 rounded-full border grid place-items-center transition-colors duration-200 ${
-                                      checked ? "border-signal bg-signal/20" : "border-signal-dim hover:border-signal"
-                                    }`}
-                                  >
-                                    {checked && (
-                                      <svg viewBox="0 0 24 24" className="w-2.5 h-2.5 text-signal" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                                        <path d="M20 6 9 17l-5-5" />
-                                      </svg>
-                                    )}
-                                  </span>
-                                </button>
-                                <span className={`flex-1 min-w-0 truncate font-body text-[15px] ${checked ? "opacity-50 line-through" : ""}`}>
-                                  {w.name}
-                                </span>
-                                {/* A one-day override is visible as itself: the pinned
-                                    time is shown, and the amber chip says the change is
-                                    scoped to this day so nobody mistakes it for an edit
-                                    to the recurring pattern. */}
-                                {w.scheduled_time && (
-                                  <span className="hud-chip hud-chip-signal shrink-0">
-                                    {formatClock(w.scheduled_time)}
-                                  </span>
-                                )}
-                                {w.overridden.length > 0 && (
-                                  <span
-                                    className="hud-chip hud-chip-amber shrink-0"
-                                    title={`Changed for this day only (${w.overridden
-                                      .map((f) => OVERRIDE_LABELS[f])
-                                      .join(", ")}). The weekly pattern is unchanged.`}
-                                  >
-                                    just this day
-                                  </span>
-                                )}
-                                <span className="hud-chip shrink-0">weekly</span>
-                              </div>
-                            </DraggableWeekly>
-                          );
-                        })()
+                        <DraggableWeekly zone="schedweekly" weekly={row.weekly}>
+                          <WeeklyOccurrenceRow
+                            w={row.weekly}
+                            date={viewDate}
+                            // Check-off state belongs to the day being viewed, not today
+                            checked={checkinsFor(row.weekly.id).some((c) => c.date === viewDate && c.status === "completed")}
+                            onToggle={async (checked) => {
+                              // Instant, no follow-up prompt: check off and done.
+                              if (checked) await weeklyBits!.uncompleteDay(row.weekly, viewDate);
+                              else await weeklyBits!.completeDay(row.weekly.id, viewDate);
+                            }}
+                            onEdit={onEditWeekly}
+                            onDoubleClick={onWeeklyDoubleClick}
+                          />
+                        </DraggableWeekly>
                       );
                     // At a section edge, a TASK row's arrow stays live when the
                     // press crosses into a neighbouring section (weekly rows

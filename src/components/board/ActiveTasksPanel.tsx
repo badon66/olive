@@ -1,17 +1,17 @@
 import { useState } from "react";
 import type { Task } from "../../hooks/useTasks";
 import type { WeeklyCheckin, WeeklyTask } from "../../hooks/useWeeklyTasks";
+import { useChecklistStore } from "../../hooks/useChecklists";
+import { progressLabel } from "../../lib/checklist";
 import { formatClock } from "../../lib/dates";
-import { orderBySortOrder, scheduleSort, splitAnytime, type TimeSection } from "../../lib/sections";
+import { dayIsDone } from "../../lib/flexible";
+import { anytimeShowsInMain, orderBySortOrder, scheduleSort, splitAnytime, type TimeSection } from "../../lib/sections";
 import { appearsOn, type DayOverrideLike, type OverrideField, resolveWeeklyDay } from "../../lib/weekly";
 import { SkeletonRows } from "../Skeleton";
 import { TaskCard } from "../TaskCard";
+import { useDoubleClick } from "../TaskActionPopup";
 import { combineRows, liftRows, ScheduleRow, splitOrderWrites, type ScheduleItem } from "./ScheduleRow";
 import { DraggableTask, DropZone } from "./TaskDnd";
-
-// Priority runs 1–5. An anytime task at the top priority never folds into
-// the Anytime dropdown — it always shows in the main list.
-const TOP_PRIORITY = 5;
 
 const SECTION_LABELS: Record<TimeSection, string> = {
   morning: "Morning",
@@ -47,6 +47,78 @@ type WeeklyBits = {
 // from a one-day override, plus any clock time pinned for that day.
 type ResolvedWeekly = WeeklyTask & { scheduled_time: string | null; overridden: OverrideField[] };
 
+// One weekly occurrence row. Single click on the name opens the weekly task's
+// popup (checklist first — the only place its items are ticked); double-click
+// keeps the quick-actions popup. The same held-click pattern TaskCard uses, so
+// the two gestures never race.
+function WeeklyRow({
+  w,
+  date,
+  done,
+  onToggle,
+  onEdit,
+  onDoubleClick,
+}: {
+  w: ResolvedWeekly;
+  date: string;
+  done: boolean;
+  onToggle: () => void;
+  onEdit?: (w: WeeklyTask, date: string) => void;
+  onDoubleClick?: (w: WeeklyTask, date: string) => void;
+}) {
+  const checklist = useChecklistStore();
+  const count = progressLabel(checklist?.weeklyProgress(w.id, date));
+  const onName = useDoubleClick(
+    () => onEdit?.(w, date),
+    () => onDoubleClick?.(w, date),
+  );
+  return (
+    <div className="flex items-center gap-3 py-3">
+      <button
+        onClick={onToggle}
+        aria-label={done ? `Uncheck ${w.name}` : `Check off ${w.name}`}
+        className="shrink-0 w-11 h-11 grid place-items-center cursor-pointer focus-visible:outline-2 focus-visible:outline-signal rounded-full"
+      >
+        <span
+          className={`w-5 h-5 rounded-full border grid place-items-center transition-colors duration-200 ${
+            done ? "border-signal bg-signal/20" : "border-signal-dim hover:border-signal hover:shadow-[0_0_8px_rgba(63,169,104,0.4)]"
+          }`}
+        >
+          {done && (
+            <svg viewBox="0 0 24 24" className="w-3 h-3 text-signal" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M20 6 9 17l-5-5" />
+            </svg>
+          )}
+        </span>
+      </button>
+      <button
+        onClick={onEdit || onDoubleClick ? onName : undefined}
+        className={`flex-1 min-w-0 flex items-center gap-2 text-left font-body text-base rounded ${
+          onEdit ? "cursor-pointer hover:text-signal" : "cursor-default"
+        } focus-visible:outline-2 focus-visible:outline-signal ${done ? "opacity-50" : ""}`}
+        aria-label={onEdit ? `Edit ${w.name}` : w.name}
+        title={onEdit ? "Click to open · double-click for quick actions" : undefined}
+      >
+        <span className={`truncate ${done ? "line-through" : ""}`}>{w.name}</span>
+        {count && (
+          <span className="hud-chip hud-chip-signal shrink-0" title="Checklist progress for this day" aria-label={`Checklist ${count} done`}>
+            ☑ {count}
+          </span>
+        )}
+      </button>
+      {/* Same treatment as Today's Schedule: a one-day override shows its
+          pinned time and says plainly that it is scoped to this day. */}
+      {w.scheduled_time && <span className="hud-chip hud-chip-signal shrink-0">{formatClock(w.scheduled_time)}</span>}
+      {w.overridden.length > 0 && (
+        <span className="hud-chip hud-chip-amber shrink-0" title="Changed for this day only. The weekly pattern is unchanged.">
+          just this day
+        </span>
+      )}
+      <span className="hud-chip shrink-0">weekly</span>
+    </div>
+  );
+}
+
 // Live snapshot of ONLY the current part of the day (midday tasks at midday,
 // afternoon tasks in the afternoon) — distinct from the fuller Today's Schedule.
 // Glanceable: descriptions always visible, generous spacing, complete inline.
@@ -58,6 +130,7 @@ export function ActiveTasksPanel({
   onSaveOrder,
   onSaveWeeklyOrder,
   onWeeklyDoubleClick,
+  onEditWeekly,
   loading = false,
 }: {
   section: TimeSection;
@@ -66,15 +139,18 @@ export function ActiveTasksPanel({
   weeklyBits?: WeeklyBits;
   onSaveOrder?: (updates: { id: string; sort_order: number }[]) => void;
   onSaveWeeklyOrder?: (updates: { id: string; sort_order: number }[]) => void;
-  // Double-click a weekly occurrence -> "Skip today" (BUILD_PLAN). Weekly rows
-  // have no competing single-click action, so this is a plain dblclick with no
-  // delay — unlike TaskCard, where it must not race the edit modal.
+  // Double-click a weekly occurrence -> "Skip today" (BUILD_PLAN).
   onWeeklyDoubleClick?: (weekly: WeeklyTask, date: string) => void;
+  // Single-click a weekly occurrence -> its popup (checklist first).
+  onEditWeekly?: (weekly: WeeklyTask, date: string) => void;
   // While the stores load, show skeletons instead of asserting "nothing scheduled"
   loading?: boolean;
 }) {
   const today = cardProps.today;
   const [anytimeOpen, setAnytimeOpen] = useState(false);
+  // The urgent/medium anytime work surfaced into the main list can still be
+  // folded away by hand (BUILD_PLAN: "the user can still collapse it manually").
+  const [surfacedOpen, setSurfacedOpen] = useState(true);
 
   // Anytime is CONDITIONAL (BUILD_PLAN), so the two groups are kept apart right
   // from the source data rather than merged and re-separated later.
@@ -83,6 +159,7 @@ export function ActiveTasksPanel({
   const anytimeTasks = dueToday.filter((t) => sectionOf(t.time_section) === "anytime").sort(scheduleSort);
 
   const checkinsFor = (id: string) => (weeklyBits?.checkins ?? []).filter((c) => c.weekly_task_id === id);
+  const weeklyDone = (id: string) => checkinsFor(id).some((c) => c.date === today && c.status === "completed");
   const weeklyIn = (want: string) =>
     (weeklyBits?.weeklyTasks ?? [])
       .filter((t) => appearsOn(t, checkinsFor(t.id), today))
@@ -93,6 +170,12 @@ export function ActiveTasksPanel({
       .filter((t) => sectionOf(t.time_section) === want);
   const sectionWeekly = weeklyIn(section);
   const anytimeWeekly = section === "anytime" ? [] : weeklyIn("anytime");
+
+  // How busy is the current section, in UNCOMPLETED work of its own? Anytime
+  // tasks are excluded by construction. Decides whether medium-priority anytime
+  // work is surfaced (BUILD_PLAN: 2 or fewer → surfaced).
+  const ownUncompleted =
+    sectionTasks.filter((t) => !dayIsDone(t, today)).length + sectionWeekly.filter((w) => !weeklyDone(w.id)).length;
 
   // ONE combined list per group — regular tasks and weekly occurrences together
   // — so the arrows move an item relative to what is actually on screen, not
@@ -123,19 +206,24 @@ export function ActiveTasksPanel({
       isOverdueRow,
     );
 
-  // If the current part of day has nothing of its own, anytime work is promoted
-  // into the main list so the panel is never needlessly empty. If it does have
-  // its own work, anytime folds into the dropdown instead of competing with it —
-  // EXCEPT top-priority (5) anytime tasks, which always show in the main list.
-  const split = splitAnytime(
-    build(sectionTasks, sectionWeekly),
-    build(anytimeTasks, anytimeWeekly),
-    (r) => r.kind === "task" && r.task.priority_weight >= TOP_PRIORITY,
-  );
-  // Overdue still sorts to the top across the combined list (BUILD_PLAN).
+  // Base rule: an empty section promotes ALL anytime work into the main list;
+  // a section with its own work folds anytime into the dropdown. Priority
+  // overrides on top (anytimeShowsInMain): urgent always surfaces, medium
+  // surfaces while the section is light, low never does.
+  const surfaces = (r: ScheduleItem<Task, ResolvedWeekly>) =>
+    r.kind === "task" && anytimeShowsInMain(r.task.priority_weight, ownUncompleted);
+  const split = splitAnytime(build(sectionTasks, sectionWeekly), build(anytimeTasks, anytimeWeekly), surfaces);
+  const promoted = sectionTasks.length + sectionWeekly.length === 0 && split.primary.length > 0;
+  // Which main-list rows are anytime work surfaced by priority (not by an empty
+  // section)? They get their own thin, collapsible group below the section's
+  // own work, so they read as "surfaced", not as belonging to this part of day.
+  const ownIds = new Set(build(sectionTasks, sectionWeekly).map((r) => `${r.kind}-${r.id}`));
+  const surfacedRows = promoted ? [] : split.primary.filter((r) => !ownIds.has(`${r.kind}-${r.id}`));
+  const surfacedIds = new Set(surfacedRows.map((r) => `${r.kind}-${r.id}`));
+  // Overdue still sorts to the top across the main list (BUILD_PLAN).
   const primary = liftRows(split.primary, isOverdueRow);
+  const mainRows = primary.filter((r) => !surfacedIds.has(`${r.kind}-${r.id}`));
   const dropdown = split.dropdown;
-  const promoted = sectionTasks.length + sectionWeekly.length === 0 && primary.length > 0;
   const total = primary.length + dropdown.length;
 
   const showArrows = !!onSaveOrder;
@@ -144,8 +232,8 @@ export function ActiveTasksPanel({
   // rather than silently moving a task somewhere the panel can't show.
   const move = (index: number, dir: -1 | 1) => {
     const j = index + dir;
-    if (j < 0 || j >= primary.length) return;
-    const next = [...primary];
+    if (j < 0 || j >= mainRows.length) return;
+    const next = [...mainRows];
     [next[index], next[j]] = [next[j], next[index]];
     const { tasks, weekly } = splitOrderWrites(next);
     onSaveOrder?.(tasks);
@@ -153,7 +241,7 @@ export function ActiveTasksPanel({
   };
 
   // Both kinds go through one renderer, so the row body is written once and
-  // serves the main list and the dropdown identically.
+  // serves the main list, the surfaced group and the dropdown identically.
   const renderRow = (row: ScheduleItem<Task, ResolvedWeekly>) =>
     row.kind === "task" ? (
       <DraggableTask zone="active" task={row.task} className="py-1">
@@ -166,51 +254,30 @@ export function ActiveTasksPanel({
         />
       </DraggableTask>
     ) : (
-      (() => {
-        const w = row.weekly;
-        const done = checkinsFor(w.id).some((c) => c.date === today && c.status === "completed");
-        return (
-          <div className="flex items-center gap-3 py-3" onDoubleClick={() => onWeeklyDoubleClick?.(w, today)}>
-            <button
-              onClick={() =>
-                done ? void weeklyBits?.uncompleteDay?.(w, today) : void weeklyBits?.completeDay?.(w.id, today)
-              }
-              aria-label={done ? `Uncheck ${w.name}` : `Check off ${w.name}`}
-              className="shrink-0 w-11 h-11 grid place-items-center cursor-pointer focus-visible:outline-2 focus-visible:outline-signal rounded-full"
-            >
-              <span
-                className={`w-5 h-5 rounded-full border grid place-items-center transition-colors duration-200 ${
-                  done ? "border-signal bg-signal/20" : "border-signal-dim hover:border-signal hover:shadow-[0_0_8px_rgba(63,169,104,0.4)]"
-                }`}
-              >
-                {done && (
-                  <svg viewBox="0 0 24 24" className="w-3 h-3 text-signal" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                    <path d="M20 6 9 17l-5-5" />
-                  </svg>
-                )}
-              </span>
-            </button>
-            <span className={`flex-1 min-w-0 truncate font-body text-base ${done ? "opacity-50 line-through" : ""}`}>
-              {w.name}
-            </span>
-            {/* Same treatment as Today's Schedule: a one-day override shows its
-                pinned time and says plainly that it is scoped to this day. */}
-            {w.scheduled_time && (
-              <span className="hud-chip hud-chip-signal shrink-0">{formatClock(w.scheduled_time)}</span>
-            )}
-            {w.overridden.length > 0 && (
-              <span
-                className="hud-chip hud-chip-amber shrink-0"
-                title="Changed for this day only. The weekly pattern is unchanged."
-              >
-                just this day
-              </span>
-            )}
-            <span className="hud-chip shrink-0">weekly</span>
-          </div>
-        );
-      })()
+      <WeeklyRow
+        w={row.weekly}
+        date={today}
+        done={weeklyDone(row.weekly.id)}
+        onToggle={() =>
+          weeklyDone(row.weekly.id)
+            ? void weeklyBits?.uncompleteDay?.(row.weekly, today)
+            : void weeklyBits?.completeDay?.(row.weekly.id, today)
+        }
+        onEdit={onEditWeekly}
+        onDoubleClick={onWeeklyDoubleClick}
+      />
     );
+
+  const chevron = (open: boolean) => (
+    <svg
+      viewBox="0 0 24 24"
+      className={`w-3 h-3 transition-transform duration-200 ${open ? "rotate-180" : ""}`}
+      fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="m6 9 6 6 6-6" />
+    </svg>
+  );
 
   return (
     <DropZone id={`section:${section}:${today}`} className="h-full">
@@ -233,22 +300,47 @@ export function ActiveTasksPanel({
             </p>
           )}
           <div className="divide-y divide-signal-dim/15">
-            {primary.map((row, i) => (
+            {mainRows.map((row, i) => (
               <ScheduleRow
                 key={`${row.kind}-${row.id}`}
                 index={i}
-                count={primary.length}
+                count={mainRows.length}
                 label={row.label}
                 onMove={move}
                 // Single-row: nothing to reorder, and unlike Today's Schedule
                 // these arrows never cross sections — so hide the dead pair
                 // instead of showing two disabled chevrons.
-                showArrows={showArrows && primary.length > 1}
+                showArrows={showArrows && mainRows.length > 1}
               >
                 {renderRow(row)}
               </ScheduleRow>
             ))}
           </div>
+
+          {/* Anytime work surfaced by priority (urgent always; medium while the
+              section is light). In the main list, but marked as surfaced and
+              collapsible by hand. */}
+          {surfacedRows.length > 0 && (
+            <div className="mt-1.5 border-t border-signal-dim/20 pt-1">
+              <button
+                onClick={() => setSurfacedOpen((o) => !o)}
+                aria-expanded={surfacedOpen}
+                className="w-full flex items-center gap-1.5 py-1 font-data text-[11px] text-signal/80 hover:text-signal cursor-pointer rounded focus-visible:outline-2 focus-visible:outline-signal transition-colors duration-150"
+                title="Anytime work surfaced here by its priority — urgent always, medium while this part of the day is light"
+              >
+                {chevron(surfacedOpen)}
+                Anytime · surfaced
+                <span className="px-1.5 rounded bg-signal/15 text-signal">{surfacedRows.length}</span>
+              </button>
+              {surfacedOpen && (
+                <div className="divide-y divide-signal-dim/15">
+                  {surfacedRows.map((row) => (
+                    <div key={`${row.kind}-${row.id}`}>{renderRow(row)}</div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
 
           {dropdown.length > 0 && (
             <div className="mt-2 border-t border-signal-dim/20 pt-1.5">
@@ -257,14 +349,7 @@ export function ActiveTasksPanel({
                 aria-expanded={anytimeOpen}
                 className="w-full flex items-center gap-1.5 py-1.5 font-data text-[11px] text-dim hover:text-signal cursor-pointer rounded focus-visible:outline-2 focus-visible:outline-signal transition-colors duration-150"
               >
-                <svg
-                  viewBox="0 0 24 24"
-                  className={`w-3 h-3 transition-transform duration-200 ${anytimeOpen ? "rotate-180" : ""}`}
-                  fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"
-                  aria-hidden="true"
-                >
-                  <path d="m6 9 6 6 6-6" />
-                </svg>
+                {chevron(anytimeOpen)}
                 Anytime
                 <span className="px-1.5 rounded bg-signal/15 text-signal">{dropdown.length}</span>
               </button>
