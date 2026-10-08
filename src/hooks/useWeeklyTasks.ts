@@ -16,6 +16,8 @@ export type WeeklyTaskInput = {
   time_section?: WeeklyTask["time_section"];
   // Indefinite pause (BUILD_PLAN) — hides the task everywhere but its own tab.
   paused?: boolean;
+  // Same 1-3 scale and meanings as tasks (lib/priority.ts).
+  priority_weight?: number;
 };
 
 export function useWeeklyTasks() {
@@ -146,10 +148,17 @@ export function useWeeklyTasks() {
     refresh,
     setDayOverride: writeDayOverride,
     clearDayOverride: removeDayOverride,
-    addWeeklyTask: async (input: WeeklyTaskInput) => {
+    // Resolves to the new row's id so a checklist typed into the form can be
+    // attached to it.
+    addWeeklyTask: async (input: WeeklyTaskInput): Promise<string | undefined> => {
       epoch.current += 1;
-      await supabase.from("weekly_tasks").insert({ ...input, user_id: await userId() });
+      const { data } = await supabase
+        .from("weekly_tasks")
+        .insert({ ...input, user_id: await userId() })
+        .select("id")
+        .single();
       await refresh();
+      return data?.id;
     },
     updateWeeklyTask,
     // Moving an occurrence to another part of the day, from ANY surface

@@ -1,10 +1,15 @@
 import { useMemo, useState, type FormEvent, type ReactNode } from "react";
 import type { WeeklyCheckin, WeeklyStore, WeeklyTask } from "../hooks/useWeeklyTasks";
-import { edmontonToday, weekRangeLabel } from "../lib/dates";
+import { useChecklistStore } from "../hooks/useChecklists";
+import { progressLabel } from "../lib/checklist";
+import { edmontonToday, fullDateLabel, weekRangeLabel } from "../lib/dates";
+import { clampPriority, type Priority } from "../lib/priority";
 import { SECTION_ORDER, sectionOptionLabel } from "../lib/sections";
 import { cubeClickAction, cubeStates, progress, weekDates, type CubeState } from "../lib/weekly";
 import { DraggableWeekly } from "./board/TaskDnd";
+import { ChecklistEditor } from "./ChecklistEditor";
 import { Portal } from "./Portal";
+import { PriorityBars, PriorityPicker } from "./PriorityPicker";
 import { SkeletonRows } from "./Skeleton";
 import { useEscape } from "./useEscape";
 
@@ -52,6 +57,7 @@ export function WeeklyTasksView({
   const [editing, setEditing] = useState<WeeklyTask | null>(null);
   const today = edmontonToday();
   const week = useMemo(() => weekDates(today), [today]);
+  const checklist = useChecklistStore();
 
   const checkinsByTask = useMemo(() => {
     const m = new Map<string, WeeklyCheckin[]>();
@@ -104,6 +110,9 @@ export function WeeklyTasksView({
           {weeklyTasks.map((t) => {
             const rowsFor = checkinsByTask.get(t.id) ?? [];
             const states = cubeStates(t, rowsFor, today);
+            // Today's occurrence of this task's checklist ("2/5"). Items are
+            // ticked in the popup the name opens — never here on the row.
+            const count = progressLabel(checklist?.weeklyProgress(t.id, today));
             const body = (
               // Paused (BUILD_PLAN): dimmed and labelled, but still HERE — this
               // is the one place a paused task stays visible, so it can be found
@@ -120,10 +129,16 @@ export function WeeklyTasksView({
                     >
                       <p className="font-body font-semibold text-base leading-snug truncate">{t.name}</p>
                     </button>
+                    {count && (
+                      <span className="hud-chip hud-chip-signal shrink-0" title="Today's checklist progress — open the task to tick items">
+                        ☑ {count}
+                      </span>
+                    )}
                     <span className="hud-chip shrink-0">{recurrenceLabel(t)}</span>
                     {t.time_section && (
                       <span className="hud-chip hud-chip-signal shrink-0">{sectionOptionLabel(t.time_section)}</span>
                     )}
+                    <PriorityBars value={t.priority_weight} />
                     {t.paused && <span className="hud-chip hud-chip-amber shrink-0">Paused</span>}
                   </div>
 
@@ -216,6 +231,10 @@ export function WeeklyTasksView({
       {editing && (
         <WeeklyTaskForm
           initial={editing}
+          // Opened from the task's own tab, the checklist is today's occurrence.
+          checklistDate={today}
+          occurrenceDone={(checkinsByTask.get(editing.id) ?? []).some((c) => c.date === today && c.status === "completed")}
+          onCompleteDay={(id, date) => void completeDay(id, date)}
           onClose={() => setEditing(null)}
           // Inline two-tap confirm inside the form — same pattern as TaskForm.
           // The old separate confirm modal rendered at z-40 BEHIND the z-50 edit
@@ -233,23 +252,39 @@ export function WeeklyTasksView({
   );
 }
 
+export type WeeklyTaskFormInput = {
+  name: string;
+  recurrence_mode: "count" | "fixed_days";
+  target_per_week: number | null;
+  scheduled_days: number[] | null;
+  time_section: WeeklyTask["time_section"];
+  paused: boolean;
+  priority_weight: number;
+};
+
 export function WeeklyTaskForm({
   initial,
   onSubmit,
   onClose,
   onDelete,
+  checklistDate,
+  occurrenceDone = false,
+  onCompleteDay,
 }: {
   initial?: WeeklyTask;
-  onSubmit: (input: {
-    name: string;
-    recurrence_mode: "count" | "fixed_days";
-    target_per_week: number | null;
-    scheduled_days: number[] | null;
-    time_section: WeeklyTask["time_section"];
-    paused: boolean;
-  }) => Promise<void>;
+  // Resolves to the new task's id when CREATING, so a checklist typed into
+  // the form can be attached to it.
+  onSubmit: (input: WeeklyTaskFormInput) => Promise<string | void>;
   onClose: () => void;
   onDelete?: () => void;
+  // Which day's occurrence the checklist is for (BUILD_PLAN: weekly items are
+  // the same every time, ticked fresh per date). Defaults to today.
+  checklistDate?: string;
+  // That day's occurrence is already checked off — nothing to ask when the
+  // last item is ticked.
+  occurrenceDone?: boolean;
+  // "Yes" to the all-items-done prompt marks that day's occurrence complete.
+  onCompleteDay?: (id: string, date: string) => void | Promise<void>;
 }) {
   const [name, setName] = useState(initial?.name ?? "");
   const [mode, setMode] = useState<"count" | "fixed_days">(initial?.recurrence_mode ?? "count");
@@ -257,9 +292,17 @@ export function WeeklyTaskForm({
   const [days, setDays] = useState<number[]>(initial?.scheduled_days ?? []);
   const [section, setSection] = useState<WeeklyTask["time_section"] | "">(initial?.time_section ?? "");
   const [paused, setPaused] = useState(!!initial?.paused);
+  const [priority, setPriority] = useState<Priority>(clampPriority(initial?.priority_weight));
   const [busy, setBusy] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   useEscape(onClose);
+
+  // Checklist: an existing weekly task's items come from the store, ticked for
+  // `checklistDate` only; a NEW task's items are held here until it has an id.
+  const checklist = useChecklistStore();
+  const date = checklistDate ?? edmontonToday();
+  const [pendingItems, setPendingItems] = useState<string[]>([]);
+  const liveItems = initial && checklist ? checklist.itemsForWeekly(initial.id) : [];
 
   const toggleDay = (d: number) =>
     setDays((prev) => (prev.includes(d) ? prev.filter((x) => x !== d) : [...prev, d].sort()));
@@ -270,20 +313,67 @@ export function WeeklyTaskForm({
     e.preventDefault();
     if (!valid) return;
     setBusy(true);
-    await onSubmit({
+    const created = await onSubmit({
       name: name.trim(),
       recurrence_mode: mode,
       target_per_week: mode === "count" ? target : null,
       scheduled_days: mode === "fixed_days" ? days : null,
       time_section: section || null,
       paused,
+      priority_weight: priority,
     });
+    if (!initial && typeof created === "string" && pendingItems.length > 0 && checklist) {
+      await checklist.addItems({ weekly_task_id: created }, pendingItems);
+    }
     setBusy(false);
     onClose();
   };
 
   const label = (children: ReactNode) => (
     <span className="font-data text-xs text-dim uppercase tracking-wider">{children}</span>
+  );
+
+  const dayWording = date === edmontonToday() ? "done for today" : `done for ${fullDateLabel(date).split(",")[0]}`;
+
+  const checklistBlock = initial ? (
+    checklist && (
+      <ChecklistEditor
+        rows={liveItems.map((i) => ({ id: i.id, title: i.title, done: checklist.isWeeklyItemDone(i.id, date) }))}
+        parentTitle={name.trim() || initial.name}
+        parentDone={occurrenceDone}
+        onToggle={(id, done) => checklist.setWeeklyCheck(id, date, done)}
+        onAdd={(t) => checklist.addItem({ weekly_task_id: initial.id }, t)}
+        onRename={(id, t) => checklist.renameItem(id, t)}
+        onRemove={(id) => checklist.removeItem(id)}
+        onMove={(i, dir) => checklist.moveItem({ weekly_task_id: initial.id }, i, dir)}
+        completeWording={dayWording}
+        onCompleteParent={
+          onCompleteDay
+            ? async () => {
+                await onCompleteDay(initial.id, date);
+                onClose();
+              }
+            : undefined
+        }
+      />
+    )
+  ) : (
+    <ChecklistEditor
+      rows={pendingItems.map((t, i) => ({ id: String(i), title: t, done: false }))}
+      parentTitle={name.trim() || "this task"}
+      onAdd={(t) => setPendingItems((p) => [...p, t])}
+      onRename={(id, t) => setPendingItems((p) => p.map((x, i) => (String(i) === id ? t : x)))}
+      onRemove={(id) => setPendingItems((p) => p.filter((_, i) => String(i) !== id))}
+      onMove={(i, dir) =>
+        setPendingItems((p) => {
+          const j = i + dir;
+          if (j < 0 || j >= p.length) return p;
+          const n = [...p];
+          [n[i], n[j]] = [n[j], n[i]];
+          return n;
+        })
+      }
+    />
   );
 
   return (
@@ -302,7 +392,7 @@ export function WeeklyTaskForm({
       <form
         onSubmit={submit}
         onClick={(e) => e.stopPropagation()}
-        className="hud-modal w-full sm:max-w-md p-5 space-y-4 rounded-b-none sm:rounded-b-lg pb-[max(1.25rem,env(safe-area-inset-bottom))]"
+        className="hud-modal w-full sm:max-w-md max-h-[90dvh] overflow-y-auto p-5 space-y-4 rounded-b-none sm:rounded-b-lg pb-[max(1.25rem,env(safe-area-inset-bottom))]"
       >
         <div className="flex items-center justify-between">
           <h2 className="font-display text-signal text-sm tracking-[0.2em] uppercase">
@@ -315,9 +405,19 @@ export function WeeklyTaskForm({
           </button>
         </div>
 
+        {/* Existing task: the checklist comes first — this occurrence's boxes
+            (BUILD_PLAN). The day is named so a Saturday row opened from the
+            schedule can't be mistaken for today's. */}
+        {initial && checklist && liveItems.length > 0 && (
+          <p className="font-data text-[10px] uppercase tracking-widest text-dim -mb-2">
+            Checklist for {date === edmontonToday() ? "today" : fullDateLabel(date)}
+          </p>
+        )}
+        {initial && checklistBlock}
+
         <label className="block space-y-1">
           {label("Name *")}
-          <input className="hud-input" value={name} onChange={(e) => setName(e.target.value)} required autoFocus />
+          <input className="hud-input" value={name} onChange={(e) => setName(e.target.value)} required autoFocus={!initial} />
         </label>
 
         {/* Which mode fits? A count with any days working, or specific fixed days */}
@@ -412,6 +512,15 @@ export function WeeklyTaskForm({
           </select>
         </label>
 
+        <fieldset className="space-y-1">
+          <legend className="font-data text-xs text-dim uppercase tracking-wider">Priority</legend>
+          <PriorityPicker value={priority} onChange={setPriority} />
+        </fieldset>
+
+        {/* A new task's checklist: the same items every occurrence, ticked
+            fresh each day. Attached as soon as the task exists. */}
+        {!initial && checklistBlock}
+
         {/* Pause is indefinite and reversible; delete is neither. Keeping them
             apart on the form makes that difference obvious. */}
         <label className="flex items-center gap-3 cursor-pointer">
@@ -454,7 +563,7 @@ export function WeeklyTaskForm({
           </button>
         </div>
         {confirmingDelete && (
-          <p className="font-data text-[11px] text-critical/80">Deletes its whole check-in history too.</p>
+          <p className="font-data text-[11px] text-critical/80">Deletes its whole check-in history and checklist too.</p>
         )}
       </form>
     </div>
