@@ -33,7 +33,7 @@ The phased spec is in `docs/BUILD_PLAN.md`. Build ONE phase at a time, then stop
 - Add an explicit ultrawide breakpoint (e.g. `xl`/`2xl` around 1920–2560px) rather than relying only on Tailwind's default `lg` (1024px), which stops scaling far short of an actual ultrawide monitor.
 - **Third layout target: a 24" PORTRAIT (vertical) monitor** — the user runs Olive on a rotated second monitor (~1080×1920). This is neither the ultrawide layout nor the phone layout; it needs its own treatment:
   - **Detect via orientation/aspect-ratio media queries** (portrait orientation at desktop-scale width, e.g. `(orientation: portrait) and (min-width: 700px)`) — distinguishing it from phones, which are also portrait but far narrower.
-  - **The multi-column top row (Active Tasks | Active Jobs | orb | Today's Schedule) does not fit here** — not enough width. Restructure as a vertical stack: orb at top (**smaller than the ultrawide version — explicitly fine to shrink the orb in this mode**), capture box under it, then panels stacked to exploit the abundant vertical space.
+  - **The ultrawide main area (Active Tasks | Today's Schedule | Active Jobs, with the orb in the top bar) does not fit here** — not enough width. Restructure as a vertical stack: orb at top (**smaller than the ultrawide version — explicitly fine to shrink the orb in this mode**), capture box under it, then panels stacked to exploit the abundant vertical space.
   - **Today's Schedule is the biggest winner of portrait's vertical room** — give it generous height; it's naturally a tall list (all time sections) and portrait is the one format where it can breathe fully without competing for vertical space.
   - Larger type/spacing than mobile — this is still a desktop monitor viewed at desk distance with a mouse, not a phone held close. Think "comfortable single column at desktop scale," not "big phone."
 - Backend: Supabase — Postgres, Auth, Edge Functions (Deno), pg_cron + pg_net for scheduled jobs.
@@ -105,9 +105,7 @@ Concrete tokens if not re-derived by the skill:
 - `npm run test` — Vitest unit tests (`src/**/*.test.ts`)
 - `npm run lint` — oxlint
 - Migrations: add a SQL file to `supabase/migrations/`, apply the identical SQL to project `dpkdsmvskryettdxcvpp` via Supabase MCP `apply_migration`
-- Edge functions: edit under `supabase/functions/`, deploy via Supabase MCP `deploy_edge_function` (include `_shared/*` files; `daily-brief` deploys with verify_jwt OFF, `assistant` and `journal-clean` with it ON). `assistant` is at v13 (checklist split + 1-3 priority words).
-- Dev fixture dashboard (no sign-in needed): `npm run dev`, then `http://localhost:5173/?harness=busy` or `?harness=light` — the real dashboard over in-memory fixtures, writes logged on `window.__olive.writes`. Dev-only (`src/dev/Harness.tsx`, behind `import.meta.env.DEV`).
-- Checklists live in `task_checklist_items` (task_id XOR weekly_task_id) and `weekly_checklist_checks` (per-date ticks for weekly occurrences); the client store is `src/hooks/useChecklists.ts`, shared through `ChecklistContext`.
+- Edge functions: edit under `supabase/functions/`, deploy via Supabase MCP `deploy_edge_function` (include `_shared/*` files; `daily-brief` deploys with verify_jwt OFF, `assistant` and `journal-clean` with it ON)
 - Secrets: `anthropic_api_key`, `cron_secret`, `project_url` all live in Supabase Vault (read by edge functions via service-role-only RPCs `get_anthropic_key()`/`get_cron_secret()`); local copies in gitignored `.env`/`.env.local`
 - Keep this section current as the project evolves — add new scripts, functions, or secrets here as they're built.
 
