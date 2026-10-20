@@ -33,6 +33,8 @@ export function ChatBar({
   taskTitleById,
   job,
   forDate,
+  toastPlacement = "stack",
+  micHint = false,
 }: {
   onActionDone: () => Promise<void>;
   inline?: boolean;
@@ -43,6 +45,14 @@ export function ChatBar({
   job?: JobContext;
   // When set, undated tasks default to this date (schedule-setup "add for tomorrow").
   forDate?: string;
+  // "float": the confirmation toast hangs BELOW the bar instead of stacking
+  // above the input — for the sticky top bar, where stacking would change the
+  // bar's height and shove the whole main area down for six seconds.
+  toastPlacement?: "stack" | "float";
+  // A mic glyph inside the input, signalling that dictation (Wispr Flow on the
+  // desktop) lands here as text. Decorative — there is no in-app speech
+  // recognition in v1 (CLAUDE.md), so it is not a button.
+  micHint?: boolean;
 }) {
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
@@ -115,29 +125,44 @@ export function ChatBar({
   const removeAction = (idx: number) =>
     setPreview((p) => p && { ...p, actions: p.actions.filter((_, i) => i !== idx) });
 
+  const floating = toastPlacement === "float";
   const content = (
-    <div className="space-y-2">
+    <div className={floating ? "relative" : "space-y-2"}>
       {toast && (
         <button
           onClick={() => setToast(null)}
           aria-live="polite"
           className={`hud-panel w-full text-left p-3 text-sm whitespace-pre-line cursor-pointer ${
             toast.kind === "error" ? "!border-amber/50 text-amber" : "text-hud"
-          }`}
+          } ${floating ? "absolute left-0 right-0 top-full mt-2 z-40 !bg-[rgba(8,20,14,0.97)] shadow-[0_12px_32px_rgba(0,0,0,0.6)]" : ""}`}
         >
           {toast.text}
         </button>
       )}
       <form onSubmit={submit} className="flex gap-2">
-        <input
-          className={`hud-input flex-1 ${busy ? "pulse-live" : ""}`}
-          placeholder={busy ? "Olive is thinking…" : job ? "Add a task to this job…" : "Tell Olive…"}
-          value={message}
-          onChange={(e) => onChange(e.target.value)}
-          disabled={busy}
-          aria-label="Tell Olive"
-          enterKeyHint="send"
-        />
+        <div className="relative flex-1 min-w-0">
+          {micHint && (
+            <svg
+              viewBox="0 0 24 24"
+              className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-signal/80 pointer-events-none"
+              fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <title>Dictate with Wispr Flow — speech lands here as text</title>
+              <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" />
+              <path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v3" />
+            </svg>
+          )}
+          <input
+            className={`hud-input w-full ${micHint ? "pl-9" : ""} ${busy ? "pulse-live" : ""}`}
+            placeholder={busy ? "Olive is thinking…" : job ? "Add a task to this job…" : micHint ? "Tell Olive — type or dictate…" : "Tell Olive…"}
+            value={message}
+            onChange={(e) => onChange(e.target.value)}
+            disabled={busy}
+            aria-label="Tell Olive"
+            enterKeyHint="send"
+          />
+        </div>
         <button className="hud-button shrink-0 px-4" disabled={busy || !message.trim()} aria-label="Send">
           <svg viewBox="0 0 24 24" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
             <path d="m22 2-7 20-4-9-9-4Z" />

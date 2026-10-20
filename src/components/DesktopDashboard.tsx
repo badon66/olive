@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "../lib/supabase";
 import type { CategoryStore } from "../hooks/useCategories";
 import { useChecklistStore } from "../hooks/useChecklists";
@@ -15,6 +15,7 @@ import { addDays, daysBetween, edmontonActiveDay, edmontonHour, edmontonMinutes,
 import { buildInsight } from "../lib/insight";
 import { computeSections, doneTodayCount } from "../lib/sections";
 import { currentSection } from "../lib/suggest";
+import { appearsOn } from "../lib/weekly";
 import { CategoryPanelBody } from "./CategoryPanel";
 import { TaskActionPopup, type ActionTarget } from "./TaskActionPopup";
 import { ChatBar } from "./ChatBar";
@@ -109,6 +110,22 @@ export function DesktopDashboard({
   useEffect(() => {
     const iv = setInterval(() => setNow(new Date()), 30_000);
     return () => clearInterval(iv);
+  }, []);
+
+  // Layout C (BUILD_PLAN): the main area fills EXACTLY the viewport minus the
+  // sticky top bar. The bar's height follows its content (orb, greeting, the
+  // capture box, chips), so it is measured rather than assumed — a guessed
+  // pixel height would leave a gap or a scrollbar the moment a line wraps.
+  const headerRef = useRef<HTMLElement>(null);
+  const [headerH, setHeaderH] = useState(72);
+  useEffect(() => {
+    const el = headerRef.current;
+    if (!el) return;
+    const measure = () => setHeaderH(Math.round(el.getBoundingClientRect().height));
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
   }, []);
 
   // Two boundaries, deliberately different (CLAUDE.md): `today` is the page you
@@ -354,14 +371,26 @@ export function DesktopDashboard({
       customize={customize}
     />
   );
-  // Orb + greeting + insight + capture box. The orb unit is deliberately smaller
-  // than it used to be (380) on BOTH desktop layouts: on ultrawide it sits in a
-  // narrow column between the lists and the schedule (BUILD_PLAN: "sized down to
-  // free width for the lists"), and on portrait it buys the actionable panels a
-  // place above the fold.
-  const centreInner = (
+  // The brief's regenerate control. Rehomed from the deleted Priorities header;
+  // it lives beside the insight in both arrangements.
+  const regenerateChip = (
+    <button
+      onClick={() => void regenerate()}
+      className={`hud-chip cursor-pointer focus-visible:outline-2 focus-visible:outline-signal ${error ? "hud-chip-amber" : "hud-chip-signal"}`}
+      aria-label="Regenerate brief"
+      title={error ? `${error} — showing live data.` : "Regenerate the daily brief"}
+    >
+      {briefLoading ? "…" : generatedAt ? `⟳ ${generatedAt}` : "⟳ generate"}
+    </button>
+  );
+
+  // PORTRAIT ONLY (CLAUDE.md): the orb, greeting, insight and capture box as a
+  // stacked hero at the top of the single column. The ultrawide view has no
+  // orb column any more — its orb, greeting and capture box sit in the sticky
+  // top bar (layout C), built inline in the header below.
+  const portraitHero = (
     <>
-      <Orb size={tall ? 240 : 300} />
+      <Orb size={240} />
       <p className="font-display text-[22px] font-medium tracking-wide text-hud -mt-2 text-center text-balance">
         {greeting(edmontonHourNow)}
       </p>
@@ -372,15 +401,7 @@ export function DesktopDashboard({
       </p>
       <p className="font-data text-[11px] text-dim tracking-wide text-center flex items-center gap-2">
         {loading || briefLoading ? "" : insight.stat}
-        {/* Rehomed from the deleted Priorities header — the brief still
-            needs a regenerate control, it just has no panel of its own now. */}
-        <button
-          onClick={() => void regenerate()}
-          className="hud-chip hud-chip-signal cursor-pointer focus-visible:outline-2 focus-visible:outline-signal"
-          aria-label="Regenerate brief"
-        >
-          {briefLoading ? "…" : generatedAt ? `⟳ ${generatedAt}` : "⟳ generate"}
-        </button>
+        {regenerateChip}
       </p>
       {error && <p className="text-amber text-xs">{error} — showing live data.</p>}
       <div className="w-full max-w-[520px] mt-1">
@@ -394,9 +415,22 @@ export function DesktopDashboard({
       </div>
     </>
   );
+  // "8 tasks · 3 completed" for the day on screen (BUILD_PLAN): the day's
+  // regular tasks plus its weekly occurrences. A pick task already ticked for
+  // the day moves from the open count to the completed one, not both.
+  const checkinsOfWeekly = (id: string) => weeklyStore.checkins.filter((c) => c.weekly_task_id === id);
+  const weeklyOnDay = weeklyStore.weeklyTasks.filter((w) => appearsOn(w, checkinsOfWeekly(w.id), scheduleDate));
+  const weeklyDoneOnDay = weeklyOnDay.filter((w) =>
+    checkinsOfWeekly(w.id).some((c) => c.date === scheduleDate && c.status === "completed"),
+  ).length;
+  const tasksDoneOnDay = doneTodayCount(tasks, scheduleDate);
+  const dayDone = tasksDoneOnDay + weeklyDoneOnDay;
+  const dayTotal = scheduleDue.filter((t) => !dayIsDone(t, scheduleDate)).length + tasksDoneOnDay + weeklyOnDay.length;
   const scheduleHint = (
     <span className="flex items-center gap-2">
-      <span className="hud-chip">{scheduleDue.length}</span>
+      <span className="hud-chip" aria-label={`${dayTotal} tasks, ${dayDone} completed`}>
+        {dayTotal} task{dayTotal === 1 ? "" : "s"} · {dayDone} completed
+      </span>
       <DayNavigator nav={dayNav} />
     </span>
   );
@@ -427,15 +461,13 @@ export function DesktopDashboard({
       loading={loading || weeklyStore.loading}
     />
   );
-  // Finance — full width edge to edge, deliberately taller than a normal panel
+  // Finance — the dashboard version keeps the quick diagnostics (balance, today's
+  // spend, pace vs goal — Phase 6); the full depth lives on the Finance tab.
+  const financeHint = <span className="hud-chip">soon</span>;
+  const financeBody = <p className="text-dim text-xs py-1">Balance and spending land here in Phase 6.</p>;
   const financeSection = (
-    <DashSection
-      title="Finance"
-      customize={customize}
-      hint={<span className="hud-chip">soon</span>}
-      className="min-h-[150px]"
-    >
-      <p className="text-dim text-xs py-1">Balance and spending land here in Phase 6.</p>
+    <DashSection title="Finance" customize={customize} hint={financeHint} className="min-h-[150px]">
+      {financeBody}
     </DashSection>
   );
   const weeklySection = (
@@ -532,9 +564,54 @@ export function DesktopDashboard({
         {/* Sticky top bar — stays in view while the page scrolls underneath. The
             customize pencil lives HERE (a real header child) so the sticky bar
             can't paint over it — the earlier absolute pencil sat behind it. */}
-        <header className="sticky top-0 z-30 flex items-center justify-between px-6 py-2.5 gap-4 shrink-0 bg-void/85 backdrop-blur-md border-b border-panel-border">
-          <span className={`text-[13px] ${sections.overdue.length > 0 ? "text-amber" : "text-dim"}`}>{status}</span>
-          <div className="flex items-center gap-3">
+        <header
+          ref={headerRef}
+          className="sticky top-0 z-30 flex items-center gap-4 px-6 py-2 shrink-0 bg-void/85 backdrop-blur-md border-b border-panel-border"
+        >
+          {/* LAYOUT C (BUILD_PLAN, 2026-10-20) — "the orb in the top bar". On the
+              main view the sticky bar holds an icon-scale orb, the greeting with
+              its one-line insight, and the capture/talk box, so the talk box is
+              reachable however far down the page you scroll. The portrait view
+              keeps its own orb stack in the body and shows the plain status here. */}
+          {tall ? (
+            <span className={`text-[13px] ${sections.overdue.length > 0 ? "text-amber" : "text-dim"}`}>{status}</span>
+          ) : (
+            <>
+              <div className="shrink-0 -my-1" aria-hidden="true">
+                <Orb size={56} />
+              </div>
+              <div className="min-w-0 shrink basis-[22rem] max-w-[26vw]">
+                <p className="font-display text-[15px] font-medium tracking-wide text-hud truncate">
+                  {greeting(edmontonHourNow)}
+                </p>
+                <p className="text-[12.5px] text-hud/85 leading-snug truncate" title={insight.headline}>
+                  {loading || briefLoading ? "Pulling up your day…" : insight.headline}
+                </p>
+              </div>
+              <div className="flex-1 min-w-0 max-w-[720px] mx-auto">
+                <ChatBar
+          onActionDone={async () => {
+            await Promise.all([taskStore.refresh(), categoryStore.refresh(), jobStore.refresh()]);
+          }}
+          inline
+          taskTitleById={(id) => tasks.find((t) => t.id === id)?.title}
+          toastPlacement="float"
+          micHint
+        />
+              </div>
+              {/* The progress stat already names any overdue count ("1/13 done
+                  today · 6 overdue"), so the old status line is not repeated. */}
+              <div
+                className={`hidden xl:flex items-center gap-2 font-data text-[11px] shrink-0 ${
+                  sections.overdue.length > 0 ? "text-amber" : "text-dim"
+                }`}
+              >
+                <span>{loading || briefLoading ? "" : insight.stat}</span>
+                {regenerateChip}
+              </div>
+            </>
+          )}
+          <div className="flex items-center gap-3 shrink-0 ml-auto">
             <RolloverCountdown />
             <ScheduleSetupButton onTasksChanged={taskStore.refresh} />
             <div className="flex items-center gap-3 font-data text-[11px]">
@@ -552,6 +629,7 @@ export function DesktopDashboard({
              on a SIDE monitor: the top of a tall screen is where a glance lands,
              the bottom needs a deliberate look down.
                1. orb (shrunk) + capture — identity, the one-line insight, input
+                  (the ultrawide view keeps these in the sticky top bar instead)
                2. Active Tasks — "what now": shortest, most time-sensitive list
                3. Today's Schedule — the panel that wins the vertical room
                4. Weekly Tasks — checked off a few times a day
@@ -560,7 +638,7 @@ export function DesktopDashboard({
                7. Finance (placeholder until Phase 6), then the category backlogs */
           <div className="px-6 pt-4 pb-8 flex flex-col gap-4">
             <div className="flex flex-col items-center gap-2">
-              {centreInner}
+              {portraitHero}
             </div>
 
             <DashSection title="Active Tasks" customize={customize}>
@@ -600,87 +678,76 @@ export function DesktopDashboard({
             {categoryGrid}
           </div>
         ) : (
-        /* FIXED LAYOUT (BUILD_PLAN) — not user-rearrangeable. pt-5 gives the first
-           row clear breathing room below the sticky header. */
-        <div className="px-6 pt-5 pb-6 flex flex-col gap-3">
-          {/* TOP ROW (BUILD_PLAN, 2026-10-08): four columns side by side, left to
-              right — Active Tasks | Active Jobs | orb unit | Today's Schedule —
-              all the same height, running from the top of the dashboard down to
-              Finance. Supersedes the stacked 50/50 flank, which fitted about
-              three items per list.
+        /* LAYOUT C (BUILD_PLAN, 2026-10-20) — fixed, not user-rearrangeable.
+           Replaces the four-column top row. On load, Active Tasks, Today's
+           Schedule, Active Jobs and Finance are all on screen with no scrolling:
 
-              WIDTH goes by need, not evenly. The two lists take the free space
-              (1fr each); the orb unit and the schedule get smaller shares — the
-              schedule used to be ~850px wide at 2560 and mostly empty, now it
-              gets what its rows need (~370px at 1920, ~510px at 2560: at 440px a
-              title with a checklist count and a category tag clipped to a few
-              letters), and the orb unit the least (300–360px). At 2560 each
-              list is ~680px; at 1920 ~460px.
+             ┌ sticky top bar: orb · greeting + insight · capture box · clocks ┐
+             │ Active Tasks        │ Today's Schedule    │ Active Jobs         │
+             │ (same height ───────┼─────────────────────┤ (narrowest column,  │
+             │ Finance, spanning both of the above       │  full height)       │
+             └───────────────────────────── exactly 100dvh − header ──────────┘
+             below the fold: Weekly Tasks | Upcoming Days → Reminders; categories
 
-              HEIGHT comes from the tallest column — normally Today's Schedule's
-              full day, or the orb unit on an empty day. The two lists are laid
-              out as absolutely-filled cells, so they contribute NOTHING to the
-              row height: they stretch to match whatever the schedule and orb
-              columns need and scroll inside themselves (DashSection's body
-              scrolls) instead of pushing the page longer. The schedule is capped
-              at one viewport so a packed day scrolls inside it rather than
-              turning the top row into a second screen. */}
-          <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(300px,0.5fr)_minmax(360px,0.75fr)] gap-3 items-stretch">
-            {/* Column 1 — Active Tasks, full height */}
-            <div className="relative min-h-[480px] xl:min-h-0">
-              <DashSection title="Active Tasks" customize={customize} className="xl:absolute xl:inset-0">
+           The first screen's height is the viewport minus the MEASURED header
+           (see headerRef) — nothing in it is a fixed pixel height. Inside it a
+           grid: two rows (the lists take the free height, Finance a viewport
+           share with a 150px floor) and three columns (the two lists share the
+           free width, Active Jobs gets the smallest share with a 300px floor).
+           Every panel is min-h-0 and scrolls inside its own box (DashSection's
+           body), so no column can grow the page. */
+        <>
+          <div className="px-6 py-3" style={{ height: `calc(100dvh - ${headerH}px)` }}>
+            <div className="h-full grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(300px,0.42fr)] grid-rows-[minmax(0,1fr)_minmax(150px,16%)] gap-3">
+              {/* Active Tasks — left, same height as the schedule */}
+              <DashSection title="Active Tasks" customize={customize} className="min-h-0">
                 {activeTasksBody}
               </DashSection>
-            </div>
 
-            {/* Column 2 — Active Jobs, full height, directly beside Active Tasks */}
-            <div className="relative min-h-[480px] xl:min-h-0">
+              {/* Today's Schedule — middle, the full day, scrolling inside its box */}
+              <DashSection
+                title={scheduleTitle}
+                customize={customize}
+                onAdd={() => setAddTaskFor({ due_date: scheduleDate })}
+                hint={scheduleHint}
+                className="min-h-0"
+              >
+                {scheduleBody}
+              </DashSection>
+
+              {/* Active Jobs — far right, narrowest, full height past Finance */}
               <DashSection
                 title="Active Jobs"
                 customize={customize}
                 hint={activeJobsHint}
-                className="xl:absolute xl:inset-0"
+                className="row-span-2 min-h-0"
               >
                 {activeJobsBody}
               </DashSection>
-            </div>
 
-            {/* Column 3 — the orb unit: orb directly above the capture box, one
-                vertical unit, sized down. It no longer has to sit at exact
-                screen centre; it sits between the lists and the schedule. */}
-            <div className="flex flex-col items-center justify-start gap-2 min-w-0">
-              {centreInner}
-            </div>
-
-            {/* Column 4 — Today's Schedule, the full day, sized to its content */}
-            <DashSection
-              title={scheduleTitle}
-              customize={customize}
-              onAdd={() => setAddTaskFor({ due_date: scheduleDate })}
-              hint={scheduleHint}
-              className="min-h-0 xl:max-h-[calc(100dvh-7rem)]"
-            >
-              {scheduleBody}
-            </DashSection>
-          </div>
-
-          {financeSection}
-
-          {/* Below Finance — Weekly Tasks (left) | Upcoming Days → Reminders (right) */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 items-start">
-            {weeklySection}
-
-            <div className="flex flex-col gap-3">
-              <DashSection title="Upcoming Days" customize={customize}>
-                {upcomingBody}
+              {/* Finance — directly under the two lists, spanning both */}
+              <DashSection title="Finance" customize={customize} hint={financeHint} className="col-span-2 min-h-0">
+                {financeBody}
               </DashSection>
-              {remindersSection}
             </div>
           </div>
 
-          {/* Row 6 — the category panels, bottom of the page */}
-          {categoryGrid}
-        </div>
+          {/* BELOW THE FOLD — Weekly Tasks (left) | Upcoming Days → Reminders (right), then the category panels */}
+          <div className="px-6 pt-1 pb-6 flex flex-col gap-3">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 items-start">
+              {weeklySection}
+
+              <div className="flex flex-col gap-3">
+                <DashSection title="Upcoming Days" customize={customize}>
+                  {upcomingBody}
+                </DashSection>
+                {remindersSection}
+              </div>
+            </div>
+
+            {categoryGrid}
+          </div>
+        </>
         )}
 
         {actionFor && (
