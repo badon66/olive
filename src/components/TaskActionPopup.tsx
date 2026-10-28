@@ -158,6 +158,7 @@ export function TaskActionsBody({
                   target.kind === "task" && target.task.status === "completed" ? target.task.completed_at : null
                 }
                 value={target.kind === "task" ? target.task.due_date : null}
+                defaultOpen={embedded}
                 onChange={(d) => {
                   if (target.kind === "task") onReschedule(target.task.id, d);
                   onClose();

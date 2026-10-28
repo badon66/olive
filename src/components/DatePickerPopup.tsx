@@ -18,14 +18,18 @@ export function DatePickerPopup({
   value,
   onChange,
   completedAt,
+  defaultOpen = false,
 }: {
   value: string | null;
   onChange: (d: string | null) => void;
+  // Start with the calendar already showing (the phone's Reschedule, where
+  // the picker is the whole point of the screen — saves a tap).
+  defaultOpen?: boolean;
   // Set when the task being edited is already completed, so the annotation
   // reads "Completed 3 days ago" instead of "9d overdue".
   completedAt?: string | null;
 }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(defaultOpen);
   const today = edmontonToday();
   const anchor = value ?? today;
   const [year, setYear] = useState(Number(anchor.slice(0, 4)));
@@ -135,7 +139,7 @@ export function DatePickerPopup({
           <div className="flex gap-2 mt-2">
             <button
               type="button"
-              className="hud-button flex-1 !min-h-[34px] !text-[10px]"
+              className="hud-button flex-1 !min-h-[var(--date-quick-h,34px)] !text-[10px]"
               onClick={() => {
                 onChange(today);
                 setOpen(false);
@@ -145,7 +149,7 @@ export function DatePickerPopup({
             </button>
             <button
               type="button"
-              className="hud-button flex-1 !min-h-[34px] !text-[10px]"
+              className="hud-button flex-1 !min-h-[var(--date-quick-h,34px)] !text-[10px]"
               onClick={() => {
                 onChange(addDays(today, 1));
                 setOpen(false);
@@ -155,7 +159,7 @@ export function DatePickerPopup({
             </button>
             <button
               type="button"
-              className="hud-button flex-1 !min-h-[34px] !text-[10px] !border-dim/30 !text-dim"
+              className="hud-button flex-1 !min-h-[var(--date-quick-h,34px)] !text-[10px] !border-dim/30 !text-dim"
               onClick={() => {
                 onChange(null);
                 setOpen(false);
