@@ -51,7 +51,7 @@ The core loop, using only Supabase and the Anthropic API.
   - **Below the fold, right side, stacked top to bottom:** Upcoming Days → Reminders (a compact mini-panel, see Phase 2). Category panels below those.
   - **Priorities as a section is REMOVED entirely** — see the note below; it's no longer part of the layout at all, not even in a slim form.
   - **Bottom of the page, full width:** the three category panels (Personal, PowerPlay Customs, Alberta Premium Coatings).
-  - On mobile: single column, same top-to-bottom order; category panels move to their own Tasks-tab view to keep the scroll manageable.
+  - On a phone: completely different presentation, see the "Phone app" section below. Not a stacked or squeezed version of this layout.
 - **Sidebar navigation:** Dashboard, Tasks, Weekly Tasks, Active Jobs, Reminders, Finance, Groceries (reserved nav slot only — no feature behind it, do not build), Settings.
 - **Scheduled / Not scheduled indicator** on every task regardless of category: "Scheduled" if `due_date` is set, "Not scheduled" if not.
 - Due date picker: proper popup mini calendar — already built, no further work needed.
@@ -119,6 +119,66 @@ The pulled-forward-task logic avoids suggesting anything into blocked windows.
 - 🗑️ Dropped from scope entirely — do not build: a separate "daily tasks" system. Folded into Weekly Tasks.
 
 **Done when:** tasks can be created/edited/completed by typed or dictated natural language (via the preview-before-send flow, editable before commit) AND by manual forms; the brief renders each morning with correct local-time logic; category tags and scheduled/not-scheduled status are visible on every task.
+
+## Phone app (cross-cutting, applies across every phase)
+
+**Purpose:** a quick check-in tool, used one-handed in a few seconds (between doors, at a job, walking around), not a squeezed desktop. Opens, shows what to do right now, lets you tick it off, done.
+
+**Same brain, different face.** The phone reuses the exact same data hooks, stores and rules as desktop: two-boundary rollover, anytime/priority rules, overdue sorting, carryover, flexible-window placement, checklists, weekly occurrences, 12-hour times. Only the presentation layer differs. Never fork or duplicate logic for the phone; if a rule changes on desktop, the phone gets it automatically.
+
+**When it applies:** viewport narrower than 700px, plus a phone turned sideways (coarse pointer with viewport height under 500px). The ultrawide and portrait-monitor layouts are untouched.
+
+**Structure:**
+- **Compact sticky header:** small orb, the date, a one-line summary ("4 to do now · 3 done today"), and the pencil. No sidebar on phone.
+- **Bottom tab bar with five tabs:** Now · Today · Reminders · Finance · More. Thumb-reachable, icon plus label, active tab highlighted. Five is the most a phone tab bar should hold, so jobs live inside Now instead of getting their own tab.
+- **Floating mic button** on every tab, just above the tab bar on the right, for capture.
+- **A fresh launch always opens on Now.** While the app stays open, it remembers the current tab.
+
+**Now tab (the home screen):**
+- A card for the current part of day: name, clock range, time left ("2h left"), and the filling progress line.
+- The Active Tasks list, following every desktop rule (current section, anytime dropdown and its priority overrides, overdue first). Each row: a big checkbox, the title, and one short meta line (category, first line of the description, checklist count like 2/5, days left, or weekly progress like 2 of 4 this week).
+- "Anytime (n)" and "Carryover (n)" as collapsible rows at the bottom of the tasks area.
+- Empty state: "Nothing scheduled right now" plus a preview of what's next ("Next: Night, 2 tasks at 11 PM").
+- **Active Jobs in the bottom third of Now.** A divider, then "Active jobs (n)" with a "See all" link. Compact rows, pinned first then by deadline urgency: name, price, the status chips, and a task-stat line ("1 overdue," "1 today"). Tapping a chip changes it inline; tapping a row opens the job's bottom sheet.
+- **Space split:** Active Tasks takes what it needs, up to about two-thirds of the screen; Active Jobs always gets at least the bottom third and takes any leftover room when the task list is short. Each area scrolls on its own if it overflows, so both are always visible at a glance.
+
+**Today tab:**
+- Header becomes the day navigator: ‹ date ›, back 3 days and forward 7 like desktop; tapping the date jumps back to today. Counter under it ("8 tasks · 3 done").
+- Sections stacked top to bottom. On today: finished sections collapse to one line with their count and a check ("2/2 ✓"), the current section is expanded and highlighted with its progress line, upcoming sections are expanded. Empty sections show as a single thin "Nothing planned" line (still shown, just compact). Tap any collapsed section to open it. Viewing another day: everything expanded, no current-section highlight.
+- Weekly-task occurrences render inline like any task, per the existing rule.
+
+**Full jobs list** (opened from "See all" on Now, or from More):
+- Cards, pinned first, then by deadline urgency: name, price, category tag, the three status chips, a task-stat line ("3 tasks · 1 overdue · due Fri").
+- Tapping a status chip changes it inline (same exception as desktop). Tapping the card opens the job detail as a bottom sheet, with its tasks and the AI chat fill-in. "Show completed" at the bottom of the list.
+
+**Reminders tab:**
+- The "Reminders active" master toggle in the header, current state clearly shown.
+- Each reminder as a row: the live countdown ring, its name, and its recurrence plus next fire time ("Every 30 min · next in 9 min"). Turned-off reminders sit at the bottom, dimmed.
+- Tap a reminder to edit it in a bottom sheet (sound picker with preview, volume, recurrence, repeats). New reminders come from the mic button or the "+" with the pencil on.
+- **When a reminder fires with the app open, it takes over as a big bottom sheet with a large Dismiss button**, easy to hit with a thumb, and stops repeating the moment it's dismissed.
+- Honest limit to build around: phone browsers only play sound while Olive is open on screen, and iOS needs one tap after opening before any sound can play. Prime audio on the first tap. Reliable alerts with the app closed come with the Telegram bot (Phase 8); don't fake that with browser push.
+
+**Finance tab:**
+- Phase 6 (YNAB) isn't built yet, so for now this shows a clean placeholder: "Finance connects in a later phase." Never fake or sample numbers.
+- Once Phase 6 lands, it shows the dashboard-level quick view: balance, today's spend, pace vs goal, and recent transactions, with any uncategorized-in-YNAB nudge.
+
+**More tab:** a simple list linking to Weekly Tasks, Upcoming Days, Active Jobs (the full list), Tasks/Categories, and Settings. On phone, a weekly task row puts the name on its own line with the 7 cubes underneath filling the width (at least 40px square each), same two-stage click rule.
+
+**Touch interaction model (replaces mouse gestures on phone):**
+- **Tap the checkbox = complete**, instantly (optimistic), with a short "Completed · Undo" toast for about 5 seconds as a safety net for accidental taps.
+- **Tap anywhere else on a row = a bottom sheet** with the details, the checklist, and quick actions: Delete for today / Skip for the day / Reschedule for regular tasks, Skip today for weekly occurrences, plus "Edit" for the full form. No double-click on phone; double-tap is awkward on touch and fights browser zoom.
+- **Reorder arrows and "+" buttons only appear when the pencil is on**, so the default view stays clean.
+- Anything should be reachable within two taps.
+
+**Capture on phone:** the mic button opens a bottom sheet with a text box and mic, through the same parser and preview-before-send flow. Default due date is the day being viewed on the Today tab, otherwise today.
+
+**Bottom sheets instead of centered modals:** slide up from the bottom, dismiss by dragging down or tapping outside, solid opaque background.
+
+**Speed and freshness:** opening the app shows the last-loaded data instantly (cached locally), then refreshes in the background. Refetch every time the app comes back to the foreground. When data is stale or offline, show a small "Updated 3 min ago" per the graceful-degradation rule. Skeleton loaders only on a true first load.
+
+**Touch and iPhone polish:** tap targets at least 44px; text inputs at least 16px font so iOS doesn't zoom on focus; safe-area padding for the notch and home indicator when installed to the home screen; no hover-only affordances and no cursor glow; respect reduced-motion. Same dark HUD look as desktop, with glow effects dialed down for readability in daylight. Works as an installed home-screen app that opens full screen.
+
+**Done when:** on a real phone, opening Olive lands on Now and shows what to do right now within a second or two; a task can be completed in one tap and acted on in two; active jobs are visible on Now without scrolling; a firing reminder can be dismissed with one thumb; every tab works one-handed; and nothing on desktop or the portrait monitor changed.
 
 ## Phase 2 — Weekly tasks + reminders (Journal REMOVED — see note below)
 

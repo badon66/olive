@@ -27,7 +27,7 @@ The phased spec is in `docs/BUILD_PLAN.md`. Build ONE phase at a time, then stop
 
 ## Stack
 
-- Frontend: React + Vite + Tailwind, PWA. **Desktop/ultrawide-first** (primary device: PC/ultrawide monitor, ~30" class; iPhone via browser is secondary). Build the ultrawide layout as the real target, then adapt down for phone — not the other way around.
+- Frontend: React + Vite + Tailwind, PWA. **Desktop/ultrawide-first** (primary device: PC/ultrawide monitor, ~30" class; iPhone is the third target and gets its own purpose-built quick-check layout, see BUILD_PLAN.md "Phone app," never a squeezed desktop). Build the ultrawide layout as the real target, then adapt down for phone — not the other way around.
 - **No capped-width containers.** Don't wrap the layout in a fixed `max-w-4xl`/`max-w-6xl`-style container that leaves large empty margins on a wide screen. The layout should genuinely use the full viewport width, with padding that scales, not a narrow column centered in empty space.
 - **Grid, not fixed columns.** Panels should use a responsive grid (CSS Grid `auto-fit`/`minmax`, not a hardcoded 2-column layout) so more columns appear as the viewport gets wider — a 2560px+ screen should show meaningfully more side-by-side content than a 1440px laptop, not the same layout stretched.
 - Add an explicit ultrawide breakpoint (e.g. `xl`/`2xl` around 1920–2560px) rather than relying only on Tailwind's default `lg` (1024px), which stops scaling far short of an actual ultrawide monitor.
@@ -105,9 +105,7 @@ Concrete tokens if not re-derived by the skill:
 - `npm run test` — Vitest unit tests (`src/**/*.test.ts`)
 - `npm run lint` — oxlint
 - Migrations: add a SQL file to `supabase/migrations/`, apply the identical SQL to project `dpkdsmvskryettdxcvpp` via Supabase MCP `apply_migration`
-- Edge functions: edit under `supabase/functions/`, deploy via Supabase MCP `deploy_edge_function` (include `_shared/*` files; `daily-brief` deploys with verify_jwt OFF, `assistant` and `journal-clean` with it ON). `assistant` is at v13 (checklist split + 1-3 priority words).
-- Dev fixture dashboard (no sign-in needed): `npm run dev`, then `http://localhost:5173/?harness=busy` or `?harness=light` — the real dashboard over in-memory fixtures, writes logged on `window.__olive.writes`. Dev-only (`src/dev/Harness.tsx`, behind `import.meta.env.DEV`).
-- Checklists live in `task_checklist_items` (task_id XOR weekly_task_id) and `weekly_checklist_checks` (per-date ticks for weekly occurrences); the client store is `src/hooks/useChecklists.ts`, shared through `ChecklistContext`.
+- Edge functions: edit under `supabase/functions/`, deploy via Supabase MCP `deploy_edge_function` (include `_shared/*` files; `daily-brief` deploys with verify_jwt OFF, `assistant` and `journal-clean` with it ON)
 - Secrets: `anthropic_api_key`, `cron_secret`, `project_url` all live in Supabase Vault (read by edge functions via service-role-only RPCs `get_anthropic_key()`/`get_cron_secret()`); local copies in gitignored `.env`/`.env.local`
 - Keep this section current as the project evolves — add new scripts, functions, or secrets here as they're built.
 
