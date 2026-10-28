@@ -140,7 +140,7 @@ This file tracks what's actually built, what's verified, and known gaps.
 ## Operational facts
 
 - Secrets: `anthropic_api_key`, `cron_secret`, `project_url` in Supabase Vault via service-role-only RPCs; local copies in gitignored `.env`/`.env.local`.
-- Edge functions: `assistant` (JWT ON, v11), `schedule-setup` (ON, v6), `reminder-tick` (OFF), `daily-brief` (OFF, v6), `carry-forward` (OFF, v2), `journal-clean` (410 tombstone — still needs deleting from the Supabase dashboard) — the JWT-off set check a cron secret or a user JWT in-function.
+- Edge functions: `assistant` (JWT ON, v14 as of 2026-10-28 — checklist split, 1-3 priority words, part-of-day clock ranges in the prompt), `schedule-setup` (ON, v6), `reminder-tick` (OFF), `daily-brief` (OFF, v6), `carry-forward` (OFF, v2), `journal-clean` (410 tombstone — still needs deleting from the Supabase dashboard) — the JWT-off set check a cron secret or a user JWT in-function.
 - Cron jobs (`cron.job`): `olive-daily-brief` `0 13,14 * * *`, `olive-carry-forward` `0 11,12 * * *` — both UTC pairs covering DST, each gated in-function so one firing per day acts.
 - Tests: `npm run test` — dates, ranking, sections, weekly cubes, dashboard layout model.
 - Preview quirks (for future sessions): the Browser-pane preview loses auth sessions on restart and screenshots can time out — Keenan's own browser at localhost:5173 is the real verification surface; signed-in checks need him.
@@ -946,3 +946,93 @@ sessions rebuilt and deleted a harness every time; this one stays.
 are the pre-existing fast-refresh notes). Browser: everything above, in the
 fixture dashboard. **Needs Keenan signed in:** the real-data dashboard, and the
 voice split through the live assistant.
+
+## Phone app — the third target (2026-10-28)
+
+Built to BUILD_PLAN "Phone app". Shown under 700px wide, or on a touch screen
+under 500px tall (a phone turned sideways) — `PHONE_QUERY` in
+`src/hooks/usePhoneLayout.ts`. 700–1023px non-touch still gets the old brief
+view; ≥1024 the desktop dashboard; the portrait-monitor rules are untouched.
+
+### Same brain, different face
+No phone logic is forked. The desktop's rules were first pulled into shared
+functions (commits af96663…decf3e9), then both faces call them:
+`buildActiveRows` (lib/activeRows), `buildDaySchedule` / `arrowMove` /
+`dueOnDay` / `dayCounter` (lib/daySchedule), `moveRow` (lib/rows),
+`taskActionHandlers` (hooks/useTaskActions), `TaskActionsBody`, `ModalShell`
+(centred modal on desktop, bottom sheet on the phone), the same stores and
+`ChatBar`. Only `src/components/phone/*` is new presentation.
+
+### What each tab shows
+- **Now** (home, always opens here): the current part of the day as a card
+  (clock range, time left, progress line), Active Tasks from `buildActiveRows`,
+  collapsible "Anytime · surfaced by priority", "Anytime" and amber
+  "Carryover"; empty state names what's next. Active Jobs keeps ≥ the bottom
+  third (side by side when sideways), "See all" → More › Active Jobs.
+- **Today**: header becomes the day navigator (−3…+7, tap the date to come
+  home, "Oct 28 · 19 tasks · 1 done"). Current part highlighted, finished
+  parts folded to one line with a count, empty parts one thin line, weekly
+  inline. Past days are read-back (no weekly rows), same as desktop.
+- **Reminders**: countdown rings, schedule in words, off ones dimmed last,
+  master Active switch in the header, "+ New reminder" with the pencil.
+- **Finance**: placeholder until YNAB (Phase 6).
+- **More**: Weekly Tasks, Upcoming Days, Active Jobs, Tasks & Categories,
+  Settings (last updated, Refresh now).
+- Everywhere: sticky header (orb, date, summary, stale note), floating mic →
+  capture sheet that always previews, "Completed · Undo" toast for 5 s, every
+  popup a bottom sheet (drag down or tap outside; firing reminders and the
+  capture preview are not swipe-dismissable).
+
+### Spec vs request — flagged to Keenan
+The session prompt said four tabs "Now, Today, Jobs, More" with Reminders and
+Finance inside More; BUILD_PLAN says five tabs "Now · Today · Reminders ·
+Finance · More" with jobs on Now and a full list under More. Built to
+BUILD_PLAN (the prompt also said "follow it exactly"). Swapping is a small
+change in `PhoneApp.tsx` if Keenan prefers the prompt's version.
+
+### Not built (data doesn't exist yet) — listed, not faked
+- Job **price**, **three-part status** (sale / work / payment): migration
+  `20260812000001_job_status_three_dimensions.sql` is written but still NOT
+  applied; cards show the single legacy status as four chips.
+- Job **deadline** and **pinned**: no columns at all; jobs sort by
+  `sortJobs` (status, then newest).
+- Finance (Phase 6), Telegram voice notes / closed-app alerts (Phase 8).
+- Checklists, days-left and priority 1-3 ARE built (2026-10-08) and drive the
+  phone rows.
+
+### Inherited quirk (desktop too, not changed)
+On a past day the counter includes that day's weekly occurrences
+("7 tasks") while the past-day view lists only regular tasks — both faces use
+`dayCounter`. Left as is; needs a decision on what a past day should count.
+
+### Verified (fixture harness, phone sizes)
+- 390×844 and 430×932: no page scroll; header 59px, tasks ≤ ⅔, jobs ≥ ⅓,
+  tab bar 57px. 667×375 sideways and 740×360 touch: phone shell, side-by-side.
+- One-tap complete → `tasks update completed` + toast; Undo → `tasks update
+  open`. Reschedule from the sheet → one `due_date` write, sheet closes.
+  Job chip → `active_jobs update status`. Capture: preview sheet → Send off →
+  `tasks insert` + "Added task" toast (canned assistant; real parsing needs
+  sign-in). Reminder alert → `reminder_fires dismiss`.
+- Tap-target audit: every visible button/select ≥ 44px on every tab, More
+  page and sheet, pencil on and off; inputs 16px.
+- Desktop unchanged: element-by-element geometry fingerprint against 3d678ec
+  (a temporary worktree on :5174) at 2560×1440 and 1080×1920 — identical in
+  every panel except Reminders, which only differs because the harness now has
+  fake reminders.
+- 406 unit tests pass; lint clean (fast-refresh warnings only); build OK; the
+  harness and canned assistant are absent from `dist`.
+- **Needs Keenan on a real phone:** signed-in data, real voice dictation
+  (Web Speech / keyboard mic), sound after the first tap, Add to Home Screen.
+
+### Command notes (moved here from CLAUDE.md, which gets regenerated)
+- `assistant` Edge Function is v14 (see Operational facts).
+- Dev fixture dashboard (no sign-in): `npm run dev`, then
+  `http://localhost:5173/?harness=busy` or `=light`; phone sizes render the
+  phone app; `&fire=1` raises a reminder alert; writes on
+  `window.__olive.writes`; the assistant is a canned stand-in there.
+  Dev-only (`src/dev/Harness.tsx`, behind `import.meta.env.DEV`).
+- Checklists live in `task_checklist_items` (task_id XOR weekly_task_id) and
+  `weekly_checklist_checks` (per-date ticks for weekly occurrences); the
+  client store is `src/hooks/useChecklists.ts`, shared via `ChecklistContext`.
+- Open on a phone: the Vercel deployment (after push), or `npm run dev --
+  --host` and `http://<PC's Wi-Fi IP>:5173` on the same Wi-Fi.
