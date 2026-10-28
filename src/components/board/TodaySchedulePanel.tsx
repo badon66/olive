@@ -5,7 +5,8 @@ import type { WeeklyCheckin, WeeklyTask } from "../../hooks/useWeeklyTasks";
 import type { BlockedWindow } from "../../lib/api";
 import { useChecklistStore } from "../../hooks/useChecklists";
 import { progressLabel } from "../../lib/checklist";
-import { addDays, formatClock, formatDue } from "../../lib/dates";
+import { addDays, formatClock } from "../../lib/dates";
+import { whenLabel } from "../../lib/flexible";
 import { isLateBedtime } from "../../lib/dayrules";
 import {
   nextSectionFor,
@@ -15,6 +16,7 @@ import {
   SECTION_ORDER,
   scheduleSort,
   sectionClockLabel,
+  sectionOptionLabel,
   sectionProgress,
   type TimeSection,
 } from "../../lib/sections";
@@ -251,7 +253,12 @@ function CarryoverRow({ t, today, cardProps }: { t: Task; today: string; cardPro
           ☑ {count}
         </span>
       )}
-      {t.due_date && <span className="hud-chip hud-chip-amber shrink-0">{formatDue(t.due_date, today)}</span>}
+      {/* The same chip rule as every other row: a range task says how many
+          days are left (or how overdue it is), never a date. */}
+      {(() => {
+        const when = whenLabel(t, today);
+        return when ? <span className={`hud-chip shrink-0 ${when.overdue ? "hud-chip-amber" : ""}`}>{when.text}</span> : null;
+      })()}
     </div>
   );
 }
@@ -314,6 +321,9 @@ export function TodaySchedulePanel({
 }) {
   const today = cardProps.today;
   const historical = dayNav?.historical ?? false;
+  // Checklist counts for the secondary lists (nudges, the bedtime prompt) —
+  // the parent is ONE row with a count wherever it appears.
+  const checklist = useChecklistStore();
   // The date this panel is actually rendering (the stepper's day when present).
   const shownDate = dayNav?.date ?? today;
   const [setup, setSetup] = useState<{ wake_time: string; blocked_windows: BlockedWindow[] } | null>(null);
@@ -584,6 +594,9 @@ export function TodaySchedulePanel({
                 <li key={t.id} className="flex items-center gap-2 text-[13px] text-hud">
                   <span className="w-1.5 h-1.5 rounded-full bg-amber shrink-0" aria-hidden="true" />
                   <span className="min-w-0 truncate">{t.name} — needs a day this week</span>
+                  {progressLabel(checklist?.weeklyProgress(t.id, today)) && (
+                    <span className="hud-chip hud-chip-signal shrink-0">☑ {progressLabel(checklist?.weeklyProgress(t.id, today))}</span>
+                  )}
                 </li>
               ))}
             </ul>
@@ -616,7 +629,12 @@ export function TodaySchedulePanel({
             <ul className="space-y-1.5">
               {displacedMorning.map((t) => (
                 <li key={t.id} className="flex items-center gap-2 flex-wrap">
-                  <span className="flex-1 min-w-0 truncate font-body text-[13px]">{t.title}</span>
+                  <span className="flex-1 min-w-0 truncate font-body text-[13px]">
+                    {t.title}
+                    {progressLabel(checklist?.taskProgress(t.id)) && (
+                      <span className="hud-chip hud-chip-signal ml-2">☑ {progressLabel(checklist?.taskProgress(t.id))}</span>
+                    )}
+                  </span>
                   <span className="flex gap-1 shrink-0">
                     {(["midday", "afternoon", "evening", "night", "anytime"] as const).map((s) => (
                       <button
@@ -626,7 +644,7 @@ export function TodaySchedulePanel({
                         className="font-data text-[10px] px-1.5 py-0.5 rounded border border-signal-dim/40 text-dim hover:border-signal hover:text-signal disabled:opacity-40 cursor-pointer focus-visible:outline-2 focus-visible:outline-signal"
                         aria-label={`Move ${t.title} to ${s}`}
                       >
-                        {SECTION_LABELS[s]}
+                        {sectionOptionLabel(s)}
                       </button>
                     ))}
                   </span>
@@ -635,7 +653,11 @@ export function TodaySchedulePanel({
               {displacedWeekly.map((w) => (
                 <li key={`w-${w.id}`} className="flex items-center gap-2 flex-wrap">
                   <span className="flex-1 min-w-0 truncate font-body text-[13px]">
-                    {w.name} <span className="hud-chip shrink-0">weekly</span>
+                    {w.name}{" "}
+                    {progressLabel(checklist?.weeklyProgress(w.id, viewDate)) && (
+                      <span className="hud-chip hud-chip-signal shrink-0 mr-1">☑ {progressLabel(checklist?.weeklyProgress(w.id, viewDate))}</span>
+                    )}
+                    <span className="hud-chip shrink-0">weekly</span>
                   </span>
                   <span className="flex gap-1 shrink-0">
                     {(["midday", "afternoon", "evening", "night", "anytime"] as const).map((s) => (
@@ -646,7 +668,7 @@ export function TodaySchedulePanel({
                         className="font-data text-[10px] px-1.5 py-0.5 rounded border border-signal-dim/40 text-dim hover:border-signal hover:text-signal disabled:opacity-40 cursor-pointer focus-visible:outline-2 focus-visible:outline-signal"
                         aria-label={`Move ${w.name} to ${s} for this day`}
                       >
-                        {SECTION_LABELS[s]}
+                        {sectionOptionLabel(s)}
                       </button>
                     ))}
                   </span>

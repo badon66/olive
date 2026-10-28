@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { Task } from "../hooks/useTasks";
 import type { WeeklyTask } from "../hooks/useWeeklyTasks";
-import { addDays, fullDateLabel } from "../lib/dates";
+import { addDays, formatCompleted, fullDateLabel } from "../lib/dates";
 import { SECTION_ORDER, sectionOptionLabel, type TimeSection } from "../lib/sections";
 import { daysLeft, daysLeftLabel, skipIsPointless, spanLabel } from "../lib/flexible";
 import { findDayOverride, type DayOverrideLike, type OverridePatch } from "../lib/weekly";
@@ -102,7 +102,13 @@ export function TaskActionPopup({
   // A range task's popup shows its whole span, date to date — the rows only
   // ever say how many days are left (BUILD_PLAN days-left rule).
   const span = target.kind === "task" ? spanLabel(target.task) : null;
-  const left = target.kind === "task" && span ? daysLeft(target.task, today) : null;
+  // A completed range task reads as completed here too, never "overdue".
+  const spanNote =
+    target.kind === "task" && span
+      ? target.task.status === "completed"
+        ? formatCompleted(target.task.completed_at, today)
+        : daysLeftLabel(daysLeft(target.task, today) ?? 0)
+      : null;
 
   return (
     <Portal>
@@ -125,7 +131,7 @@ export function TaskActionPopup({
           {span && (
             <p className="font-data text-[11px] text-signal mb-4" aria-label="Scheduled span">
               {span}
-              {left !== null && <span className="text-dim"> · {daysLeftLabel(left)}</span>}
+              {spanNote && <span className="text-dim"> · {spanNote}</span>}
             </p>
           )}
 

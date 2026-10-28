@@ -5,7 +5,7 @@ import { useChecklistStore } from "../../hooks/useChecklists";
 import { progressLabel } from "../../lib/checklist";
 import { addDays, formatClock } from "../../lib/dates";
 import { orderBySortOrder, SECTION_ORDER, type TimeSection } from "../../lib/sections";
-import { dayIsDone, showsOnDate } from "../../lib/flexible";
+import { dayIsDone, isFlexible, showsOnDate, whenLabel } from "../../lib/flexible";
 import { appearsOn, type DayOverrideLike, resolveWeeklyDay } from "../../lib/weekly";
 import { DraggableTask, DropZone } from "./TaskDnd";
 
@@ -176,6 +176,10 @@ export function UpcomingDaysPanel({
                         const count = progressLabel(
                           isWeekly ? checklist?.weeklyProgress(w.id, date) : checklist?.taskProgress(t.id),
                         );
+                        // Days-left indicator (BUILD_PLAN): a range task's row
+                        // says how long is left, never a date. Fixed tasks sit
+                        // in their own day's box, so they need no label here.
+                        const left = !isWeekly && !isDone && isFlexible(t) ? whenLabel(t, today) : null;
                         const inner = (
                           <span
                             className={`w-full text-left flex items-center gap-2 text-[15px] leading-snug font-body py-0.5 ${
@@ -198,6 +202,14 @@ export function UpcomingDaysPanel({
                             {count && (
                               <span className="hud-chip hud-chip-signal shrink-0 !text-[9px]" title="Checklist progress">
                                 ☑ {count}
+                              </span>
+                            )}
+                            {left && (
+                              <span
+                                className={`hud-chip shrink-0 !text-[9px] ${left.overdue ? "hud-chip-amber" : ""}`}
+                                title="Days left to the end of its range — open the task for the full dates"
+                              >
+                                {left.text}
                               </span>
                             )}
                             {isWeekly && resolved.overridden.length > 0 && (

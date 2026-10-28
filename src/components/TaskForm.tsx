@@ -2,7 +2,7 @@ import { useState, type FormEvent } from "react";
 import type { Task, TaskInput } from "../hooks/useTasks";
 import type { CategoryRow } from "../hooks/useCategories";
 import { useChecklistStore } from "../hooks/useChecklists";
-import { edmontonToday } from "../lib/dates";
+import { edmontonToday, formatCompleted } from "../lib/dates";
 import { daysLeft, daysLeftLabel, deadlineFor, reconcileOnEdit, spanLabel } from "../lib/flexible";
 import { clampPriority, type Priority } from "../lib/priority";
 import { SECTION_ORDER, sectionOptionLabel, type TimeSection } from "../lib/sections";
@@ -70,7 +70,14 @@ export function TaskForm({ initial, categories, onSubmit, onClose, onDelete, onC
   // The full span of a range task — "Oct 8 to Oct 12", or the chosen days —
   // belongs in the popup; the rows only ever say how many days are left.
   const span = initial ? spanLabel(initial) : null;
-  const left = initial && span ? daysLeft(initial, edmontonToday()) : null;
+  // A COMPLETED range task is completed, full stop — never "overdue" (CLAUDE.md),
+  // so its note is the completion, not a days-left count.
+  const spanNote =
+    initial && span
+      ? initial.status === "completed"
+        ? formatCompleted(initial.completed_at, edmontonToday())
+        : daysLeftLabel(daysLeft(initial, edmontonToday()) ?? 0)
+      : null;
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
@@ -211,7 +218,7 @@ export function TaskForm({ initial, categories, onSubmit, onClose, onDelete, onC
         {span && (
           <p className="font-data text-[11px] text-signal flex flex-wrap items-baseline gap-x-2" aria-label="Scheduled span">
             <span>{span}</span>
-            {left !== null && <span className="text-dim">· {daysLeftLabel(left)}</span>}
+            {spanNote && <span className="text-dim">· {spanNote}</span>}
           </p>
         )}
 
