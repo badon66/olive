@@ -477,3 +477,41 @@ describe("splitAnytime with the priority rule applied", () => {
     expect(splitAnytime([], anytime, busy)).toEqual({ primary: anytime, dropdown: [] });
   });
 });
+
+// Active Tasks' main list vs the "Anytime · surfaced" group (2026-10-20).
+import { splitSurfaced } from "./sections";
+
+describe("splitSurfaced — surfaced anytime work sits below the section's own rows, unless overdue", () => {
+  type Row = { id: string; own: boolean; overdue: boolean };
+  const isOwn = (r: Row) => r.own;
+  const isOverdue = (r: Row) => r.overdue;
+
+  it("surfaced rows leave the main list for the group", () => {
+    const rows: Row[] = [
+      { id: "own-1", own: true, overdue: false },
+      { id: "own-2", own: true, overdue: false },
+      { id: "urgent-anytime", own: false, overdue: false },
+    ];
+    expect(splitSurfaced(rows, isOwn, isOverdue)).toEqual({
+      main: [rows[0], rows[1]],
+      surfaced: [rows[2]],
+    });
+  });
+
+  it("an OVERDUE surfaced row stays in the main list (already lifted to the top by the caller)", () => {
+    const rows: Row[] = [
+      { id: "overdue-urgent-anytime", own: false, overdue: true },
+      { id: "own-1", own: true, overdue: false },
+      { id: "urgent-anytime", own: false, overdue: false },
+    ];
+    expect(splitSurfaced(rows, isOwn, isOverdue)).toEqual({
+      main: [rows[0], rows[1]],
+      surfaced: [rows[2]],
+    });
+  });
+
+  it("with nothing surfaced the group is empty and the main list is untouched", () => {
+    const rows: Row[] = [{ id: "own-1", own: true, overdue: true }, { id: "own-2", own: true, overdue: false }];
+    expect(splitSurfaced(rows, isOwn, isOverdue)).toEqual({ main: rows, surfaced: [] });
+  });
+});

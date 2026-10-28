@@ -5,7 +5,15 @@ import { useChecklistStore } from "../../hooks/useChecklists";
 import { progressLabel } from "../../lib/checklist";
 import { formatClock } from "../../lib/dates";
 import { dayIsDone } from "../../lib/flexible";
-import { anytimeShowsInMain, orderBySortOrder, scheduleSort, splitAnytime, type TimeSection } from "../../lib/sections";
+import {
+  anytimeShowsInMain,
+  orderBySortOrder,
+  scheduleSort,
+  sectionOptionLabel,
+  splitAnytime,
+  splitSurfaced,
+  type TimeSection,
+} from "../../lib/sections";
 import { appearsOn, type DayOverrideLike, type OverrideField, resolveWeeklyDay } from "../../lib/weekly";
 import { SkeletonRows } from "../Skeleton";
 import { TaskCard } from "../TaskCard";
@@ -209,20 +217,26 @@ export function ActiveTasksPanel({
   // Base rule: an empty section promotes ALL anytime work into the main list;
   // a section with its own work folds anytime into the dropdown. Priority
   // overrides on top (anytimeShowsInMain): urgent always surfaces, medium
-  // surfaces while the section is light, low never does.
-  const surfaces = (r: ScheduleItem<Task, ResolvedWeekly>) =>
-    r.kind === "task" && anytimeShowsInMain(r.task.priority_weight, ownUncompleted);
-  const split = splitAnytime(build(sectionTasks, sectionWeekly), build(anytimeTasks, anytimeWeekly), surfaces);
-  const promoted = sectionTasks.length + sectionWeekly.length === 0 && split.primary.length > 0;
-  // Which main-list rows are anytime work surfaced by priority (not by an empty
-  // section)? They get their own thin, collapsible group below the section's
-  // own work, so they read as "surfaced", not as belonging to this part of day.
-  const ownIds = new Set(build(sectionTasks, sectionWeekly).map((r) => `${r.kind}-${r.id}`));
-  const surfacedRows = promoted ? [] : split.primary.filter((r) => !ownIds.has(`${r.kind}-${r.id}`));
-  const surfacedIds = new Set(surfacedRows.map((r) => `${r.kind}-${r.id}`));
-  // Overdue still sorts to the top across the main list (BUILD_PLAN).
+  // surfaces while the section is light, low never does. Weekly occurrences
+  // carry the same 1-3 scale and meanings (BUILD_PLAN), so an urgent anytime
+  // weekly occurrence surfaces exactly like an urgent anytime task.
+  const priorityOf = (r: ScheduleItem<Task, ResolvedWeekly>) =>
+    r.kind === "task" ? r.task.priority_weight : r.weekly.priority_weight;
+  const surfaces = (r: ScheduleItem<Task, ResolvedWeekly>) => anytimeShowsInMain(priorityOf(r), ownUncompleted);
+  const ownRows = build(sectionTasks, sectionWeekly);
+  const split = splitAnytime(ownRows, build(anytimeTasks, anytimeWeekly), surfaces);
+  const promoted = ownRows.length === 0 && split.primary.length > 0;
+  // Overdue sorts to the top across the whole main list (BUILD_PLAN).
   const primary = liftRows(split.primary, isOverdueRow);
-  const mainRows = primary.filter((r) => !surfacedIds.has(`${r.kind}-${r.id}`));
+  // Anytime work surfaced by priority (not by an empty section) gets its own
+  // thin, collapsible group below the section's own work, so it reads as
+  // "surfaced" rather than as belonging to this part of the day — unless it is
+  // overdue, in which case it keeps its lifted place at the top of the list.
+  const key = (r: ScheduleItem<Task, ResolvedWeekly>) => `${r.kind}-${r.id}`;
+  const ownIds = new Set(ownRows.map(key));
+  const { main: mainRows, surfaced: surfacedRows } = promoted
+    ? { main: primary, surfaced: [] as ScheduleItem<Task, ResolvedWeekly>[] }
+    : splitSurfaced(primary, (r) => ownIds.has(key(r)), isOverdueRow);
   const dropdown = split.dropdown;
   const total = primary.length + dropdown.length;
 
@@ -282,7 +296,9 @@ export function ActiveTasksPanel({
   return (
     <DropZone id={`section:${section}:${today}`} className="h-full">
       <div className="flex items-center justify-between mb-1.5">
-        <span className="hud-chip hud-chip-signal">{SECTION_LABELS[section]} — right now</span>
+        {/* The panel is also a drop target that assigns this section, so it
+            shows the section's clock range like every other section picker. */}
+        <span className="hud-chip hud-chip-signal">{sectionOptionLabel(section)} — right now</span>
         <span className="hud-chip">{total}</span>
       </div>
 

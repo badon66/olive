@@ -337,3 +337,20 @@ export function anytimeShowsInMain(priority: number, ownUncompleted: number): bo
   if (priority === 2) return ownUncompleted <= LIGHT_SECTION_MAX;
   return false;
 }
+
+// Active Tasks' main list vs its "Anytime · surfaced" group. Anytime work that
+// escapes the dropdown by priority renders under a thin, collapsible group
+// AFTER the section's own rows — EXCEPT when it is overdue. Overdue work sorts
+// to the top of the whole list (BUILD_PLAN), so an overdue surfaced row stays
+// in the main list, where the caller has already lifted it to the top, rather
+// than sinking into the group below everything else.
+export function splitSurfaced<T>(
+  primary: T[],
+  isOwn: (row: T) => boolean,
+  isOverdue: (row: T) => boolean,
+): { main: T[]; surfaced: T[] } {
+  return {
+    main: primary.filter((r) => isOwn(r) || isOverdue(r)),
+    surfaced: primary.filter((r) => !isOwn(r) && !isOverdue(r)),
+  };
+}

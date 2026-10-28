@@ -140,6 +140,9 @@ function buildFixtures(mode: string) {
     mkTask({ id: "t-lizzie", title: "Get back to Lizzie with her email about the color", candidate_dates: [0, 1, 2, 3, 4].map((d) => addDays(today, d)), due_date: addDays(today, 4), time_section: "anytime", priority_weight: 2, category_id: "cat-powerplay" }),
     // The anytime rule, one task per priority level, due on the active day.
     mkTask({ id: "t-any-urgent", title: "TEST urgent anytime", due_date: active, time_section: "anytime", priority_weight: 3, description: "Priority 3 — must always sit in the main list." }),
+    // An OVERDUE urgent anytime task: surfaced by priority AND lifted to the
+    // very top of the list (overdue-first beats the surfaced grouping).
+    mkTask({ id: "t-any-urgent-overdue", title: "TEST overdue urgent anytime", due_date: addDays(active, -2), time_section: "anytime", priority_weight: 3, description: "Overdue — must sort above everything else." }),
     mkTask({ id: "t-any-medium", title: "TEST medium anytime", due_date: active, time_section: "anytime", priority_weight: 2, description: "Priority 2 — surfaces only while the section is light." }),
     mkTask({ id: "t-any-low", title: "TEST low anytime", due_date: active, time_section: "anytime", priority_weight: 1, description: "Priority 1 — follows the base rule." }),
     // The current section's own work: 3 tasks when busy, 1 when light.
@@ -169,6 +172,9 @@ function buildFixtures(mode: string) {
     mkWeekly({ id: "w-room", name: "Clean my room", scheduled_days: [1, 2, 3, 6], time_section: place("evening") }),
     mkWeekly({ id: "w-review", name: "Sunday Review Time", scheduled_days: [6], time_section: place("night") }),
     mkWeekly({ id: "w-meal", name: "Eat the second meal of the day", time_section: place("evening") }),
+    // An urgent ANYTIME weekly occurrence — weekly tasks carry the same priority
+    // meanings, so this one must surface like an urgent anytime task.
+    mkWeekly({ id: "w-vitamins", name: "TEST urgent anytime weekly", time_section: "anytime", priority_weight: 3 }),
   ];
 
   const jobs: Job[] = [
