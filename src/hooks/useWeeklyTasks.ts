@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { supabase } from "../lib/supabase";
+import { readCache, writeCache } from "../lib/cache";
 import type { Database } from "../lib/database.types";
 import { addDays, edmontonToday } from "../lib/dates";
 import type { TimeSection } from "../lib/sections";
@@ -21,12 +22,18 @@ export type WeeklyTaskInput = {
 };
 
 export function useWeeklyTasks() {
-  const [weeklyTasks, setWeeklyTasks] = useState<WeeklyTask[]>([]);
-  const [checkins, setCheckins] = useState<WeeklyCheckin[]>([]);
-  const [dayOverrides, setDayOverrides] = useState<WeeklyDayOverride[]>([]);
+  // Cached last-loaded rows (lib/cache.ts): shown instantly on open, replaced
+  // by the live fetch. `syncedAt` is when the data on screen was last fetched.
+  const [cached] = useState(() =>
+    readCache<{ weeklyTasks: WeeklyTask[]; checkins: WeeklyCheckin[]; dayOverrides: WeeklyDayOverride[]; overridesReady: boolean }>("weekly"),
+  );
+  const [weeklyTasks, setWeeklyTasks] = useState<WeeklyTask[]>(cached?.data.weeklyTasks ?? []);
+  const [checkins, setCheckins] = useState<WeeklyCheckin[]>(cached?.data.checkins ?? []);
+  const [dayOverrides, setDayOverrides] = useState<WeeklyDayOverride[]>(cached?.data.dayOverrides ?? []);
+  const [syncedAt, setSyncedAt] = useState<number | null>(cached?.at ?? null);
   // False until the overrides table answers — see refresh().
-  const [overridesReady, setOverridesReady] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const [overridesReady, setOverridesReady] = useState(cached?.data.overridesReady ?? false);
+  const [loading, setLoading] = useState(!cached);
   // Bumped by every mutation; a reload only applies if none has started since it
   // was issued. Stops an older reload landing after a newer optimistic change
   // and flipping a cube (or a one-day edit) back and then forward again.
@@ -63,6 +70,15 @@ export function useWeeklyTasks() {
       setOverridesReady(true);
     } else if (o.error) {
       setOverridesReady(false);
+    }
+    if (!w.error && w.data && !c.error && c.data) {
+      writeCache("weekly", {
+        weeklyTasks: w.data,
+        checkins: c.data,
+        dayOverrides: !o.error && o.data ? o.data : [],
+        overridesReady: !o.error && !!o.data,
+      });
+      setSyncedAt(Date.now());
     }
     setLoading(false);
   }, []);
@@ -141,6 +157,7 @@ export function useWeeklyTasks() {
 
   return {
     weeklyTasks,
+    syncedAt,
     checkins,
     dayOverrides,
     overridesReady,

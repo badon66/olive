@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { supabase } from "../lib/supabase";
+import { clearCache } from "../lib/cache";
 
 export function AuthGate({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
@@ -15,7 +16,11 @@ export function AuthGate({ children }: { children: ReactNode }) {
       setSession(data.session);
       setReady(true);
     });
-    const { data: sub } = supabase.auth.onAuthStateChange((_e, s) => setSession(s));
+    const { data: sub } = supabase.auth.onAuthStateChange((event, s) => {
+      // Signing out drops the cached rows (lib/cache.ts) with the session.
+      if (event === "SIGNED_OUT") clearCache();
+      setSession(s);
+    });
     return () => sub.subscription.unsubscribe();
   }, []);
 

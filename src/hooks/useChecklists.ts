@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { supabase } from "../lib/supabase";
+import { readCache, writeCache } from "../lib/cache";
 import type { Database } from "../lib/database.types";
 import { addDays, edmontonToday } from "../lib/dates";
 import {
@@ -27,9 +28,13 @@ const parentMatches = (item: ChecklistItem, parent: ChecklistParent) =>
   "task_id" in parent ? item.task_id === parent.task_id : item.weekly_task_id === parent.weekly_task_id;
 
 export function useChecklists() {
-  const [items, setItems] = useState<ChecklistItem[]>([]);
-  const [checks, setChecks] = useState<WeeklyCheck[]>([]);
-  const [loading, setLoading] = useState(true);
+  // Cached last-loaded rows (lib/cache.ts): shown instantly on open, replaced
+  // by the live fetch. `syncedAt` is when the data on screen was last fetched.
+  const [cached] = useState(() => readCache<{ items: ChecklistItem[]; checks: WeeklyCheck[] }>("checklists"));
+  const [items, setItems] = useState<ChecklistItem[]>(cached?.data.items ?? []);
+  const [checks, setChecks] = useState<WeeklyCheck[]>(cached?.data.checks ?? []);
+  const [loading, setLoading] = useState(!cached);
+  const [syncedAt, setSyncedAt] = useState<number | null>(cached?.at ?? null);
   // Same reload guard as useTasks: a reload only applies if no mutation has
   // started since it was issued, so a slow read can't undo a fast tick.
   const epoch = useRef(0);
@@ -47,6 +52,10 @@ export function useChecklists() {
     if (issuedAt !== epoch.current) return;
     if (!i.error && i.data) setItems(i.data);
     if (!c.error && c.data) setChecks(c.data);
+    if (!i.error && i.data && !c.error && c.data) {
+      writeCache("checklists", { items: i.data, checks: c.data });
+      setSyncedAt(Date.now());
+    }
     setLoading(false);
   }, []);
 
@@ -170,6 +179,7 @@ export function useChecklists() {
     items,
     checks,
     loading,
+    syncedAt,
     refresh,
     itemsForTask,
     itemsForWeekly,

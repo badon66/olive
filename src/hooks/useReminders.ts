@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { supabase } from "../lib/supabase";
+import { readCache, writeCache } from "../lib/cache";
 import type { Database } from "../lib/database.types";
 import type { RecurrenceType } from "../lib/reminders";
 
@@ -26,15 +27,21 @@ export type ReminderInput = {
 export type ReminderStore = ReturnType<typeof useReminders>;
 
 export function useReminders() {
-  const [reminders, setReminders] = useState<Reminder[]>([]);
+  // Cached last-loaded rows (lib/cache.ts): shown instantly on open, replaced
+  // by the live fetch. `syncedAt` is when the data on screen was last fetched.
+  // The alert queue (fires) is deliberately NOT cached: a fire dismissed on
+  // another device must never ring from a stale copy before the fetch lands.
+  const [cached] = useState(() => readCache<{ reminders: Reminder[]; globallyEnabled: boolean }>("reminders"));
+  const [reminders, setReminders] = useState<Reminder[]>(cached?.data.reminders ?? []);
+  const [syncedAt, setSyncedAt] = useState<number | null>(cached?.at ?? null);
   // Undismissed firing instances — the alert queue. A row here outlives a page
   // reload, which is what lets an occurrence that came due while the app was
   // closed still raise its alert when the app comes back.
   const [fires, setFires] = useState<ReminderFire[]>([]);
   // The global "Reminders Active" master switch. Defaults to ON so a missing
   // settings row can never silently disable every reminder.
-  const [globallyEnabled, setGloballyEnabledState] = useState(true);
-  const [loading, setLoading] = useState(true);
+  const [globallyEnabled, setGloballyEnabledState] = useState(cached?.data.globallyEnabled ?? true);
+  const [loading, setLoading] = useState(!cached);
 
   const refresh = useCallback(async () => {
     // Fire rows are permanent history and accumulate: one reminder on a
@@ -61,6 +68,10 @@ export function useReminders() {
     if (!error && data) setReminders(data);
     if (fireRows) setFires(fireRows);
     if (settings) setGloballyEnabledState(settings.reminders_globally_enabled);
+    if (!error && data) {
+      writeCache("reminders", { reminders: data, globallyEnabled: settings?.reminders_globally_enabled ?? true });
+      setSyncedAt(Date.now());
+    }
     setLoading(false);
   }, []);
 
@@ -72,6 +83,7 @@ export function useReminders() {
 
   return {
     reminders,
+    syncedAt,
     fires,
     globallyEnabled,
     loading,

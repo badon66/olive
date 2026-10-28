@@ -62,6 +62,8 @@ let seq = 0;
 const uid = (prefix: string) => `${prefix}-${++seq}`;
 const USER = "harness-user";
 const NOW = new Date().toISOString();
+// When the fixture data "loaded" — the freshness note reads off this.
+const HARNESS_LOADED_AT = Date.now();
 
 // ── Fixtures ────────────────────────────────────────────────────────────────
 
@@ -221,6 +223,7 @@ function useFakeTasks(initial: Task[]): TaskStore {
   return {
     tasks,
     loading: false,
+    syncedAt: HARNESS_LOADED_AT,
     refresh: async () => {},
     addTask: async (input: TaskInput) => {
       const id = uid("task");
@@ -291,6 +294,7 @@ function useFakeWeekly(initialTasks: WeeklyTask[]): WeeklyStore {
 
   return {
     weeklyTasks,
+    syncedAt: HARNESS_LOADED_AT,
     checkins,
     dayOverrides,
     overridesReady: true,
@@ -373,6 +377,7 @@ function useFakeChecklists(initialItems: ChecklistItem[], initialChecks: WeeklyC
     items,
     checks,
     loading: false,
+    syncedAt: HARNESS_LOADED_AT,
     refresh: async () => {},
     itemsForTask,
     itemsForWeekly,
@@ -430,7 +435,7 @@ function useFakeChecklists(initialItems: ChecklistItem[], initialChecks: WeeklyC
 function useFakeCategories(): CategoryStore {
   const [categories] = useState(CATS);
   const byId = useMemo(() => new Map(categories.map((c) => [c.id, c])), [categories]);
-  return { categories, byId, loading: false, refresh: async () => {}, addCategory: async () => {}, updateCategory: async () => {} };
+  return { categories, byId, loading: false, syncedAt: HARNESS_LOADED_AT, refresh: async () => {}, addCategory: async () => {}, updateCategory: async () => {} };
 }
 
 function useFakeJobs(initial: Job[]): JobStore {
@@ -438,6 +443,7 @@ function useFakeJobs(initial: Job[]): JobStore {
   return {
     jobs,
     loading: false,
+    syncedAt: HARNESS_LOADED_AT,
     refresh: async () => {},
     addJob: async () => {},
     updateJob: async (id, p) => {

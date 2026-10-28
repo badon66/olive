@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { supabase } from "../lib/supabase";
+import { readCache, writeCache } from "../lib/cache";
 import { edmontonToday } from "../lib/dates";
 import { completeDayPatch, reopenPatch, uncompleteDayPatch } from "../lib/flexible";
 import type { Database } from "../lib/database.types";
@@ -33,8 +34,12 @@ export type TaskInput = {
 export type TaskStore = ReturnType<typeof useTasks>;
 
 export function useTasks() {
-  const [tasks, setTasks] = useState<Task[]>([]);
-  const [loading, setLoading] = useState(true);
+  // Cached last-loaded rows (lib/cache.ts): shown instantly on open, replaced
+  // by the live fetch. `syncedAt` is when the data on screen was last fetched.
+  const [cached] = useState(() => readCache<Task[]>("tasks"));
+  const [tasks, setTasks] = useState<Task[]>(cached?.data ?? []);
+  const [loading, setLoading] = useState(!cached);
+  const [syncedAt, setSyncedAt] = useState<number | null>(cached?.at ?? null);
   // Bumped by every mutation. A reload only applies if no mutation has started
   // since it was issued — otherwise its data predates that mutation's write.
   // Without this, two quick actions let an OLDER reload land after a newer
@@ -57,7 +62,11 @@ export function useTasks() {
       .order("due_date", { ascending: true, nullsFirst: false })
       .order("priority_weight", { ascending: false });
     if (issuedAt !== epoch.current) return; // superseded — a newer reload follows
-    if (!error && data) setTasks(data);
+    if (!error && data) {
+      setTasks(data);
+      writeCache("tasks", data);
+      setSyncedAt(Date.now());
+    }
     setLoading(false);
   }, []);
 
@@ -81,6 +90,7 @@ export function useTasks() {
   return {
     tasks,
     loading,
+    syncedAt,
     refresh,
     // Resolves to the new row's id so a checklist typed into the form can be
     // attached to the task it was typed for.

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { supabase } from "../lib/supabase";
+import { readCache, writeCache } from "../lib/cache";
 import type { Database } from "../lib/database.types";
 import type { JobStatus } from "../lib/jobs";
 
@@ -14,12 +15,20 @@ export type JobInput = {
 export type JobStore = ReturnType<typeof useJobs>;
 
 export function useJobs() {
-  const [jobs, setJobs] = useState<Job[]>([]);
-  const [loading, setLoading] = useState(true);
+  // Cached last-loaded rows (lib/cache.ts): shown instantly on open, replaced
+  // by the live fetch. `syncedAt` is when the data on screen was last fetched.
+  const [cached] = useState(() => readCache<Job[]>("jobs"));
+  const [jobs, setJobs] = useState<Job[]>(cached?.data ?? []);
+  const [loading, setLoading] = useState(!cached);
+  const [syncedAt, setSyncedAt] = useState<number | null>(cached?.at ?? null);
 
   const refresh = useCallback(async () => {
     const { data, error } = await supabase.from("active_jobs").select("*").order("updated_at", { ascending: false });
-    if (!error && data) setJobs(data);
+    if (!error && data) {
+      setJobs(data);
+      writeCache("jobs", data);
+      setSyncedAt(Date.now());
+    }
     setLoading(false);
   }, []);
 
@@ -32,6 +41,7 @@ export function useJobs() {
   return {
     jobs,
     loading,
+    syncedAt,
     refresh,
     addJob: async (input: JobInput) => {
       await supabase.from("active_jobs").insert({ ...input, user_id: await userId() });
