@@ -53,6 +53,36 @@ export function playSound(id: string | null | undefined, volume: number | null |
   void el.play().catch(() => {});
 }
 
+// Phone browsers (iOS above all) refuse to play audio until the page has been
+// touched once. Called from the first tap on the phone shell: every sound's
+// element plays muted for an instant inside that gesture, which unlocks it for
+// the real alert later. Harmless if it fails — the visual alert still shows.
+let primed = false;
+export function primeAudio(): void {
+  if (primed || typeof Audio === "undefined") return;
+  primed = true;
+  for (const def of SOUNDS) {
+    let el = cache.get(def.id);
+    if (!el) {
+      el = new Audio(def.file);
+      el.preload = "auto";
+      cache.set(def.id, el);
+    }
+    const audio = el;
+    audio.muted = true;
+    void audio
+      .play()
+      .then(() => {
+        audio.pause();
+        audio.currentTime = 0;
+        audio.muted = false;
+      })
+      .catch(() => {
+        audio.muted = false;
+      });
+  }
+}
+
 export function stopSound(id: string | null | undefined): void {
   const el = cache.get(soundFor(id).id);
   if (!el) return;
