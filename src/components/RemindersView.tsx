@@ -13,6 +13,8 @@ import {
 import { playSound, soundLabel, stopSound } from "../lib/sounds";
 import { CountdownRing } from "./CountdownRing";
 import { ReminderForm } from "./ReminderForm";
+import { ModalShell } from "./ModalShell";
+import { usePhoneLayout } from "../hooks/usePhoneLayout";
 import { SkeletonRows } from "./Skeleton";
 
 // How often we look for occurrences that have come due. The pg_cron tick runs
@@ -96,7 +98,39 @@ export function ReminderAlerts({
   firing: { fire: ReminderFire; reminder: Reminder }[];
   dismiss: (fireId: string, soundId: string) => void;
 }) {
+  const phone = usePhoneLayout();
   if (firing.length === 0) return null;
+  if (phone) {
+    const first = firing[0];
+    return (
+      // Not dismissable by a tap outside or a swipe — only the big button,
+      // so an alert can't be silenced by accident. Stops repeating on dismiss.
+      <ModalShell label={`Reminder: ${first.reminder.name}`} onClose={() => {}} dismissable={false} className="px-5 pb-5 pt-2 space-y-4">
+        {firing.map(({ fire, reminder }) => (
+          <div key={fire.id} role="alert" className="space-y-3">
+            <div className="flex items-start gap-3">
+              <svg viewBox="0 0 24 24" className="w-8 h-8 text-amber shrink-0 pulse-live" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 0 1-3.4 0" />
+              </svg>
+              <div className="flex-1 min-w-0">
+                <p className="font-body font-bold text-[24px] leading-tight text-hud">{reminder.name}</p>
+                {reminder.message && <p className="text-hud/85 text-[16px] mt-1">{reminder.message}</p>}
+                <p className="font-data text-[12px] text-dim mt-1.5">
+                  alert {Math.max(1, fire.repeat_count)} of {reminder.max_repeats} · repeats every {reminder.repeat_interval_seconds}s until dismissed
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={() => dismiss(fire.id, reminder.sound_id)}
+              className="w-full min-h-[64px] rounded-xl border-2 border-amber bg-amber/15 text-amber font-display text-[16px] tracking-[0.2em] uppercase active:bg-amber/25"
+            >
+              Dismiss
+            </button>
+          </div>
+        ))}
+      </ModalShell>
+    );
+  }
   return (
     <div className="fixed bottom-6 right-6 z-50 flex flex-col gap-2 max-w-sm">
       {firing.map(({ fire, reminder }) => (

@@ -15,6 +15,9 @@ import { ChecklistContext, useChecklists } from "./hooks/useChecklists";
 import { useJobs } from "./hooks/useJobs";
 import { useReminders } from "./hooks/useReminders";
 import { useMediaQuery } from "./hooks/useMediaQuery";
+import { usePhoneLayout } from "./hooks/usePhoneLayout";
+import { useForegroundRefresh } from "./hooks/useForegroundRefresh";
+import { PhoneApp } from "./components/phone/PhoneApp";
 import { useTasks, type Task } from "./hooks/useTasks";
 import { useWeeklyTasks } from "./hooks/useWeeklyTasks";
 
@@ -53,6 +56,40 @@ function Shell() {
   // row chips and popup editors anywhere in the tree see the same store.
   const checklistStore = useChecklists();
   const alerts = useReminderAlerts(reminderStore);
+  // The phone app (BUILD_PLAN "Phone app"): under 700px wide, or a phone turned
+  // sideways. Decided once here; the ultrawide and portrait-monitor layouts
+  // below are untouched by it.
+  const phone = usePhoneLayout();
+  // Refetch everything when the app comes back to the foreground or the
+  // network returns (every layout — a desktop tab left open benefits too).
+  const { online } = useForegroundRefresh(() =>
+    Promise.all([
+      taskStore.refresh(),
+      weeklyStore.refresh(),
+      categoryStore.refresh(),
+      jobStore.refresh(),
+      reminderStore.refresh(),
+      checklistStore.refresh(),
+    ]),
+  );
+
+  if (phone) {
+    return (
+      <ChecklistContext.Provider value={checklistStore}>
+        <ReminderAlerts firing={alerts.firing} dismiss={alerts.dismiss} />
+        <PhoneApp
+          taskStore={taskStore}
+          weeklyStore={weeklyStore}
+          categoryStore={categoryStore}
+          jobStore={jobStore}
+          reminderStore={reminderStore}
+          customize={customize}
+          onToggleCustomize={() => setCustomize((c) => !c)}
+          online={online}
+        />
+      </ChecklistContext.Provider>
+    );
+  }
 
   const dashboard = isDesktop ? (
     <DesktopDashboard
