@@ -32,6 +32,59 @@ export function sectionClockLabel(section: TimeSection, wakeTime = "11:00"): str
   return r ? `${to12h(r[0])} – ${to12h(r[1])}` : null;
 }
 
+const hhmmToMin = (s: string) => {
+  const [h, m] = s.split(":").map(Number);
+  return h * 60 + m;
+};
+
+// A section's start and end as minutes since local midnight, on the same
+// 0–29h line sectionProgress uses (Night ends at 05:00 the NEXT day = 29:00).
+// null for anytime, which has no window.
+export function sectionBounds(section: TimeSection, wakeTime = "11:00"): { start: number; end: number } | null {
+  if (section === "anytime") return null;
+  if (section === "morning") return { start: hhmmToMin(wakeTime), end: 12 * 60 };
+  if (section === "night") return { start: 23 * 60, end: 29 * 60 };
+  const r = SECTION_CLOCK[section]!;
+  return { start: hhmmToMin(r[0]), end: hhmmToMin(r[1]) };
+}
+
+// Minutes until the section ends, given minutes since local midnight. Night
+// in the small hours is measured on its wrapped line, so 02:00 → 180 minutes.
+// null for anytime; 0 once the section is over.
+export function minutesLeftInSection(section: TimeSection, minutesSinceLocalMidnight: number, wakeTime = "11:00"): number | null {
+  const b = sectionBounds(section, wakeTime);
+  if (!b) return null;
+  const m = section === "night" && minutesSinceLocalMidnight <= 5 * 60 ? minutesSinceLocalMidnight + 24 * 60 : minutesSinceLocalMidnight;
+  return Math.max(0, b.end - m);
+}
+
+// "2h 15m left" / "45m left" / "ending now" — the phone's current-part card.
+export function timeLeftLabel(minutes: number | null): string | null {
+  if (minutes === null) return null;
+  if (minutes <= 0) return "ending now";
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  if (h === 0) return `${m}m left`;
+  return m === 0 ? `${h}h left` : `${h}h ${m}m left`;
+}
+
+// The part of day that follows this one on the clock (anytime has none; Night
+// is last — the next day's Morning follows, which is a different page).
+export function nextSection(section: TimeSection): TimeSection | null {
+  const i = SECTION_ORDER.indexOf(section);
+  if (i === -1 || section === "anytime") return null;
+  const next = SECTION_ORDER[i + 1];
+  return next && next !== "anytime" ? next : null;
+}
+
+// "11 PM" / "12 PM" / "7:30 AM" — when a section starts, for "Next: Night, 2 tasks at 11 PM".
+export function sectionStartLabel(section: TimeSection, wakeTime = "11:00"): string | null {
+  const b = sectionBounds(section, wakeTime);
+  if (!b) return null;
+  const { num, sfx } = compactClock(`${String(Math.floor(b.start / 60)).padStart(2, "0")}:${String(b.start % 60).padStart(2, "0")}`);
+  return `${num} ${sfx}`;
+}
+
 // Compact hour for picker labels: "12" / "4" / "7:30", plus its meridiem.
 function compactClock(hhmm: string): { num: string; sfx: "AM" | "PM" } {
   const [h, m] = hhmm.split(":").map(Number);
