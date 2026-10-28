@@ -19,6 +19,11 @@ export default defineConfig({
         description: "Personal assistant — tasks, daily brief",
         theme_color: "#070D0A",
         background_color: "#070D0A",
+        // Installed to the home screen, Olive opens full screen at the app's
+        // root — which lands on the Now tab (BUILD_PLAN "Phone app").
+        id: "/",
+        start_url: "/",
+        scope: "/",
         display: "standalone",
         icons: [
           { src: "pwa-192x192.png", sizes: "192x192", type: "image/png" },
