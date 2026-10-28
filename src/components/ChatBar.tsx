@@ -3,7 +3,7 @@ import { commitAssistant, previewAssistant, sendToAssistant, type AssistantActio
 import { cleanChecklistTitles } from "../lib/checklist";
 import { JOB_STATUSES, JOB_STATUS_LABELS } from "../lib/jobs";
 import { PRIORITY_LEVELS, priorityLabel } from "../lib/priority";
-import { SECTION_ORDER, sectionOptionLabel } from "../lib/sections";
+import { SECTION_ORDER, sectionOptionLabel, type TimeSection } from "../lib/sections";
 import { Portal } from "./Portal";
 import { SectionPencil } from "./SectionPencil";
 import { formatClock } from "../lib/dates";
@@ -237,7 +237,7 @@ export function ChatBar({
                         {a.description && <span className="hud-chip">desc</span>}
                         {a.due_date && <span className="hud-chip">due {a.due_date}</span>}
                         {a.scheduled_time && <span className="hud-chip">⏱ {formatClock(a.scheduled_time)}</span>}
-                        {a.time_section && <span className="hud-chip">{a.time_section}</span>}
+                        {a.time_section && <span className="hud-chip">{sectionOptionLabel(a.time_section as TimeSection)}</span>}
                         {typeof a.priority_weight === "number" && (
                           <span className={`hud-chip ${a.priority_weight >= 3 ? "hud-chip-amber" : ""}`}>
                             {priorityLabel(a.priority_weight).toLowerCase()} priority

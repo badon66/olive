@@ -88,7 +88,7 @@ Deno.serve(async (req) => {
         "If the message references a task you cannot find, return zero actions and say so in reply.",
         "Resolve relative dates ('Friday', 'next week') to YYYY-MM-DD using today's date; 'Friday' means the next upcoming Friday.",
         "scheduled_time is ONLY for fixed appointments ('dentist at 2:30'); time_section is the loose part of day.",
-        "time_section values: morning, midday, afternoon, evening, night (11 PM to 5 AM), anytime.",
+        "time_section values and their clock ranges: morning (wake-up to 12 PM), midday (12–4 PM), afternoon (4–6 PM), evening (6–11 PM), night (11 PM–5 AM), anytime (no particular part of the day). A spoken clock time picks the section whose range contains it ('at 4:30' is afternoon, 'at 7' in the evening is evening).",
         "PRIORITY is 1-3, 3 = most important: 1 = low ('no rush', 'whenever', 'someday', 'low priority'), 2 = medium (the default — use it when nothing is said), 3 = urgent ('urgent', 'ASAP', 'important', 'must', 'right away', 'high priority', 'today for sure').",
         "CHECKLISTS: when the user names one task and then lists its parts — 'add figure out the clothing order, with Charlie's portion, Keenan's portion and Vesper's portion' — make ONE create_task (title 'Figure out the clothing order') with checklist ['Charlie's portion', \"Keenan's portion\", \"Vesper's portion\"]. Never split the parts into separate tasks. Checklist items have no dates or parts of day of their own.",
         "JOBS: 'add a job, Dennis's driveway' -> create_job (name is the specific job; category_name is the company/header if named, else null).",
