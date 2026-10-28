@@ -2,8 +2,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import type { Reminder, ReminderInput } from "../hooks/useReminders";
 import { RECURRENCE_LABELS, RECURRENCE_TYPES, type RecurrenceType } from "../lib/reminders";
 import { clampVolume, DEFAULT_SOUND_ID, playSound, SOUNDS, stopSound } from "../lib/sounds";
-import { Portal } from "./Portal";
-import { useEscape } from "./useEscape";
+import { ModalShell } from "./ModalShell";
 
 const DAY_LETTERS = ["M", "T", "W", "T", "F", "S", "S"];
 
@@ -35,7 +34,6 @@ export function ReminderForm({
   const [busy, setBusy] = useState(false);
   // A preview left ringing after the modal closes would be a bug, not a feature.
   useEffect(() => () => stopSound(soundId), [soundId]);
-  useEscape(onClose);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
 
   const valid =
@@ -73,19 +71,8 @@ export function ReminderForm({
   const label = (t: string) => <span className="font-data text-xs text-dim uppercase tracking-wider">{t}</span>;
 
   return (
-    <Portal>
-      <div
-        className="fixed inset-0 z-50 grid place-items-end sm:place-items-center bg-void/85 backdrop-blur-sm"
-        onClick={onClose}
-        role="dialog"
-        aria-modal="true"
-        aria-label={initial ? "Edit reminder" : "Add reminder"}
-      >
-        <form
-          onSubmit={submit}
-          onClick={(e) => e.stopPropagation()}
-          className="hud-modal w-full sm:max-w-md max-h-[90dvh] overflow-y-auto p-5 space-y-4 rounded-b-none sm:rounded-b-lg pb-[max(1.25rem,env(safe-area-inset-bottom))]"
-        >
+    <ModalShell label={initial ? "Edit reminder" : "Add reminder"} onClose={onClose}>
+        <form onSubmit={submit} className="p-5 space-y-4">
           <div className="flex items-center justify-between">
             <h2 className="font-display text-signal text-sm tracking-[0.2em] uppercase">
               {initial ? "Edit reminder" : "New reminder"}
@@ -279,8 +266,7 @@ export function ReminderForm({
             </button>
           </div>
         </form>
-      </div>
-    </Portal>
+    </ModalShell>
   );
 }
 

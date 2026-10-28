@@ -9,9 +9,8 @@ import { SECTION_ORDER, sectionOptionLabel, type TimeSection } from "../lib/sect
 import { ChecklistEditor } from "./ChecklistEditor";
 import { DatePickerPopup } from "./DatePickerPopup";
 import { CandidateDatesGrid } from "./CandidateDatesGrid";
-import { Portal } from "./Portal";
+import { ModalShell } from "./ModalShell";
 import { PriorityPicker } from "./PriorityPicker";
-import { useEscape } from "./useEscape";
 
 type Props = {
   initial?: Task;
@@ -57,7 +56,6 @@ export function TaskForm({ initial, categories, onSubmit, onClose, onDelete, onC
   const [carryForward, setCarryForward] = useState(initial ? initial.auto_carry_forward : true);
   const [busy, setBusy] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
-  useEscape(onClose);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
 
   // Checklist (BUILD_PLAN). An existing task's items come from the store and
@@ -186,19 +184,8 @@ export function TaskForm({ initial, categories, onSubmit, onClose, onDelete, onC
   );
 
   return (
-    <Portal>
-    <div
-      className="fixed inset-0 z-50 grid place-items-end sm:place-items-center bg-void/85 backdrop-blur-sm"
-      onClick={onClose}
-      role="dialog"
-      aria-modal="true"
-      aria-label={initial ? "Edit task" : "Add task"}
-    >
-      <form
-        onSubmit={submit}
-        onClick={(e) => e.stopPropagation()}
-        className="hud-modal w-full sm:max-w-md max-h-[90dvh] overflow-y-auto p-5 space-y-4 rounded-b-none sm:rounded-b-lg mb-0 pb-[max(1.25rem,env(safe-area-inset-bottom))]"
-      >
+    <ModalShell label={initial ? "Edit task" : "Add task"} onClose={onClose}>
+      <form onSubmit={submit} className="p-5 space-y-4">
         <div className="flex items-center justify-between">
           <h2 className="font-display text-signal text-sm tracking-[0.2em] uppercase">
             {initial ? "Edit task" : "New task"}
@@ -399,7 +386,6 @@ export function TaskForm({ initial, categories, onSubmit, onClose, onDelete, onC
           </button>
         </div>
       </form>
-    </div>
-    </Portal>
+    </ModalShell>
   );
 }

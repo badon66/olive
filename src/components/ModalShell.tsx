@@ -27,12 +27,16 @@ export function ModalShell({
   // dictated content from an accidental tap outside or swipe).
   dismissable = true,
   className = "",
+  align = "center",
 }: {
   label: string;
   onClose: () => void;
   children: ReactNode;
   size?: "sm" | "md" | "lg";
   dismissable?: boolean;
+  // Desktop only: "top" pins the dialog near the top of the screen instead of
+  // centring it (the schedule setup form). The phone always uses a sheet.
+  align?: "center" | "top";
   // Padding/spacing for the content box; the shell supplies the surface.
   className?: string;
 }) {
@@ -73,14 +77,16 @@ export function ModalShell({
     return (
       <Portal>
         <div
-          className="fixed inset-0 z-50 grid place-items-center bg-void/85 backdrop-blur-sm p-4"
+          className={`fixed inset-0 z-50 grid bg-void/85 backdrop-blur-sm p-4 ${
+            align === "top" ? "justify-items-center items-start pt-[7vh] overflow-y-auto" : "place-items-center"
+          }`}
           onClick={dismissable ? onClose : undefined}
           role="dialog"
           aria-modal="true"
           aria-label={label}
         >
           <div
-            className={`hud-modal w-full ${width} max-h-[90dvh] overflow-y-auto ${className}`}
+            className={`hud-modal w-full ${width} ${align === "top" ? "" : "max-h-[90dvh] overflow-y-auto"} ${className}`}
             onClick={(e) => e.stopPropagation()}
           >
             {children}

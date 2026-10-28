@@ -7,8 +7,7 @@ import { SkeletonRows } from "./Skeleton";
 import { TaskCard } from "./TaskCard";
 import { TaskForm } from "./TaskForm";
 import { DropZone } from "./board/TaskDnd";
-import { Portal } from "./Portal";
-import { useEscape } from "./useEscape";
+import { ModalShell } from "./ModalShell";
 
 type Props = {
   tasks: Task[];
@@ -277,7 +276,6 @@ export function CategoryForm({
   onClose: () => void;
 }) {
   const [name, setName] = useState(initial?.name ?? "");
-  useEscape(onClose);
   const [color, setColor] = useState(initial?.color ?? CATEGORY_PALETTE[0]);
   const [busy, setBusy] = useState(false);
 
@@ -291,15 +289,8 @@ export function CategoryForm({
   };
 
   return (
-    <Portal>
-    <div
-      className="fixed inset-0 z-50 grid place-items-center bg-void/85 backdrop-blur-sm p-6"
-      onClick={onClose}
-      role="dialog"
-      aria-modal="true"
-      aria-label={initial ? "Edit category" : "New category"}
-    >
-      <form onSubmit={submit} onClick={(e) => e.stopPropagation()} className="hud-modal w-full max-w-sm p-5 space-y-4">
+    <ModalShell label={initial ? "Edit category" : "New category"} onClose={onClose} size="sm">
+      <form onSubmit={submit} className="p-5 space-y-4">
         <div className="flex items-center justify-between">
           <h2 className="font-display text-signal text-sm tracking-[0.2em] uppercase">
             {initial ? "Edit category" : "New category"}
@@ -336,7 +327,6 @@ export function CategoryForm({
           {busy ? "Saving…" : initial ? "Save changes" : "Add category"}
         </button>
       </form>
-    </div>
-    </Portal>
+    </ModalShell>
   );
 }

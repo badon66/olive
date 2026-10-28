@@ -8,10 +8,9 @@ import { SECTION_ORDER, sectionOptionLabel } from "../lib/sections";
 import { cubeClickAction, cubeStates, progress, weekDates, type CubeState } from "../lib/weekly";
 import { DraggableWeekly } from "./board/TaskDnd";
 import { ChecklistEditor } from "./ChecklistEditor";
-import { Portal } from "./Portal";
+import { ModalShell } from "./ModalShell";
 import { PriorityBars, PriorityPicker } from "./PriorityPicker";
 import { SkeletonRows } from "./Skeleton";
-import { useEscape } from "./useEscape";
 
 const DAY_LETTERS = ["M", "T", "W", "T", "F", "S", "S"];
 const DAY_ABBRS = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"];
@@ -295,7 +294,6 @@ export function WeeklyTaskForm({
   const [priority, setPriority] = useState<Priority>(clampPriority(initial?.priority_weight));
   const [busy, setBusy] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
-  useEscape(onClose);
 
   // Checklist: an existing weekly task's items come from the store, ticked for
   // `checklistDate` only; a NEW task's items are held here until it has an id.
@@ -377,23 +375,11 @@ export function WeeklyTaskForm({
   );
 
   return (
-    <Portal>
-    {/* Portal is load-bearing: rendered as a plain descendant, .hud-panel's
-        backdrop-filter made the panel the containing block for this fixed
-        overlay — on the dashboard the "modal" opened clipped INSIDE the Weekly
-        Tasks panel (measured 590x192 in a 1280x720 viewport). */}
-    <div
-      className="fixed inset-0 z-50 grid place-items-end sm:place-items-center bg-void/85 backdrop-blur-sm"
-      onClick={onClose}
-      role="dialog"
-      aria-modal="true"
-      aria-label={initial ? "Edit weekly task" : "Add weekly task"}
-    >
-      <form
-        onSubmit={submit}
-        onClick={(e) => e.stopPropagation()}
-        className="hud-modal w-full sm:max-w-md max-h-[90dvh] overflow-y-auto p-5 space-y-4 rounded-b-none sm:rounded-b-lg pb-[max(1.25rem,env(safe-area-inset-bottom))]"
-      >
+    // ModalShell portals to <body> (load-bearing: .hud-panel's backdrop-filter
+    // would otherwise trap this overlay inside the Weekly Tasks panel) and is a
+    // bottom sheet on the phone.
+    <ModalShell label={initial ? "Edit weekly task" : "Add weekly task"} onClose={onClose}>
+      <form onSubmit={submit} className="p-5 space-y-4">
         <div className="flex items-center justify-between">
           <h2 className="font-display text-signal text-sm tracking-[0.2em] uppercase">
             {initial ? "Edit weekly task" : "New weekly task"}
@@ -566,7 +552,6 @@ export function WeeklyTaskForm({
           <p className="font-data text-[11px] text-critical/80">Deletes its whole check-in history and checklist too.</p>
         )}
       </form>
-    </div>
-    </Portal>
+    </ModalShell>
   );
 }

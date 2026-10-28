@@ -4,7 +4,7 @@ import { cleanChecklistTitles } from "../lib/checklist";
 import { JOB_STATUSES, JOB_STATUS_LABELS } from "../lib/jobs";
 import { PRIORITY_LEVELS, priorityLabel } from "../lib/priority";
 import { SECTION_ORDER, sectionOptionLabel, type TimeSection } from "../lib/sections";
-import { Portal } from "./Portal";
+import { ModalShell } from "./ModalShell";
 import { SectionPencil } from "./SectionPencil";
 import { formatClock } from "../lib/dates";
 
@@ -175,17 +175,11 @@ export function ChatBar({
           Portalled — inside a job card this `fixed` overlay would otherwise be
           trapped by .hud-panel's backdrop-filter containing block. */}
       {preview && (
-        <Portal>
-        <div
-          // Deliberately NO click-outside and NO Escape: this holds a parsed
-          // voice capture, and an accidental dismiss discards dictated work.
-          // The explicit X ("Discard") is the only way out.
-          className="fixed inset-0 z-50 grid place-items-center bg-void/85 backdrop-blur-sm p-4"
-          role="dialog"
-          aria-modal="true"
-          aria-label="Review what Olive understood"
-        >
-          <div className="hud-modal w-full max-w-xl max-h-[85dvh] overflow-y-auto p-5 space-y-3" onClick={(e) => e.stopPropagation()}>
+        // Deliberately NOT dismissable by a tap outside, Escape or a swipe:
+        // this holds a parsed voice capture, and an accidental dismiss discards
+        // dictated work. The explicit X ("Discard") is the only way out.
+        <ModalShell label="Review what Olive understood" onClose={() => setPreview(null)} dismissable={false} size="lg">
+          <div className="p-5 space-y-3">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2.5">
                 <svg viewBox="0 0 24 24" className="w-4 h-4 text-signal" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -342,8 +336,7 @@ export function ChatBar({
               </button>
             </div>
           </div>
-        </div>
-        </Portal>
+        </ModalShell>
       )}
     </div>
   );

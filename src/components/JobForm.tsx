@@ -2,8 +2,7 @@ import { useState, type FormEvent } from "react";
 import type { CategoryRow } from "../hooks/useCategories";
 import type { Job, JobInput } from "../hooks/useJobs";
 import { JOB_STATUSES, JOB_STATUS_LABELS, type JobStatus } from "../lib/jobs";
-import { Portal } from "./Portal";
-import { useEscape } from "./useEscape";
+import { ModalShell } from "./ModalShell";
 
 type Props = {
   initial?: Job;
@@ -19,7 +18,6 @@ export function JobForm({ initial, categories, onSubmit, onClose, onDelete }: Pr
   const [status, setStatus] = useState<JobStatus>(initial?.status ?? "quoted");
   const [notes, setNotes] = useState(initial?.notes ?? "");
   const [busy, setBusy] = useState(false);
-  useEscape(onClose);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
 
   const submit = async (e: FormEvent) => {
@@ -37,19 +35,8 @@ export function JobForm({ initial, categories, onSubmit, onClose, onDelete }: Pr
   };
 
   return (
-    <Portal>
-    <div
-      className="fixed inset-0 z-50 grid place-items-end sm:place-items-center bg-void/85 backdrop-blur-sm"
-      onClick={onClose}
-      role="dialog"
-      aria-modal="true"
-      aria-label={initial ? "Edit job" : "Add job"}
-    >
-      <form
-        onSubmit={submit}
-        onClick={(e) => e.stopPropagation()}
-        className="hud-modal w-full sm:max-w-md max-h-[90dvh] overflow-y-auto p-5 space-y-4 rounded-b-none sm:rounded-b-lg mb-0 pb-[max(1.25rem,env(safe-area-inset-bottom))]"
-      >
+    <ModalShell label={initial ? "Edit job" : "Add job"} onClose={onClose}>
+      <form onSubmit={submit} className="p-5 space-y-4">
         <div className="flex items-center justify-between">
           <h2 className="font-display text-signal text-sm tracking-[0.2em] uppercase">
             {initial ? "Edit job" : "New job"}
@@ -142,7 +129,6 @@ export function JobForm({ initial, categories, onSubmit, onClose, onDelete }: Pr
           </button>
         </div>
       </form>
-    </div>
-    </Portal>
+    </ModalShell>
   );
 }
