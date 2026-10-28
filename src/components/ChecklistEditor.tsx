@@ -26,7 +26,11 @@ export function ChecklistEditor({
   onMove,
   onCompleteParent,
   completeWording = "complete",
+  heading = "Checklist",
 }: {
+  // The label above the list ("Checklist · Thursday" on a weekly occurrence,
+  // whose ticks belong to one day).
+  heading?: string;
   rows: EditorRow[];
   parentTitle: string;
   // The parent is already finished, so ticking the last box has nothing to ask.
@@ -73,7 +77,7 @@ export function ChecklistEditor({
   return (
     <section className="space-y-1.5" aria-label="Checklist">
       <div className="flex items-center justify-between">
-        <span className="font-data text-xs text-dim uppercase tracking-wider">Checklist</span>
+        <span className="font-data text-xs text-dim uppercase tracking-wider">{heading}</span>
         {rows.length > 0 && live && (
           <span className="hud-chip hud-chip-signal" aria-label={`${done} of ${rows.length} items done`}>
             {done}/{rows.length}
