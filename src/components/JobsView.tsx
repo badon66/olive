@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { CategoryStore } from "../hooks/useCategories";
+import { useChecklistStore } from "../hooks/useChecklists";
 import type { Job, JobStore } from "../hooks/useJobs";
 import type { Task, TaskStore } from "../hooks/useTasks";
 import { edmontonToday } from "../lib/dates";
@@ -24,6 +25,7 @@ export function JobsView({
   const [editingJob, setEditingJob] = useState<Job | null>(null);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const today = edmontonToday();
+  const checklist = useChecklistStore();
 
   const groups = groupByStatus(jobStore.jobs);
   const cardProps = {
@@ -34,8 +36,10 @@ export function JobsView({
     categoryOf: (t: Task) => categoryStore.byId.get(t.category_id),
   };
 
+  // A job-scoped capture may carry checklist items, so the checklist store
+  // reloads with the tasks.
   const refreshTasksAndJobs = async () => {
-    await Promise.all([taskStore.refresh(), jobStore.refresh()]);
+    await Promise.all([taskStore.refresh(), jobStore.refresh(), checklist?.refresh()]);
   };
 
   return (

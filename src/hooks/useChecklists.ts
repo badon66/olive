@@ -149,16 +149,15 @@ export function useChecklists() {
   };
 
   // Task ↔ weekly conversion keeps the checklist: the items move to the new
-  // parent instead of cascading away with the old one. Weekly items start
-  // unticked (their state is per date); items coming back to a task start
-  // unticked too, since the weekly side never used the item flag.
+  // parent instead of cascading away with the old one. The item's own
+  // `completed` flag is left alone: weekly occurrences never read it (their
+  // ticks are per date), and keeping it is what lets "tap to undo" bring a
+  // half-ticked task back with its ticks intact — resetting here erased them.
   const moveItems = async (from: ChecklistParent, to: ChecklistParent) => {
     epoch.current += 1;
     const patch = {
       task_id: "task_id" in to ? to.task_id : null,
       weekly_task_id: "weekly_task_id" in to ? to.weekly_task_id : null,
-      completed: false,
-      completed_at: null,
     };
     setItems((prev) => prev.map((i) => (parentMatches(i, from) ? { ...i, ...patch } : i)));
     const q = supabase.from("task_checklist_items").update(patch);

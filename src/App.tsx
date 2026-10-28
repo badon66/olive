@@ -80,7 +80,11 @@ function Shell() {
         categoryStore={categoryStore}
         weeklyStore={weeklyStore}
         customize={customize}
-        refresh={taskStore.refresh}
+        // A capture can create checklist items too, so the checklist store
+        // reloads with the tasks — otherwise a new "0/3" chip waited for a reload.
+        refresh={async () => {
+          await Promise.all([taskStore.refresh(), checklistStore.refresh()]);
+        }}
       />
     </div>
   );
@@ -144,7 +148,7 @@ function Shell() {
         {!isDesktop && (
           <ChatBar
             onActionDone={async () => {
-              await Promise.all([taskStore.refresh(), categoryStore.refresh(), jobStore.refresh()]);
+              await Promise.all([taskStore.refresh(), categoryStore.refresh(), jobStore.refresh(), checklistStore.refresh()]);
             }}
             taskTitleById={(id) => taskStore.tasks.find((t) => t.id === id)?.title}
           />

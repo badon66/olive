@@ -407,7 +407,10 @@ export function DesktopDashboard({
       <div className="w-full max-w-[520px] mt-1">
         <ChatBar
           onActionDone={async () => {
-            await Promise.all([taskStore.refresh(), categoryStore.refresh(), jobStore.refresh()]);
+            // Checklist items can arrive with a capture ("X, with A, B and C"),
+            // so the checklist store reloads too — or the new "0/3" chip and the
+            // popup's items would wait for a page reload.
+            await Promise.all([taskStore.refresh(), categoryStore.refresh(), jobStore.refresh(), checklist?.refresh()]);
           }}
           inline
           taskTitleById={(id) => tasks.find((t) => t.id === id)?.title}
@@ -591,7 +594,10 @@ export function DesktopDashboard({
               <div className="flex-1 min-w-0 max-w-[720px] mx-auto">
                 <ChatBar
           onActionDone={async () => {
-            await Promise.all([taskStore.refresh(), categoryStore.refresh(), jobStore.refresh()]);
+            // Checklist items can arrive with a capture ("X, with A, B and C"),
+            // so the checklist store reloads too — or the new "0/3" chip and the
+            // popup's items would wait for a page reload.
+            await Promise.all([taskStore.refresh(), categoryStore.refresh(), jobStore.refresh(), checklist?.refresh()]);
           }}
           inline
           taskTitleById={(id) => tasks.find((t) => t.id === id)?.title}
@@ -613,7 +619,11 @@ export function DesktopDashboard({
           )}
           <div className="flex items-center gap-3 shrink-0 ml-auto">
             <RolloverCountdown />
-            <ScheduleSetupButton onTasksChanged={taskStore.refresh} />
+            <ScheduleSetupButton
+              onTasksChanged={async () => {
+                await Promise.all([taskStore.refresh(), checklist?.refresh()]);
+              }}
+            />
             <div className="flex items-center gap-3 font-data text-[11px]">
               <span className="text-dim">{dateStr}</span>
               <span className="text-signal">{timeStr}</span>
