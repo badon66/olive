@@ -98,8 +98,11 @@ export function ModalShell({
 
   return (
     <Portal>
+      {/* `phone` here too: the sheet is portalled to <body>, outside the phone
+          shell, and the phone-only CSS (16px inputs, no glow, 44px targets)
+          has to reach it. */}
       <div
-        className="fixed inset-0 z-50 flex items-end bg-void/75"
+        className="phone fixed inset-0 z-50 flex items-end bg-void/75"
         onClick={dismissable ? onClose : undefined}
         role="dialog"
         aria-modal="true"

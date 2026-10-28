@@ -85,7 +85,7 @@ export function TaskList({ tasks, loading, categoryStore, addTask, updateTask, c
     );
 
   const selectCls =
-    "hud-input !min-h-[38px] !w-auto text-sm cursor-pointer py-1 pr-7";
+    "hud-input !min-h-[var(--select-h,38px)] !w-auto text-sm cursor-pointer py-1 pr-7";
 
   return (
     <div className="space-y-4">

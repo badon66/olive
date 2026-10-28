@@ -15,6 +15,36 @@
    this side does the styling, and they have to flip together. */
 @custom-variant tall (@media (orientation: portrait) and (min-width: 700px));
 
+/* Bottom sheets (phone): slide up from below. transform/opacity only, so it
+   stays on the compositor; motion-safe: gates it behind reduced-motion. */
+@keyframes sheet-in {
+  from {
+    transform: translateY(100%);
+    opacity: 0.6;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+@utility animate-sheet-in {
+  animation: sheet-in 260ms var(--ease-out-soft);
+}
+/* Undo toast: a short rise from the tab bar. */
+@keyframes toast-in {
+  from {
+    transform: translateY(12px);
+    opacity: 0;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+@utility animate-toast-in {
+  animation: toast-in 200ms var(--ease-out-soft);
+}
+
 @theme {
   /* v3 direction: darker, richer forest/emerald — muted, not neon */
   --color-void: #070d0a;
@@ -215,6 +245,90 @@ body {
       transition: none;
     }
   }
+}
+
+/* ── Phone (BUILD_PLAN "Touch and iPhone polish") ────────────────────────
+   Same dark HUD look, with glow dialed down for daylight readability; no
+   hover-only affordances (there is no hover on touch); 16px inputs so iOS
+   doesn't zoom on focus; comfortable tap targets. Scoped to the phone shell. */
+.phone .hud-panel {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  background: rgba(10, 26, 18, 0.85);
+}
+.phone .hud-panel:hover {
+  border-color: var(--color-panel-border);
+  box-shadow: none;
+}
+.phone .hud-panel:hover::before {
+  background: linear-gradient(90deg, transparent, transparent, transparent);
+}
+.phone .text-glow {
+  text-shadow: none;
+}
+.phone .hud-input,
+.phone input,
+.phone textarea,
+.phone select {
+  font-size: 16px;
+}
+.phone .hud-button {
+  box-shadow: none;
+}
+/* The date calendar sits inline in a sheet on the phone (a floating dropdown
+   inside a scrolling sheet gets clipped), with thumb-sized day cells. */
+.phone [aria-label="Pick a due date"] {
+  position: static;
+  --date-quick-h: 44px;
+}
+.phone [aria-label="Pick a due date"] button {
+  min-height: 44px;
+  font-size: 14px;
+}
+/* Desktop components reused on the phone (More pages, sheets) were sized for a
+   mouse: give every button and select a 44px floor. In the components layer on
+   purpose, so any element that sets its own larger min-height utility (the
+   64px Dismiss, 56px rows) keeps it — this only fills in where nothing is set. */
+@layer components {
+  .phone main button,
+  .phone main select,
+  .phone[role="dialog"] button,
+  .phone[role="dialog"] select {
+    min-height: 44px;
+    min-width: 44px;
+  }
+  /* …except the weekly cubes, which share a 7-column row and size themselves
+     (square, as wide as the row allows — about 44px on the narrowest iPhone). */
+  .phone [role="group"][aria-label$=" week"] button {
+    min-width: 0;
+  }
+}
+.phone main,
+.phone[role="dialog"] {
+  --select-h: 44px;
+}
+/* The capture preview: show the whole title Olive heard, never "Pick up
+   primer at Ham…" — checking it is the point of the preview. */
+.phone[aria-label="Review what Olive understood"] .truncate {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+/* Reorder arrows (pencil on) meet the 44px touch minimum on the phone. */
+.phone [role="group"][aria-label^="Reorder"] button {
+  width: 44px;
+  height: 44px;
+}
+/* The phone shell is a fixed full-screen app: no page rubber-banding, no grey
+   tap flash, no long-press callout on buttons. */
+html:has(.phone),
+html:has(.phone) body {
+  overscroll-behavior: none;
+}
+.phone {
+  -webkit-tap-highlight-color: transparent;
+}
+.phone button {
+  -webkit-touch-callout: none;
 }
 
 /* ── Motion & cursor conventions ──────────────────────────────────────────
