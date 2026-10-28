@@ -13,7 +13,10 @@ import {
 } from "../hooks/useChecklists";
 import type { Job, JobStore } from "../hooks/useJobs";
 import { useMediaQuery } from "../hooks/useMediaQuery";
-import type { ReminderStore } from "../hooks/useReminders";
+import type { Reminder, ReminderFire, ReminderStore } from "../hooks/useReminders";
+import { usePhoneLayout } from "../hooks/usePhoneLayout";
+import { PhoneApp } from "../components/phone/PhoneApp";
+import { ReminderAlerts, useReminderAlerts } from "../components/RemindersView";
 import type { Task, TaskInput, TaskStore } from "../hooks/useTasks";
 import type { WeeklyCheckin, WeeklyDayOverride, WeeklyStore, WeeklyTask, WeeklyTaskInput } from "../hooks/useWeeklyTasks";
 import {
@@ -29,6 +32,8 @@ import { completeDayPatch, reopenPatch, uncompleteDayPatch } from "../lib/flexib
 import type { TimeSection } from "../lib/sections";
 import { currentSection } from "../lib/suggest";
 import { normalizeOverridePatch, overrideIsEmpty, type OverridePatch } from "../lib/weekly";
+import type { AssistantAction } from "../lib/api";
+import { supabase } from "../lib/supabase";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // DEV-ONLY FIXTURE DASHBOARD. Not part of the app.
@@ -56,6 +61,36 @@ declare global {
 const writes: HarnessWrite[] = [];
 const write = (table: string, op: string, data: unknown) => {
   writes.push({ table, op, data, at: new Date().toISOString() });
+};
+
+// A stand-in for the assistant Edge Function. The harness is signed out, so
+// the real function would answer 401; this canned version lets the capture UI
+// (preview pop-up / sheet, save, confirmation toast) be exercised end to end.
+// It does NOT exercise the real parsing — that only runs signed in. Every call
+// is logged as a write ("assistant", mode).
+let commitSink: ((actions: AssistantAction[]) => Promise<void>) | null = null;
+// `supabase.functions` is a getter that builds a new client on every access, so
+// the stand-in goes on the shared prototype, not on one instance.
+type Invoke = (this: unknown, name: string, opts?: { body?: Record<string, unknown> }) => Promise<unknown>;
+const functionsProto = Object.getPrototypeOf(supabase.functions) as { invoke: Invoke };
+const realInvoke = functionsProto.invoke;
+functionsProto.invoke = async function (this: unknown, name, opts) {
+  if (name !== "assistant") return realInvoke.call(this, name, opts);
+  const body = (opts?.body ?? {}) as { message?: string; mode?: string; for_date?: string; actions?: AssistantAction[] };
+  write("assistant", body.mode ?? "send", body);
+  await new Promise((r) => setTimeout(r, 300));
+  const parse = (): AssistantAction[] => {
+    const raw = (body.message ?? "").trim().replace(/^(remind me to|add( a task)?( to)?|i need to)\s+/i, "");
+    const title = raw.charAt(0).toUpperCase() + raw.slice(1);
+    return [{ type: "create_task", title, category_name: "Personal", due_date: body.for_date ?? null, priority_weight: 2 }];
+  };
+  if (body.mode === "preview") {
+    const actions = parse();
+    return { data: { actions, reply: `Add task: ${actions[0].title}` }, error: null };
+  }
+  const actions = body.mode === "commit" ? (body.actions ?? []) : parse();
+  await commitSink?.(actions);
+  return { data: { reply: actions.map((a) => `Added task: ${a.title}`).join("\n") }, error: null };
 };
 
 let seq = 0;
@@ -454,15 +489,77 @@ function useFakeJobs(initial: Job[]): JobStore {
   };
 }
 
-const fakeReminders = {
-  reminders: [],
-  fires: [],
-  globallyEnabled: true,
-  loading: false,
-  refresh: async () => {},
-} as unknown as ReminderStore;
+function mkReminder(p: Partial<Reminder> & { id: string; name: string }): Reminder {
+  return {
+    active: true,
+    created_at: NOW,
+    day_of_month: null,
+    days_of_week: null,
+    fire_at: null,
+    interval_minutes: null,
+    last_fired_at: null,
+    max_repeats: 10,
+    message: null,
+    recurrence_type: "interval",
+    repeat_interval_seconds: 20,
+    sound_id: "double_ding",
+    time_of_day: null,
+    user_id: USER,
+    volume: 0.7,
+    ...p,
+  };
+}
 
-// ── The page ────────────────────────────────────────────────────────────────
+// Reminders: a 30-minute interval anchored 21 minutes ago (next in ~9 min), a
+// daily one, and one switched off. ?fire=1 adds a pending fire, so the alert
+// sheet shows without waiting for a real occurrence.
+function useFakeReminders(withFire: boolean): ReminderStore {
+  const [reminders, setReminders] = useState<Reminder[]>(() => [
+    mkReminder({ id: "r-stretch", name: "Stretch", recurrence_type: "interval", interval_minutes: 30, last_fired_at: new Date(Date.now() - 21 * 60_000).toISOString() }),
+    mkReminder({ id: "r-invoice", name: "Send invoices", recurrence_type: "daily", time_of_day: "17:00", message: "PowerPlay + APC" }),
+    mkReminder({ id: "r-water", name: "Drink water", recurrence_type: "interval", interval_minutes: 60, active: false }),
+  ]);
+  const [fires, setFires] = useState<ReminderFire[]>(() =>
+    withFire
+      ? [{ id: "f-1", reminder_id: "r-invoice", fired_at: NOW, occurrence_at: NOW, dismissed: false, repeat_count: 1, user_id: USER }]
+      : [],
+  );
+  const [globallyEnabled, setGlobal] = useState(true);
+  return {
+    reminders,
+    syncedAt: HARNESS_LOADED_AT,
+    fires,
+    globallyEnabled,
+    loading: false,
+    refresh: async () => {},
+    addReminder: async (input) => {
+      write("reminders", "insert", input);
+      setReminders((p) => [...p, mkReminder({ id: uid("rem"), ...(input as Partial<Reminder>), name: input.name })]);
+    },
+    updateReminder: async (id, patch) => {
+      write("reminders", "update", { id, ...patch });
+      setReminders((p) => p.map((r) => (r.id === id ? ({ ...r, ...patch } as Reminder) : r)));
+    },
+    deleteReminder: async (id) => {
+      write("reminders", "delete", { id });
+      setReminders((p) => p.filter((r) => r.id !== id));
+    },
+    setGloballyEnabled: async (on) => {
+      write("app_settings", "update", { reminders_globally_enabled: on });
+      setGlobal(on);
+    },
+    // The fixture never raises new fires on its own (that would ring during
+    // every check); attempts and dismissals are recorded as writes.
+    raiseFire: async () => null,
+    recordAttempt: async (fireId, nextCount) => {
+      setFires((p) => p.map((f) => (f.id === fireId ? { ...f, repeat_count: nextCount } : f)));
+    },
+    dismissFire: async (fireId) => {
+      write("reminder_fires", "dismiss", { id: fireId });
+      setFires((p) => p.filter((f) => f.id !== fireId));
+    },
+  } as ReminderStore;
+}
 
 export function Harness({ mode }: { mode: string }) {
   const fixtures = useMemo(() => buildFixtures(mode), [mode]);
@@ -474,8 +571,41 @@ export function Harness({ mode }: { mode: string }) {
   const [customize, setCustomize] = useState(false);
   const [editTask, setEditTask] = useState<Task | null>(null);
   const isDesktop = useMediaQuery("(min-width: 1024px)");
+  const phone = usePhoneLayout();
+  const reminderStore = useFakeReminders(new URLSearchParams(window.location.search).has("fire"));
+  const alerts = useReminderAlerts(reminderStore);
 
   window.__olive = { writes, fixtures: { today: fixtures.today, activeDay: fixtures.active, section: fixtures.section } };
+  // Saved captures land in the in-memory task store, as the real ones land in Postgres.
+  commitSink = async (actions) => {
+    for (const a of actions) {
+      if (a.type !== "create_task" || !a.title) continue;
+      await taskStore.addTask({
+        title: a.title,
+        category_id: "cat-personal",
+        due_date: a.due_date ?? null,
+        priority_weight: a.priority_weight ?? 2,
+        time_section: null,
+      });
+    }
+  };
+
+  if (phone) {
+    return (
+      <ChecklistContext.Provider value={checklistStore}>
+        <ReminderAlerts firing={alerts.firing} dismiss={alerts.dismiss} />
+        <PhoneApp
+          taskStore={taskStore}
+          weeklyStore={weeklyStore}
+          categoryStore={categoryStore}
+          jobStore={jobStore}
+          reminderStore={reminderStore}
+          customize={customize}
+          onToggleCustomize={() => setCustomize((c) => !c)}
+        />
+      </ChecklistContext.Provider>
+    );
+  }
 
   return (
     <ChecklistContext.Provider value={checklistStore}>
@@ -489,7 +619,7 @@ export function Harness({ mode }: { mode: string }) {
                 weeklyStore={weeklyStore}
                 categoryStore={categoryStore}
                 jobStore={jobStore}
-                reminderStore={fakeReminders}
+                reminderStore={reminderStore}
                 onOpenJobs={() => {}}
                 onOpenReminders={() => {}}
                 customize={customize}
