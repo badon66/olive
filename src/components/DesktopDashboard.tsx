@@ -7,15 +7,16 @@ import type { ReminderStore } from "../hooks/useReminders";
 import type { Task, TaskStore } from "../hooks/useTasks";
 import type { WeeklyStore, WeeklyTask } from "../hooks/useWeeklyTasks";
 import { carryoverTasks } from "../lib/dayrules";
-import { dayIsDone, onDayPatch, skipDayPatch, tasksOnDate } from "../lib/flexible";
+import { dayIsDone } from "../lib/flexible";
 import { activeCount } from "../lib/jobs";
 import { useBrief } from "../hooks/useBrief";
 import { PORTRAIT_MONITOR_QUERY, useMediaQuery } from "../hooks/useMediaQuery";
 import { addDays, daysBetween, edmontonActiveDay, edmontonHour, edmontonMinutes, edmontonToday, fullDateLabel } from "../lib/dates";
 import { buildInsight } from "../lib/insight";
+import { dayCounter, dueOnDay } from "../lib/daySchedule";
+import { taskActionHandlers } from "../hooks/useTaskActions";
 import { computeSections, doneTodayCount } from "../lib/sections";
 import { currentSection } from "../lib/suggest";
-import { appearsOn } from "../lib/weekly";
 import { CategoryPanelBody } from "./CategoryPanel";
 import { TaskActionPopup, type ActionTarget } from "./TaskActionPopup";
 import { ChatBar } from "./ChatBar";
@@ -219,12 +220,11 @@ export function DesktopDashboard({
   // Active Tasks answers "what should I be doing right now", so it runs off
   // `activeDay`, not the page day. Identical to `dueToday` except in the 1:30–5:00
   // AM window, where the page has flipped but the previous day's Night is still on.
-  const activeDue = useMemo(() => {
-    if (activeDay === today) return dueToday;
-    const s = computeSections(open, activeDay);
-    return [...s.overdue, ...s.today];
+  const activeDue = useMemo(
+    () => (activeDay === today ? dueToday : dueOnDay(open, activeDay, true)),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, activeDay, today, sections]);
+    [open, activeDay, today, sections],
+  );
   const activeCardProps = { ...cardProps, today: activeDay };
 
   // NOTHING places flexible tasks any more. A window task belongs to every day
@@ -245,7 +245,7 @@ export function DesktopDashboard({
   const scheduleDate = addDays(today, scheduleOffset);
   const otherDay = scheduleOffset !== 0;
   // One rule for "what belongs to this day", whichever day is on screen.
-  const scheduleDue = otherDay ? tasksOnDate(open, scheduleDate) : dueToday;
+  const scheduleDue = otherDay ? dueOnDay(open, scheduleDate, false) : dueToday;
   const dayNav = {
     label: dayOffsetLabel(scheduleOffset),
     date: scheduleDate,
@@ -421,14 +421,13 @@ export function DesktopDashboard({
   // "8 tasks · 3 completed" for the day on screen (BUILD_PLAN): the day's
   // regular tasks plus its weekly occurrences. A pick task already ticked for
   // the day moves from the open count to the completed one, not both.
-  const checkinsOfWeekly = (id: string) => weeklyStore.checkins.filter((c) => c.weekly_task_id === id);
-  const weeklyOnDay = weeklyStore.weeklyTasks.filter((w) => appearsOn(w, checkinsOfWeekly(w.id), scheduleDate));
-  const weeklyDoneOnDay = weeklyOnDay.filter((w) =>
-    checkinsOfWeekly(w.id).some((c) => c.date === scheduleDate && c.status === "completed"),
-  ).length;
-  const tasksDoneOnDay = doneTodayCount(tasks, scheduleDate);
-  const dayDone = tasksDoneOnDay + weeklyDoneOnDay;
-  const dayTotal = scheduleDue.filter((t) => !dayIsDone(t, scheduleDate)).length + tasksDoneOnDay + weeklyOnDay.length;
+  const { total: dayTotal, done: dayDone } = dayCounter({
+    allTasks: tasks,
+    dueList: scheduleDue,
+    weeklyTasks: weeklyStore.weeklyTasks,
+    checkins: weeklyStore.checkins,
+    date: scheduleDate,
+  });
   const scheduleHint = (
     <span className="flex items-center gap-2">
       <span className="hud-chip" aria-label={`${dayTotal} tasks, ${dayDone} completed`}>
@@ -764,38 +763,9 @@ export function DesktopDashboard({
           <TaskActionPopup
             target={actionFor}
             today={today}
-            onSkipWeekly={(w, date) => void weeklyStore.skipDay(w.id, date)}
-            dayOverrides={weeklyStore.dayOverrides}
-            // Gated on the table actually existing, so the per-day editor never
-            // appears somewhere it could not save.
-            onSetWeeklyOverride={
-              weeklyStore.overridesReady
-                ? (id, date, patch) => weeklyStore.setDayOverride(id, date, patch)
-                : undefined
-            }
-            onClearWeeklyOverride={
-              weeklyStore.overridesReady ? (id, date) => weeklyStore.clearDayOverride(id, date) : undefined
-            }
             onClose={() => setActionFor(null)}
-            // "Delete for today" = off the schedule, not destroyed. The task
-            // drops back to its category's backlog with no due date. It clears
-            // the WHOLE scheduling state, because a leftover window or
-            // candidate list would keep the task appearing on every day of a
-            // set the user has just dismissed.
-            onUnschedule={(id) =>
-              void taskStore.updateTask(id, {
-                due_date: null,
-                window_start: null,
-                window_end: null,
-                candidate_dates: null,
-                completed_dates: null,
-              })
-            }
-            // Choosing a date means "it's happening on that day": a window or
-            // pick task becomes a single-day task there. Rewriting due_date
-            // alone moved nothing and corrupted the deadline.
-            onReschedule={(id, date) => void taskStore.updateTask(id, onDayPatch(date))}
-            onSkipTask={(task, day) => void taskStore.updateTask(task.id, skipDayPatch(task, day))}
+            // The same handlers the phone's task sheet uses (hooks/useTaskActions).
+            {...taskActionHandlers(taskStore, weeklyStore)}
           />
         )}
 

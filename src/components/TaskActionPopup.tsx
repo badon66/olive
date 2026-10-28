@@ -6,7 +6,7 @@ import { SECTION_ORDER, sectionOptionLabel, type TimeSection } from "../lib/sect
 import { daysLeft, daysLeftLabel, skipIsPointless, spanLabel } from "../lib/flexible";
 import { findDayOverride, type DayOverrideLike, type OverridePatch } from "../lib/weekly";
 import { DatePickerPopup } from "./DatePickerPopup";
-import { Portal } from "./Portal";
+import { ModalShell } from "./ModalShell";
 
 // DOUBLE-click gesture (BUILD_PLAN). It has to stay distinct from a single
 // click, which opens the full edit modal — so the single-click action is held
@@ -46,7 +46,28 @@ export type ActionTarget =
   | { kind: "task"; task: Task; date?: string }
   | { kind: "weekly"; weekly: WeeklyTask; date: string };
 
-export function TaskActionPopup({
+// The quick actions themselves, with no container of its own: the desktop
+// popup wraps it in a centred modal, and the phone's task sheet embeds it under
+// the task's details and checklist (BUILD_PLAN: the same actions on both).
+export type TaskActionsProps = {
+  target: ActionTarget;
+  today: string;
+  onClose: () => void;
+  onUnschedule: (id: string) => void;
+  onReschedule: (id: string, date: string | null) => void;
+  onSkipTask?: (task: Task, day: string) => void;
+  onSkipWeekly: (task: WeeklyTask, date: string) => void;
+  dayOverrides?: DayOverrideLike[];
+  onSetWeeklyOverride?: (taskId: string, date: string, patch: OverridePatch) => void | Promise<void>;
+  onClearWeeklyOverride?: (taskId: string, date: string) => void | Promise<void>;
+  // Embedded in a sheet that already shows the title and span: hide the
+  // header and the Cancel button (the sheet has its own dismissal).
+  embedded?: boolean;
+  // Phone: an "Edit" button that opens the full form.
+  onEdit?: () => void;
+};
+
+export function TaskActionsBody({
   target,
   today,
   onClose,
@@ -57,7 +78,9 @@ export function TaskActionPopup({
   dayOverrides = [],
   onSetWeeklyOverride,
   onClearWeeklyOverride,
-}: {
+  embedded = false,
+  onEdit,
+}: TaskActionsProps & {
   target: ActionTarget;
   today: string;
   onClose: () => void;
@@ -82,12 +105,6 @@ export function TaskActionPopup({
   const [daySection, setDaySection] = useState<TimeSection | "">(existing?.time_section ?? "");
   const [dayTime, setDayTime] = useState(existing?.scheduled_time?.slice(0, 5) ?? "");
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [onClose]);
-
   // Show what this occurrence is actually called on this day, override included.
   const label = target.kind === "task" ? target.task.title : (existing?.name ?? target.weekly.name);
 
@@ -110,29 +127,27 @@ export function TaskActionPopup({
         : daysLeftLabel(daysLeft(target.task, today) ?? 0)
       : null;
 
+  const editButton = onEdit && (
+    <button className="hud-button w-full" onClick={onEdit}>
+      Edit
+    </button>
+  );
+
   return (
-    <Portal>
-      <div
-        className="fixed inset-0 z-50 grid place-items-center bg-void/85 backdrop-blur-sm p-4"
-        onClick={onClose}
-        role="presentation"
-      >
-        <div
-          className="hud-modal p-5 w-full max-w-sm"
-          onClick={(e) => e.stopPropagation()}
-          role="dialog"
-          aria-modal="true"
-          aria-label={`Actions for ${label}`}
-        >
-          <p className="font-data text-[11px] uppercase tracking-widest text-dim mb-1">
-            {target.kind === "weekly" ? "Weekly task" : "Task actions"}
-          </p>
-          <p className={`font-body font-semibold text-base truncate ${span ? "mb-1" : "mb-4"}`}>{label}</p>
-          {span && (
-            <p className="font-data text-[11px] text-signal mb-4" aria-label="Scheduled span">
-              {span}
-              {spanNote && <span className="text-dim"> · {spanNote}</span>}
-            </p>
+        <>
+          {!embedded && (
+            <>
+              <p className="font-data text-[11px] uppercase tracking-widest text-dim mb-1">
+                {target.kind === "weekly" ? "Weekly task" : "Task actions"}
+              </p>
+              <p className={`font-body font-semibold text-base truncate ${span ? "mb-1" : "mb-4"}`}>{label}</p>
+              {span && (
+                <p className="font-data text-[11px] text-signal mb-4" aria-label="Scheduled span">
+                  {span}
+                  {spanNote && <span className="text-dim"> · {spanNote}</span>}
+                </p>
+              )}
+            </>
           )}
 
           {picking ? (
@@ -260,9 +275,12 @@ export function TaskActionPopup({
                     </p>
                   </>
                 )}
-                <button className="hud-button w-full !border-signal-dim/40 !text-dim" onClick={onClose}>
-                  Cancel
-                </button>
+                {editButton}
+                {!embedded && (
+                  <button className="hud-button w-full !border-signal-dim/40 !text-dim" onClick={onClose}>
+                    Cancel
+                  </button>
+                )}
               </div>
             )
           ) : (
@@ -293,13 +311,25 @@ export function TaskActionPopup({
               <button className="hud-button w-full" onClick={() => setPicking(true)}>
                 Reschedule
               </button>
-              <button className="hud-button w-full !border-signal-dim/40 !text-dim" onClick={onClose}>
-                Cancel
-              </button>
+              {editButton}
+              {!embedded && (
+                <button className="hud-button w-full !border-signal-dim/40 !text-dim" onClick={onClose}>
+                  Cancel
+                </button>
+              )}
             </div>
           )}
-        </div>
-      </div>
-    </Portal>
+        </>
+  );
+}
+
+// Desktop: the quick actions in a centred popup (a bottom sheet on the phone,
+// via ModalShell). Opened by double-clicking a row.
+export function TaskActionPopup(props: TaskActionsProps) {
+  const label = props.target.kind === "task" ? props.target.task.title : props.target.weekly.name;
+  return (
+    <ModalShell label={`Actions for ${label}`} onClose={props.onClose} size="sm" className="p-5">
+      <TaskActionsBody {...props} />
+    </ModalShell>
   );
 }
