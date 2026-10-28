@@ -7,6 +7,7 @@ import { SECTION_ORDER, sectionOptionLabel, type TimeSection } from "../lib/sect
 import { ModalShell } from "./ModalShell";
 import { SectionPencil } from "./SectionPencil";
 import { formatClock } from "../lib/dates";
+import { useSpeechInput } from "../hooks/useSpeechInput";
 
 type Toast = { kind: "ok" | "error"; text: string };
 
@@ -35,6 +36,10 @@ export function ChatBar({
   forDate,
   toastPlacement = "stack",
   micHint = false,
+  alwaysPreview = false,
+  onReply,
+  speech = false,
+  autoFocus = false,
 }: {
   onActionDone: () => Promise<void>;
   inline?: boolean;
@@ -53,6 +58,16 @@ export function ChatBar({
   // desktop) lands here as text. Decorative — there is no in-app speech
   // recognition in v1 (CLAUDE.md), so it is not a button.
   micHint?: boolean;
+  // Phone capture sheet: every capture goes through the preview-before-send
+  // modal (BUILD_PLAN "Capture on phone"), typed or spoken.
+  alwaysPreview?: boolean;
+  // When set, the confirmation is handed to the caller (the phone shows it in
+  // its own toast, since the capture sheet closes) instead of shown here.
+  onReply?: (text: string) => void;
+  // A working mic button (push-to-talk dictation, hooks/useSpeechInput) where
+  // the browser supports it — the phone's capture sheet.
+  speech?: boolean;
+  autoFocus?: boolean;
 }) {
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
@@ -61,6 +76,15 @@ export function ChatBar({
   const [preview, setPreview] = useState<{ actions: AssistantAction[]; reply: string } | null>(null);
   const [editingIdx, setEditingIdx] = useState<number | null>(null);
   const isVoiceCapture = useRef(false);
+  // Push-to-talk (phone). The transcript lands in the box as a voice capture,
+  // and a finished utterance goes straight to the preview — nothing saves
+  // until "Send off".
+  const dictation = useSpeechInput((text, isFinal) => {
+    if (!text) return;
+    isVoiceCapture.current = true;
+    setMessage(text);
+    if (isFinal) void capture(text);
+  });
 
   const onChange = (value: string) => {
     if (value.length - message.length >= VOICE_INSERT_THRESHOLD) isVoiceCapture.current = true;
@@ -71,6 +95,11 @@ export function ChatBar({
   const finish = async (reply: string) => {
     setMessage("");
     isVoiceCapture.current = false;
+    if (onReply) {
+      onReply(reply);
+      await onActionDone();
+      return;
+    }
     setToast({ kind: "ok", text: reply });
     await onActionDone();
     setTimeout(() => setToast((t) => (t?.text === reply ? null : t)), 6000);
@@ -81,12 +110,16 @@ export function ChatBar({
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
-    const text = message.trim();
+    await capture(message);
+  };
+
+  async function capture(raw: string) {
+    const text = raw.trim();
     if (!text || busy) return;
     setBusy(true);
     setToast(null);
     try {
-      if (isVoiceCapture.current || job) {
+      if (isVoiceCapture.current || job || alwaysPreview) {
         // Parse only — the modal shows exactly what was understood before anything
         // saves. Job captures always preview so the polished wording is reviewable.
         setPreview(await previewAssistant(text, { job, forDate }));
@@ -99,7 +132,7 @@ export function ChatBar({
     } finally {
       setBusy(false);
     }
-  };
+  }
 
   const sendOff = async () => {
     if (!preview) return;
@@ -161,8 +194,28 @@ export function ChatBar({
             disabled={busy}
             aria-label="Tell Olive"
             enterKeyHint="send"
+            autoFocus={autoFocus}
           />
         </div>
+        {speech && dictation.supported && (
+          <button
+            type="button"
+            onClick={() => (dictation.listening ? dictation.stop() : dictation.start())}
+            disabled={busy}
+            aria-pressed={dictation.listening}
+            aria-label={dictation.listening ? "Stop dictation" : "Dictate"}
+            className={`shrink-0 w-12 min-h-[44px] grid place-items-center rounded-lg border cursor-pointer transition-colors duration-150 focus-visible:outline-2 focus-visible:outline-signal ${
+              dictation.listening
+                ? "border-amber text-amber bg-amber/10 pulse-live"
+                : "border-signal-dim text-signal bg-signal/[0.08]"
+            }`}
+          >
+            <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" />
+              <path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v3" />
+            </svg>
+          </button>
+        )}
         <button className="hud-button shrink-0 px-4" disabled={busy || !message.trim()} aria-label="Send">
           <svg viewBox="0 0 24 24" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
             <path d="m22 2-7 20-4-9-9-4Z" />
@@ -170,6 +223,16 @@ export function ChatBar({
           </svg>
         </button>
       </form>
+      {speech && (dictation.error || !dictation.supported) && (
+        <p className="font-data text-[11px] text-dim" role="status">
+          {dictation.error ?? "Tip: the keyboard's mic dictates straight into the box."}
+        </p>
+      )}
+      {speech && dictation.listening && (
+        <p className="font-data text-[11px] text-amber" role="status">
+          Listening… speak, then pause.
+        </p>
+      )}
 
       {/* Voice capture preview: what Olive understood, editable, not yet saved.
           Portalled — inside a job card this `fixed` overlay would otherwise be
