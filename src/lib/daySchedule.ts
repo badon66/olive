@@ -1,7 +1,8 @@
 import { isLateBedtime } from "./dayrules";
 import { dayIsDone, tasksOnDate } from "./flexible";
 import { buildRows, overdueRow, type ActiveRow, type ActiveTaskLike, type ActiveWeeklyLike, type CheckinLike, type ResolvedWeekly } from "./activeRows";
-import { computeSections, doneTodayCount, orderBySortOrder, partitionSchedule, scheduleSort, SECTION_ORDER, type TimeSection } from "./sections";
+import { moveRow, type ScheduleItem } from "./rows";
+import { computeSections, doneTodayCount, nextSectionFor, orderBySortOrder, partitionSchedule, scheduleSort, SECTION_ORDER, type TimeSection } from "./sections";
 import { pullForward, type BlockedWindow } from "./suggest";
 import { appearsOn, needsPlanning, resolveWeeklyDay, type DayOverrideLike } from "./weekly";
 
@@ -115,4 +116,32 @@ export function buildDaySchedule<T extends DayTask, W extends ActiveWeeklyLike>(
     occupiedSections,
     isOverdue,
   };
+}
+
+// ── Reorder arrows (Today's Schedule, desktop and phone) ────────────────────
+// Inside a section a press swaps neighbours and renumbers the whole section;
+// at a section's edge a regular TASK is carried across the boundary into the
+// next occupied section (empty ones skipped). Weekly occurrences never cross —
+// their part of the day belongs to the recurring task.
+export type ArrowMove =
+  | { kind: "order"; tasks: { id: string; sort_order: number }[]; weekly: { id: string; sort_order: number }[] }
+  | { kind: "cross"; taskId: string; section: TimeSection }
+  | null;
+
+export function canCross<T, W>(row: ScheduleItem<T, W>, section: TimeSection, dir: -1 | 1, occupied: ReadonlySet<TimeSection>): boolean {
+  return row.kind === "task" && nextSectionFor(section, dir, occupied) !== null;
+}
+
+export function arrowMove<T extends { id: string; time_section: TimeSection | null }, W>(
+  rows: ScheduleItem<T, W>[],
+  index: number,
+  dir: -1 | 1,
+  occupied: ReadonlySet<TimeSection>,
+): ArrowMove {
+  const order = moveRow(rows, index, dir);
+  if (order) return { kind: "order", ...order };
+  const row = rows[index];
+  if (!row || row.kind !== "task") return null;
+  const dest = nextSectionFor((row.task.time_section ?? "anytime") as TimeSection, dir, occupied);
+  return dest ? { kind: "cross", taskId: row.task.id, section: dest.section } : null;
 }

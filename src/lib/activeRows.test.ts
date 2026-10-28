@@ -156,3 +156,39 @@ describe("buildActiveRows — the Active Tasks rules as one function", () => {
     expect(r.total).toBe(0);
   });
 });
+
+import { arrowMove, canCross } from "./daySchedule";
+
+describe("arrowMove — the reorder-arrow rule shared by desktop and phone", () => {
+  type T = { id: string; time_section: "morning" | "midday" | "afternoon" | "evening" | "night" | "anytime" | null };
+  const row = (id: string, time_section: T["time_section"], kind: "task" | "weekly" = "task") =>
+    kind === "task"
+      ? ({ kind, id, label: id, sort: null, task: { id, time_section } } as const)
+      : ({ kind, id, label: id, sort: null, weekly: { id } } as const);
+  const occupied = new Set(["midday", "night"] as const);
+
+  it("inside a section, swaps and renumbers both tables", () => {
+    const rows = [row("a", "midday"), row("w", "midday", "weekly"), row("b", "midday")];
+    expect(arrowMove(rows, 0, 1, occupied)).toEqual({
+      kind: "order",
+      tasks: [{ id: "a", sort_order: 1 }, { id: "b", sort_order: 2 }],
+      weekly: [{ id: "w", sort_order: 0 }],
+    });
+  });
+
+  it("at the bottom edge, a task crosses into the next OCCUPIED section, skipping empty ones", () => {
+    const rows = [row("a", "midday")];
+    expect(arrowMove(rows, 0, 1, occupied)).toEqual({ kind: "cross", taskId: "a", section: "night" });
+  });
+
+  it("a weekly occurrence never crosses", () => {
+    const rows = [row("w", "midday", "weekly")];
+    expect(arrowMove(rows, 0, 1, occupied)).toBeNull();
+    expect(canCross(rows[0], "midday", 1, occupied)).toBe(false);
+  });
+
+  it("nothing above Morning", () => {
+    const rows = [row("a", "morning")];
+    expect(arrowMove(rows, 0, -1, occupied)).toBeNull();
+  });
+});

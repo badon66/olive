@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useDaySetup } from "../../hooks/useDaySetup";
-import { buildDaySchedule } from "../../lib/daySchedule";
+import { arrowMove, buildDaySchedule, canCross } from "../../lib/daySchedule";
 import type { Task } from "../../hooks/useTasks";
 import type { WeeklyCheckin, WeeklyTask } from "../../hooks/useWeeklyTasks";
 import { useChecklistStore } from "../../hooks/useChecklists";
@@ -8,7 +8,6 @@ import { progressLabel } from "../../lib/checklist";
 import { formatClock } from "../../lib/dates";
 import { whenLabel } from "../../lib/flexible";
 import {
-  nextSectionFor,
   SCHEDULE_SLOTS,
   SECTION_ORDER,
   scheduleSort,
@@ -21,7 +20,7 @@ import { type DayOverrideLike, type OverrideField } from "../../lib/weekly";
 import { SkeletonRows } from "../Skeleton";
 import { TaskCard } from "../TaskCard";
 import { useDoubleClick } from "../TaskActionPopup";
-import { ScheduleRow, splitOrderWrites, type ScheduleItem } from "./ScheduleRow";
+import { ScheduleRow, type ScheduleItem } from "./ScheduleRow";
 import { DraggableTask, DraggableWeekly, DropZone } from "./TaskDnd";
 
 // What a per-day override actually changed, for the "just this day" tooltip.
@@ -354,37 +353,23 @@ export function TodaySchedulePanel({
   const canReorder = !!onSaveOrder;
   const checkinsFor = (id: string) => (weeklyBits?.checkins ?? []).filter((c) => c.weekly_task_id === id);
 
+  // Arrow presses: reorder within the section, or carry a task across the
+  // boundary at an edge. The rule lives in lib/daySchedule (arrowMove), shared
+  // with the phone's Today tab.
   const moveRow = (
-    slotKey: string,
+    _slotKey: string,
     rows: ScheduleItem<Task, ResolvedWeekly>[],
     index: number,
     dir: -1 | 1,
   ) => {
-    const j = index + dir;
-    if (j >= 0 && j < rows.length) {
-      const next = [...rows];
-      [next[index], next[j]] = [next[j], next[index]];
-      const { tasks, weekly } = splitOrderWrites(next);
-      onSaveOrder?.(tasks);
-      if (weekly.length > 0) onSaveWeeklyOrder?.(weekly);
-      return;
+    const m = arrowMove(rows, index, dir, occupiedSections);
+    if (!m) return;
+    if (m.kind === "order") {
+      onSaveOrder?.(m.tasks);
+      if (m.weekly.length > 0) onSaveWeeklyOrder?.(m.weekly);
+    } else if (onMoveSection) {
+      void onMoveSection(m.taskId, m.section);
     }
-    // At the edge — carry a regular task across the section boundary. Weekly
-    // occurrences stay put: their section is a property of the weekly task
-    // itself, moved via its own edit modal or a drag, not a nudge.
-    const row = rows[index];
-    if (!row || row.kind !== "task") return;
-    moveTask(slotKey, row.task, dir);
-  };
-
-  // Pushed off the end of a section: carry the task across the boundary into the
-  // neighbouring one instead of doing nothing (BUILD_PLAN). Completely empty
-  // sections in between are skipped in a single press (occupiedSections counts
-  // regular tasks AND weekly occurrences).
-  const moveTask = (_slotKey: string, task: Task, dir: -1 | 1) => {
-    if (!onMoveSection) return;
-    const dest = nextSectionFor((task.time_section ?? "anytime") as TimeSection, dir, occupiedSections);
-    if (dest) void onMoveSection(task.id, dest.section);
   };
 
   // The navigator now lives in the panel header (see DayNavigator); the panel
@@ -678,10 +663,7 @@ export function TodaySchedulePanel({
                     // unconditional end-disabling made cross-section movement
                     // unreachable — verified live: a section's only task had
                     // both arrows dead.
-                    const crosses = (dir: -1 | 1) =>
-                      row.kind === "task" &&
-                      !historical &&
-                      nextSectionFor(slot.section, dir, occupiedSections) !== null;
+                    const crosses = (dir: -1 | 1) => !historical && canCross(row, slot.section, dir, occupiedSections);
                     return (
                       <ScheduleRow
                         key={`${row.kind}-${row.id}`}
