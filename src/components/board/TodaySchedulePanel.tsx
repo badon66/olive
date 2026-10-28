@@ -1,17 +1,14 @@
-import { useEffect, useState } from "react";
-import { supabase } from "../../lib/supabase";
+import { useState } from "react";
+import { useDaySetup } from "../../hooks/useDaySetup";
+import { buildDaySchedule } from "../../lib/daySchedule";
 import type { Task } from "../../hooks/useTasks";
 import type { WeeklyCheckin, WeeklyTask } from "../../hooks/useWeeklyTasks";
-import type { BlockedWindow } from "../../lib/api";
 import { useChecklistStore } from "../../hooks/useChecklists";
 import { progressLabel } from "../../lib/checklist";
-import { addDays, formatClock } from "../../lib/dates";
+import { formatClock } from "../../lib/dates";
 import { whenLabel } from "../../lib/flexible";
-import { isLateBedtime } from "../../lib/dayrules";
 import {
   nextSectionFor,
-  orderBySortOrder,
-  partitionSchedule,
   SCHEDULE_SLOTS,
   SECTION_ORDER,
   scheduleSort,
@@ -20,18 +17,11 @@ import {
   sectionProgress,
   type TimeSection,
 } from "../../lib/sections";
-import { pullForward } from "../../lib/suggest";
-import {
-  appearsOn,
-  type DayOverrideLike,
-  needsPlanning,
-  type OverrideField,
-  resolveWeeklyDay,
-} from "../../lib/weekly";
+import { type DayOverrideLike, type OverrideField } from "../../lib/weekly";
 import { SkeletonRows } from "../Skeleton";
 import { TaskCard } from "../TaskCard";
 import { useDoubleClick } from "../TaskActionPopup";
-import { combineRows, liftRows, ScheduleRow, splitOrderWrites, type ScheduleItem } from "./ScheduleRow";
+import { ScheduleRow, splitOrderWrites, type ScheduleItem } from "./ScheduleRow";
 import { DraggableTask, DraggableWeekly, DropZone } from "./TaskDnd";
 
 // What a per-day override actually changed, for the "just this day" tooltip.
@@ -326,115 +316,43 @@ export function TodaySchedulePanel({
   const checklist = useChecklistStore();
   // The date this panel is actually rendering (the stepper's day when present).
   const shownDate = dayNav?.date ?? today;
-  const [setup, setSetup] = useState<{ wake_time: string; blocked_windows: BlockedWindow[] } | null>(null);
-  // Bedtime recorded for the night BEFORE the displayed day — a late one clears
-  // that day's Morning slot (BUILD_PLAN's bedtime rule of thumb).
-  const [prevBedtime, setPrevBedtime] = useState<string | null>(null);
   // Which nudge button is expanded ("weekly" = unplanned weekly, "carryover")
   const [openNudge, setOpenNudge] = useState<"weekly" | "carryover" | null>(null);
 
   const viewDate = dayNav?.date ?? today;
 
-  useEffect(() => {
-    let alive = true;
-    const prevDay = addDays(viewDate, -1);
-    void supabase
-      .from("daily_schedule_setup")
-      .select("date, wake_time, bedtime, blocked_windows")
-      .in("date", [prevDay, viewDate])
-      .then(({ data }) => {
-        if (!alive) return;
-        const rows = data ?? [];
-        const own = rows.find((r) => r.date === viewDate);
-        const prev = rows.find((r) => r.date === prevDay);
-        setSetup(
-          own ? { wake_time: own.wake_time, blocked_windows: (own.blocked_windows ?? []) as BlockedWindow[] } : null,
-        );
-        setPrevBedtime(prev?.bedtime ?? null);
-      });
-    return () => {
-      alive = false;
-    };
-  }, [viewDate]);
+  // The day's wake time + blocked windows, and the night-before bedtime that
+  // drives the bedtime rule — the same hook the phone uses.
+  const { setup, prevBedtime } = useDaySetup(viewDate);
 
-  const checkinsFor = (id: string) => (weeklyBits?.checkins ?? []).filter((c) => c.weekly_task_id === id);
-  // Weekly tasks belong to whatever day is being VIEWED, not hardcoded to today
-  // (BUILD_PLAN): a fixed-days task shows on every scheduled weekday, a
-  // count-mode task on any day its weekly target isn't met yet. `appearsOn` was
-  // always date-generic — it was simply being called with `today` every time,
-  // which is why future days showed nothing.
-  const weeklyToday = (weeklyBits?.weeklyTasks ?? [])
-    .filter((t) => appearsOn(t, checkinsFor(t.id), viewDate))
-    // Resolve each occurrence FOR THE DAY BEING SHOWN, so a per-day rename,
-    // section move or pinned time flows into placement and display for free —
-    // every reader below just sees `.name` / `.time_section`.
-    .map((t) => resolveWeeklyDay(t, weeklyBits?.dayOverrides ?? [], viewDate));
-
-  // Count-mode weekly tasks still needing days planned this week — surfaced as a
-  // nudge here too (BUILD_PLAN Phase 2), disappearing once fully planned.
-  // needsPlanning is the single tested rule — count-mode only, and never a
-  // paused task, which must not nag from a nudge it can't be planned into.
-  const countNudges = historical
-    ? []
-    : (weeklyBits?.weeklyTasks ?? []).filter((t) => needsPlanning(t, checkinsFor(t.id), today));
-
-  // Pull-forward suggestions: unscheduled tasks filling sparse, unblocked
-  // sections. Recomputes when tasks or blocked windows change; the result is a
-  // pure function so no memo needed for correctness.
-  const pulled = pullForward(openTasks, today, setup?.blocked_windows ?? []);
-  const byId = new Map(openTasks.map((t) => [t.id, t]));
-  const pulledFor = (section: TimeSection): Task[] =>
-    pulled[section].map((id) => byId.get(id)).filter((t): t is Task => !!t);
-
-  // Split due-today into the Night-bookended ribbon (see SCHEDULE_SLOTS). Feeding
-  // it `today` (which flips at 5 AM) is what advances the whole view daily.
-  const partition = partitionSchedule(dueToday);
-
-  // Bedtime rule: a late bedtime the night before clears this day's Morning slot
-  // and asks where those tasks should go instead. Nothing is written until the
-  // user picks — the override is day-scoped, never a standing change to the task.
-  const morningCleared = !historical && isLateBedtime(prevBedtime);
-  const displacedMorning = morningCleared ? (partition.morning ?? []).slice().sort(scheduleSort) : [];
-  // Weekly occurrences in Morning are displaced too. They used to vanish with
-  // the cleared slot — nowhere to tick them off, and the prompt claimed nothing
-  // was scheduled. Rehoming one pins THIS day only; the pattern is untouched.
-  const displacedWeekly = morningCleared
-    ? weeklyToday.filter((w) => (w.time_section ?? "anytime") === "morning")
-    : [];
-
-  // Within-section ordering. Untouched sections keep the normal schedule sort;
-  // once the user nudges something with the arrows, their placement wins.
-  // sort_order lives on the task, so this works on any day, not just today.
-  const orderedFor = (key: string) => orderBySortOrder(partition[key] ?? []);
+  // Everything about "what is on this day" — weekly occurrences resolved for
+  // the day, the unplanned-weekly nudge, pull-forward suggestions, the bedtime
+  // rule's displaced work, per-section ordering and overdue-first — comes from
+  // buildDaySchedule (lib/daySchedule.ts), shared with the phone's Today tab.
+  const {
+    weeklyOnDay: weeklyToday,
+    countNudges,
+    pulledFor,
+    morningCleared,
+    displacedMorning,
+    displacedWeekly,
+    orderedFor,
+    rowsFor,
+    occupiedSections,
+  } = buildDaySchedule<Task, WeeklyTask>({
+    viewDate,
+    today,
+    dueList: dueToday,
+    openTasks,
+    weeklyTasks: weeklyBits?.weeklyTasks ?? [],
+    checkins: weeklyBits?.checkins ?? [],
+    dayOverrides: weeklyBits?.dayOverrides ?? [],
+    historical,
+    blockedWindows: setup?.blocked_windows ?? [],
+    prevBedtime,
+  });
   const canReorder = !!onSaveOrder;
-
-  // One combined, ordered list per section: regular tasks AND weekly
-  // occurrences, interleaved by sort_order. This is what the arrows act on.
-  // Overdue lifts to the top AFTER combining — combineRows re-sorts placed rows
-  // by sort_order, so a pre-combine lift never survived for any row that had
-  // been nudged (the previous "applied AFTER … so it wins" comment was false).
-  const rowsFor = (slotKey: string, weekly: ResolvedWeekly[]) =>
-    liftRows(
-      combineRows<Task, ResolvedWeekly>(
-        orderedFor(slotKey).map((t) => ({
-          kind: "task" as const,
-          id: t.id,
-          label: t.title,
-          sort: t.sort_order,
-          time: t.scheduled_time,
-          task: t,
-        })),
-        weekly.map((w) => ({
-          kind: "weekly" as const,
-          id: w.id,
-          label: w.name,
-          sort: w.sort_order,
-          time: w.scheduled_time,
-          weekly: w,
-        })),
-      ),
-      (r) => r.kind === "task" && r.task.due_date !== null && r.task.due_date < today,
-    );
+  const checkinsFor = (id: string) => (weeklyBits?.checkins ?? []).filter((c) => c.weekly_task_id === id);
 
   const moveRow = (
     slotKey: string,
@@ -461,18 +379,8 @@ export function TodaySchedulePanel({
 
   // Pushed off the end of a section: carry the task across the boundary into the
   // neighbouring one instead of doing nothing (BUILD_PLAN). Completely empty
-  // sections in between are skipped in a single press.
-  // Sections that visibly hold ANYTHING — regular tasks or weekly occurrences.
-  // Built from both so a boundary nudge never skips over a section the user can
-  // see is populated (weekly-only sections previously counted as empty).
-  const occupiedSections = new Set<TimeSection>(
-    SECTION_ORDER.filter(
-      (s) =>
-        (partition[s] ?? []).length > 0 ||
-        weeklyToday.some((w) => ((w.time_section ?? "anytime") as TimeSection) === s),
-    ),
-  );
-
+  // sections in between are skipped in a single press (occupiedSections counts
+  // regular tasks AND weekly occurrences).
   const moveTask = (_slotKey: string, task: Task, dir: -1 | 1) => {
     if (!onMoveSection) return;
     const dest = nextSectionFor((task.time_section ?? "anytime") as TimeSection, dir, occupiedSections);
