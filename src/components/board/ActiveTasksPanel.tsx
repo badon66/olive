@@ -4,21 +4,13 @@ import type { WeeklyCheckin, WeeklyTask } from "../../hooks/useWeeklyTasks";
 import { useChecklistStore } from "../../hooks/useChecklists";
 import { progressLabel } from "../../lib/checklist";
 import { formatClock } from "../../lib/dates";
-import { dayIsDone } from "../../lib/flexible";
-import {
-  anytimeShowsInMain,
-  orderBySortOrder,
-  scheduleSort,
-  sectionOptionLabel,
-  splitAnytime,
-  splitSurfaced,
-  type TimeSection,
-} from "../../lib/sections";
-import { appearsOn, type DayOverrideLike, type OverrideField, resolveWeeklyDay } from "../../lib/weekly";
+import { buildActiveRows } from "../../lib/activeRows";
+import { sectionOptionLabel, type TimeSection } from "../../lib/sections";
+import { type DayOverrideLike, type OverrideField } from "../../lib/weekly";
 import { SkeletonRows } from "../Skeleton";
 import { TaskCard } from "../TaskCard";
 import { useDoubleClick } from "../TaskActionPopup";
-import { combineRows, liftRows, ScheduleRow, splitOrderWrites, type ScheduleItem } from "./ScheduleRow";
+import { ScheduleRow, splitOrderWrites, type ScheduleItem } from "./ScheduleRow";
 import { DraggableTask, DropZone } from "./TaskDnd";
 
 const SECTION_LABELS: Record<TimeSection, string> = {
@@ -160,85 +152,25 @@ export function ActiveTasksPanel({
   // folded away by hand (BUILD_PLAN: "the user can still collapse it manually").
   const [surfacedOpen, setSurfacedOpen] = useState(true);
 
-  // Anytime is CONDITIONAL (BUILD_PLAN), so the two groups are kept apart right
-  // from the source data rather than merged and re-separated later.
-  const sectionOf = (ts: string | null) => ts ?? "anytime";
-  const sectionTasks = dueToday.filter((t) => sectionOf(t.time_section) === section).sort(scheduleSort);
-  const anytimeTasks = dueToday.filter((t) => sectionOf(t.time_section) === "anytime").sort(scheduleSort);
-
-  const checkinsFor = (id: string) => (weeklyBits?.checkins ?? []).filter((c) => c.weekly_task_id === id);
-  const weeklyDone = (id: string) => checkinsFor(id).some((c) => c.date === today && c.status === "completed");
-  const weeklyIn = (want: string) =>
-    (weeklyBits?.weeklyTasks ?? [])
-      .filter((t) => appearsOn(t, checkinsFor(t.id), today))
-      // Resolved BEFORE the section filter: a day override can move an
-      // occurrence into a different part of the day, which decides whether it
-      // belongs in this panel at all.
-      .map((t) => resolveWeeklyDay(t, weeklyBits?.dayOverrides ?? [], today))
-      .filter((t) => sectionOf(t.time_section) === want);
-  const sectionWeekly = weeklyIn(section);
-  const anytimeWeekly = section === "anytime" ? [] : weeklyIn("anytime");
-
-  // How busy is the current section, in UNCOMPLETED work of its own? Anytime
-  // tasks are excluded by construction. Decides whether medium-priority anytime
-  // work is surfaced (BUILD_PLAN: 2 or fewer → surfaced).
-  const ownUncompleted =
-    sectionTasks.filter((t) => !dayIsDone(t, today)).length + sectionWeekly.filter((w) => !weeklyDone(w.id)).length;
-
-  // ONE combined list per group — regular tasks and weekly occurrences together
-  // — so the arrows move an item relative to what is actually on screen, not
-  // just its own kind. Overdue lifted AFTER combining, because combineRows
-  // re-sorts placed rows by sort_order and would discard a pre-combine lift.
-  const isOverdueRow = (r: ScheduleItem<Task, ResolvedWeekly>) =>
-    r.kind === "task" && r.task.due_date !== null && r.task.due_date < today;
-  const build = (tasks: Task[], weekly: ResolvedWeekly[]) =>
-    liftRows(
-      combineRows<Task, ResolvedWeekly>(
-        orderBySortOrder(tasks).map((t) => ({
-          kind: "task" as const,
-          id: t.id,
-          label: t.title,
-          sort: t.sort_order,
-          time: t.scheduled_time,
-          task: t,
-        })),
-        weekly.map((w) => ({
-          kind: "weekly" as const,
-          id: w.id,
-          label: w.name,
-          sort: w.sort_order,
-          time: w.scheduled_time,
-          weekly: w,
-        })),
-      ),
-      isOverdueRow,
-    );
-
-  // Base rule: an empty section promotes ALL anytime work into the main list;
-  // a section with its own work folds anytime into the dropdown. Priority
-  // overrides on top (anytimeShowsInMain): urgent always surfaces, medium
-  // surfaces while the section is light, low never does. Weekly occurrences
-  // carry the same 1-3 scale and meanings (BUILD_PLAN), so an urgent anytime
-  // weekly occurrence surfaces exactly like an urgent anytime task.
-  const priorityOf = (r: ScheduleItem<Task, ResolvedWeekly>) =>
-    r.kind === "task" ? r.task.priority_weight : r.weekly.priority_weight;
-  const surfaces = (r: ScheduleItem<Task, ResolvedWeekly>) => anytimeShowsInMain(priorityOf(r), ownUncompleted);
-  const ownRows = build(sectionTasks, sectionWeekly);
-  const split = splitAnytime(ownRows, build(anytimeTasks, anytimeWeekly), surfaces);
-  const promoted = ownRows.length === 0 && split.primary.length > 0;
-  // Overdue sorts to the top across the whole main list (BUILD_PLAN).
-  const primary = liftRows(split.primary, isOverdueRow);
-  // Anytime work surfaced by priority (not by an empty section) gets its own
-  // thin, collapsible group below the section's own work, so it reads as
-  // "surfaced" rather than as belonging to this part of the day — unless it is
-  // overdue, in which case it keeps its lifted place at the top of the list.
-  const key = (r: ScheduleItem<Task, ResolvedWeekly>) => `${r.kind}-${r.id}`;
-  const ownIds = new Set(ownRows.map(key));
-  const { main: mainRows, surfaced: surfacedRows } = promoted
-    ? { main: primary, surfaced: [] as ScheduleItem<Task, ResolvedWeekly>[] }
-    : splitSurfaced(primary, (r) => ownIds.has(key(r)), isOverdueRow);
-  const dropdown = split.dropdown;
-  const total = primary.length + dropdown.length;
+  // Every Active Tasks rule — current section only, anytime conditional with
+  // its priority overrides, weekly occurrences as the section's own work,
+  // overdue first — lives in buildActiveRows (lib/activeRows.ts). The phone's
+  // Now tab calls the same function, so the two can never disagree.
+  const {
+    mainRows,
+    surfacedRows,
+    dropdown,
+    promoted,
+    total,
+    isWeeklyDone: weeklyDone,
+  } = buildActiveRows<Task, WeeklyTask>({
+    section,
+    dueToday,
+    today,
+    weeklyTasks: weeklyBits?.weeklyTasks ?? [],
+    checkins: weeklyBits?.checkins ?? [],
+    dayOverrides: weeklyBits?.dayOverrides ?? [],
+  });
 
   const showArrows = !!onSaveOrder;
   // Arrows reorder the PRIMARY list only. Active Tasks shows one section, so

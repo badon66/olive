@@ -43,54 +43,7 @@ export function ScheduleRow({
   );
 }
 
-// One ordered list per section holding BOTH kinds, so the arrows move an item
-// relative to everything actually on screen rather than only its own type.
-export type ScheduleItem<T, W> =
-  | { kind: "task"; id: string; label: string; sort: number | null; time?: string | null; task: T }
-  | { kind: "weekly"; id: string; label: string; sort: number | null; time?: string | null; weekly: W };
-
-// Interleave tasks and weekly occurrences by sort_order. Anything never nudged
-// (sort null) keeps its incoming relative order behind the placed ones.
-export function combineRows<T, W>(
-  tasks: ScheduleItem<T, W>[],
-  weekly: ScheduleItem<T, W>[],
-): ScheduleItem<T, W>[] {
-  const all = [...tasks, ...weekly];
-  const placed = all.filter((r) => r.sort != null).sort((a, b) => a.sort! - b.sort!);
-  const rest = all.filter((r) => r.sort == null);
-  // Rows with a clock time run in time order — a weekly occurrence pinned to
-  // 7 AM for the day used to list below a 10 AM booking, because weekly rows
-  // were simply appended after the tasks. Untimed rows keep their incoming
-  // order after them (the sort is stable). A manual order still wins.
-  const hhmm = (t: string) => t.slice(0, 5);
-  const timed = rest.filter((r) => r.time).sort((a, b) => hhmm(a.time!).localeCompare(hhmm(b.time!)));
-  const untimed = rest.filter((r) => !r.time);
-  return [...placed, ...timed, ...untimed];
-}
-
-// Renumber the whole combined list after a move, then split the writes back out
-// per underlying table — tasks carry sort_order on `tasks`, weekly occurrences
-// on `weekly_tasks`.
-// Lift rows matching `lifted` to the top, preserving relative order in both
-// groups. Applied AFTER combineRows: combineRows re-sorts every row that has a
-// sort_order by that value, so an overdue lift applied to the inputs was thrown
-// away for any manually-placed row. Post-combine is the only position where the
-// lift actually survives to the screen.
-export function liftRows<T, W>(
-  rows: ScheduleItem<T, W>[],
-  lifted: (row: ScheduleItem<T, W>) => boolean,
-): ScheduleItem<T, W>[] {
-  return [...rows.filter(lifted), ...rows.filter((r) => !lifted(r))];
-}
-
-export function splitOrderWrites<T, W>(
-  ordered: ScheduleItem<T, W>[],
-): { tasks: { id: string; sort_order: number }[]; weekly: { id: string; sort_order: number }[] } {
-  const tasks: { id: string; sort_order: number }[] = [];
-  const weekly: { id: string; sort_order: number }[] = [];
-  ordered.forEach((r, i) => {
-    if (r.kind === "task") tasks.push({ id: r.id, sort_order: i });
-    else weekly.push({ id: r.id, sort_order: i });
-  });
-  return { tasks, weekly };
-}
+// The pure row helpers live in lib/rows.ts so the phone layout uses the very
+// same ordering rules (BUILD_PLAN "same brain, different face"). Re-exported
+// here for the existing imports.
+export { combineRows, liftRows, splitOrderWrites, type ScheduleItem } from "../../lib/rows";
